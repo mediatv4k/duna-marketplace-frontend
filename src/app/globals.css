@@ -1,0 +1,60 @@
+@tailwind base;
+@tailwind components;
+@tailwind utilities;
+
+/* ==========================================================================
+   D'UNA GROUP - MÓDULO DE COMPRAS (NIVEL DIOS)
+   Estilos globales para Variantes, Carrito, Checkout y Tracking
+   ========================================================================== */
+
+@layer components {
+  /* El overlay oscuro con desenfoque de fondo */
+  .purchase-overlay {
+    @apply fixed inset-0 z-[140] flex items-center justify-center bg-black/75 p-3 backdrop-blur-sm animate-in fade-in duration-150;
+  }
+
+  /* El contenedor estricto simétrico (Cero desbordes) */
+  .purchase-modal-container {
+    @apply w-full max-w-[420px] h-[590px] overflow-hidden rounded-[28px] bg-white shadow-2xl border border-slate-100 flex flex-col justify-between;
+  }
+
+  /* Cabecera naranja corporativa */
+  .purchase-header {
+    @apply bg-[#fe6712] px-5 py-2.5 text-white flex items-center justify-between shrink-0;
+  }
+
+  /* Cuerpo del modal (Con scroll oculto visualmente) */
+  .purchase-body {
+    @apply px-5 py-2 space-y-2 flex-1 overflow-y-auto no-scrollbar;
+  }
+
+  /* Pie de página (Footer) fijo y limpio */
+  .purchase-footer {
+    @apply px-5 py-2.5 border-t border-slate-100 bg-white shrink-0 space-y-1.5;
+  }
+
+  /* Tarjetas y superficies planas (Cero Cajas Rusas) */
+  .purchase-card-flat {
+    @apply bg-slate-50/80 p-3 rounded-2xl border border-slate-200/60;
+  }
+}
+
+/* ==========================================================================
+   UTILIDADES EXTRA (Cero fricción visual)
+   ========================================================================== */
+
+/* Asesino de scrollbars (Mantiene el scroll funcional pero invisible) */
+.no-scrollbar::-webkit-scrollbar {
+  display: none;
+}
+.no-scrollbar {
+  -ms-overflow-style: none; /* IE and Edge */
+  scrollbar-width: none; /* Firefox */
+}
+
+/* Configuraciones base del sistema */
+@layer base {
+  body {
+    @apply bg-slate-100 text-slate-900 antialiased;
+  }
+}

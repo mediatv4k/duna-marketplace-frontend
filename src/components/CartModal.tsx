@@ -1,0 +1,268 @@
+'use client';
+
+import React from 'react';
+import { 
+  X, Bike, Store, Navigation, MapPin, 
+  Trash2, ArrowRight, Gift 
+} from 'lucide-react';
+
+export interface CartItem {
+  code: string;
+  category: string;
+  name: string;
+  desc: string;
+  price: number;
+  image: string;
+  status: 'ACTIVE' | 'INACTIVE';
+  qty: number;
+}
+
+interface CartModalProps {
+  isOpen: boolean;
+  onClose: () => void;
+  cartItems: CartItem[];
+  totalItems: number;
+  subtotalUSD: number;
+  deliveryMode: 'delivery' | 'pickup';
+  setDeliveryMode: (mode: 'delivery' | 'pickup') => void;
+  rewardMode: 'DYNAMIC' | 'FIXED';
+  setRewardMode: React.Dispatch<React.SetStateAction<'DYNAMIC' | 'FIXED'>>;
+  faltaParaEnvioGratis: number;
+  progresoEnvio: number;
+  esEnvioGratis: boolean;
+  deliveryCost: number;
+  discountDelivery: number;
+  totalUSD: number;
+  onUpdateQty: (code: string, delta: number) => void;
+  onOpenCheckout: (summary: any) => void;
+}
+
+export default function CartModal({
+  isOpen,
+  onClose,
+  cartItems,
+  totalItems,
+  subtotalUSD,
+  deliveryMode,
+  setDeliveryMode,
+  rewardMode,
+  setRewardMode,
+  faltaParaEnvioGratis,
+  progresoEnvio,
+  esEnvioGratis,
+  deliveryCost,
+  discountDelivery,
+  totalUSD,
+  onUpdateQty,
+  onOpenCheckout,
+}: CartModalProps) {
+  if (!isOpen) return null;
+
+  return (
+    <div className="fixed inset-0 z-[140] flex items-center justify-center bg-black/75 p-4 backdrop-blur-sm animate-in fade-in duration-150">
+      <div className="w-full max-w-[420px] h-[590px] bg-white rounded-[28px] shadow-2xl flex flex-col overflow-hidden animate-in zoom-in-95 duration-200">
+        
+        <div className="h-[325px] flex flex-col border-b border-slate-100 bg-white shrink-0">
+          
+          {/* Header Fijo */}
+          <div className="bg-[#fe6712] w-full px-5 py-3 flex justify-between items-center text-white shrink-0">
+            <div>
+              <h3 className="font-black text-[17px] leading-tight mb-0.5">Tu Pedido y Entrega</h3>
+              <p className="text-[10px] font-medium text-white/90">Revisa tus productos y configura tu destino</p>
+            </div>
+            <button 
+              type="button"
+              onClick={onClose} 
+              className="w-6 h-6 rounded-full bg-white/20 flex items-center justify-center text-white hover:bg-white/30 transition cursor-pointer shrink-0"
+            >
+              <X className="h-3.5 w-3.5" />
+            </button>
+          </div>
+
+          {/* Barra de Recompensa Inteligente */}
+          <div className="px-4 pt-2 pb-1 shrink-0">
+            <div className="bg-orange-50/70 border border-orange-200/60 px-3 py-2 rounded-[14px] space-y-1">
+              <div className="flex items-center justify-between">
+                <div className="flex items-center gap-1.5">
+                  <Gift className="h-3.5 w-3.5 text-[#fe6712]" />
+                  <span className="text-[10px] font-black text-slate-800">Recompensa D&apos;una</span>
+                  
+                  <button 
+                    type="button" 
+                    onClick={() => setRewardMode(prev => prev === 'DYNAMIC' ? 'FIXED' : 'DYNAMIC')}
+                    title="Toca para alternar modelo"
+                    className="text-[7px] font-black px-1.5 py-0.2 rounded bg-orange-200/70 text-[#fe6712] uppercase tracking-wider ml-1 hover:bg-orange-300 transition cursor-pointer"
+                  >
+                    {rewardMode === 'DYNAMIC' ? 'Dinámico' : 'Fijo $15'}
+                  </button>
+                </div>
+
+                <span className="text-[9px] font-black text-[#fe6712]">
+                  {esEnvioGratis ? '¡Envío 100% Gratis!' : `Faltan $${faltaParaEnvioGratis.toFixed(2)} en productos`}
+                </span>
+              </div>
+
+              <div className="w-full bg-slate-200 h-1.5 rounded-full overflow-hidden">
+                <div className="bg-[#fe6712] h-full transition-all duration-500" style={{ width: `${progresoEnvio}%` }}></div>
+              </div>
+
+              {/* Cintillo de Neuromarketing */}
+              <p className="text-[9px] font-medium text-slate-600">
+                {esEnvioGratis ? (
+                  <span>🎉 ¡Felicidades! Desbloqueaste tu <strong className="text-[#fe6712]">Delivery 100% GRATIS</strong></span>
+                ) : (
+                  <span>🔥 ¡Agrega <strong className="text-[#fe6712]">${faltaParaEnvioGratis.toFixed(2)}</strong> más en productos para <strong className="text-[#fe6712]">Delivery GRATIS</strong>!</span>
+                )}
+              </p>
+            </div>
+          </div>
+
+          {/* Título de Sección Fijo */}
+          <div className="px-4 pt-1 pb-0.5 shrink-0">
+            <h4 className="text-[9px] font-black text-slate-400 uppercase tracking-widest">
+              Productos Seleccionados ({totalItems})
+            </h4>
+          </div>
+
+          {/* Scroll Exclusivo de Productos */}
+          <div className="flex-1 overflow-y-auto px-4 py-1 space-y-1.5 pr-2 [&::-webkit-scrollbar]:w-1.5 [&::-webkit-scrollbar-thumb]:bg-slate-200 [&::-webkit-scrollbar-thumb]:rounded-full hover:[&::-webkit-scrollbar-thumb]:bg-slate-300 [&::-webkit-scrollbar-track]:bg-transparent">
+            <div className="space-y-1.5 pb-2">
+              {cartItems && cartItems.length > 0 ? (
+                cartItems.map((item, idx) => (
+                  <div key={item.code || idx} className="bg-white border border-slate-100 rounded-[12px] p-2.5 shadow-sm flex justify-between items-center">
+                    <div>
+                      <h5 className="text-[13px] font-black text-slate-900 leading-tight">{item.name || 'Producto'}</h5>
+                      <p className="text-[10px] text-slate-400 font-medium my-0.5">Cant: {item.qty || 1}</p>
+                      <p className="text-[13px] font-black text-[#fe6712]">${((item.price || 0) * (item.qty || 1)).toFixed(2)} USD</p>
+                    </div>
+                    <button 
+                      type="button"
+                      onClick={() => onUpdateQty(item.code, -(item.qty || 1))} 
+                      className="w-7 h-7 rounded-lg border border-slate-100 bg-slate-50 flex items-center justify-center text-slate-400 hover:text-red-500 hover:bg-red-50 transition cursor-pointer shrink-0"
+                    >
+                      <Trash2 className="h-3.5 w-3.5" />
+                    </button>
+                  </div>
+                ))
+              ) : (
+                <div className="bg-slate-50 border border-slate-100 rounded-[12px] p-3 text-center">
+                  <p className="text-xs font-medium text-slate-400">No hay productos seleccionados.</p>
+                </div>
+              )}
+            </div>
+          </div>
+
+        </div>
+
+        <div className="h-[265px] shrink-0 px-4 pt-2 pb-2.5 bg-white flex flex-col justify-between">
+          
+          <div className="space-y-1">
+            <div className="flex gap-1.5">
+              <button 
+                type="button"
+                onClick={() => setDeliveryMode('delivery')} 
+                className={`flex-1 py-1 rounded-full text-[12px] font-black flex items-center justify-center gap-1 transition-all ${deliveryMode === 'delivery' ? 'bg-[#fe6712] text-white shadow-md' : 'bg-white border border-slate-200 text-slate-500 hover:bg-slate-50'}`}
+              >
+                <Bike className="w-3.5 h-3.5" /> Delivery
+              </button>
+              <button 
+                type="button"
+                onClick={() => setDeliveryMode('pickup')} 
+                className={`flex-1 py-1 rounded-full text-[12px] font-black flex items-center justify-center gap-1 transition-all ${deliveryMode === 'pickup' ? 'bg-[#fe6712] text-white shadow-md' : 'bg-white border border-slate-200 text-slate-500 hover:bg-slate-50'}`}
+              >
+                <Store className="w-3.5 h-3.5" /> Pickup
+              </button>
+            </div>
+
+            <div className="flex gap-1.5">
+              <button 
+                type="button"
+                className="flex-1 border border-orange-200 text-[#fe6712] py-1 rounded-full text-[12px] font-black flex items-center justify-center gap-1 hover:bg-orange-50 transition cursor-pointer"
+              >
+                <Navigation className="w-3.5 h-3.5" /> Mi Ubicación
+              </button>
+              <button 
+                type="button"
+                className="w-7 h-7 border border-orange-200 text-[#fe6712] rounded-full flex items-center justify-center hover:bg-orange-50 transition cursor-pointer shrink-0"
+              >
+                <MapPin className="w-3.5 h-3.5" />
+              </button>
+            </div>
+            
+            <div className="bg-slate-50 rounded-full py-1 px-3 text-center border border-slate-200 flex items-center justify-center gap-1">
+              <span>📍</span>
+              <span className="text-[10px] font-bold text-slate-700 truncate">Cabimas Centro (Sector Av. Intercomunal)</span>
+            </div>
+
+            {deliveryMode === 'delivery' && (
+              <div className="grid grid-cols-3 pt-0.5">
+                <div className="text-center">
+                  <p className="text-[8px] font-black text-slate-400 uppercase tracking-widest">Flete Final</p>
+                  <p className="text-[10px] font-black">
+                    <span className="text-[#fe6712]">
+                      {esEnvioGratis ? 'GRATIS' : `$${deliveryCost.toFixed(2)}`}
+                    </span>
+                  </p>
+                </div>
+                <div className="text-center border-l border-slate-100">
+                  <p className="text-[8px] font-black text-slate-400 uppercase tracking-widest">Distancia</p>
+                  <p className="text-[10px] font-black text-slate-800">0.6 km</p>
+                </div>
+                <div className="text-center border-l border-slate-100">
+                  <p className="text-[8px] font-black text-slate-400 uppercase tracking-widest">Tiempo Est.</p>
+                  <p className="text-[10px] font-black text-slate-800">1 min</p>
+                </div>
+              </div>
+            )}
+          </div>
+
+          <div className="border-t border-slate-100 pt-1 flex flex-col gap-0.5">
+            <div className="flex justify-between text-slate-500 font-medium">
+              <span className="text-[12px]">Subtotal:</span>
+              <span className="font-black text-slate-800 text-[12px]">${subtotalUSD.toFixed(2)} USD</span>
+            </div>
+            {deliveryMode === 'delivery' && (
+              <div className="flex justify-between items-center text-slate-500 font-medium">
+                <span className="flex items-center gap-1 text-[12px]">
+                  Delivery:
+                  {esEnvioGratis && (
+                    <span className="bg-emerald-100 text-emerald-800 text-[8px] font-black px-1.5 py-0.2 rounded uppercase">
+                      100% OFF
+                    </span>
+                  )}
+                </span>
+                <span className="font-black text-[#fe6712] text-[12px]">
+                  {esEnvioGratis ? '$0.00 USD' : `$${deliveryCost.toFixed(2)} USD`}
+                </span>
+              </div>
+            )}
+            <div className="flex justify-between items-end pt-0.5">
+              <span className="text-[14px] font-semibold text-slate-700">Total a pagar:</span>
+              <span className="text-[18px] font-black text-[#fe6712] leading-none">${totalUSD.toFixed(2)} USD</span>
+            </div>
+
+            <button 
+              type="button"
+              onClick={() => { 
+                onClose(); 
+                onOpenCheckout({ 
+                  metodoEntrega: deliveryMode, 
+                  direccion: 'Cabimas Centro (Sector Av. Intercomunal)', 
+                  costoEnvio: deliveryCost, 
+                  subtotalUSD: subtotalUSD, 
+                  totalUSD: totalUSD 
+                }); 
+              }} 
+              className="w-full bg-[#fe6712] hover:bg-[#e0580d] text-white font-black py-1.5 mt-1 rounded-full transition shadow-md text-[12px] flex items-center justify-center gap-1.5 cursor-pointer active:scale-95"
+            >
+              <span>PROCEDER AL PAGO</span>
+              <ArrowRight className="w-3.5 h-3.5" />
+            </button>
+          </div>
+
+        </div>
+
+      </div>
+    </div>
+  );
+}
