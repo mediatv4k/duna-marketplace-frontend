@@ -5,6 +5,8 @@ import {
   ArrowRight, ArrowLeft, X, HeartHandshake, Check, 
   Copy, Upload, CheckCircle2, Info, Clock, MessageCircle, FileText, CreditCard, Gift, Sparkles
 } from 'lucide-react';
+import { collection, addDoc } from 'firebase/firestore';
+import { db } from '@/lib/firebase';
 
 export interface BankOption {
   id: string;
@@ -127,7 +129,7 @@ export default function CheckoutModal({
     setPasoVista('instrucciones');
   };
 
-  const handleCompleteFinalOrder = () => {
+  const handleCompleteFinalOrder = async () => {
     const tieneReferencia = referenciaPago.trim() !== '';
     const tieneArchivo = nombreArchivo !== null;
     
@@ -136,7 +138,7 @@ export default function CheckoutModal({
     const numeroLimpio = telefono.replace(/\D/g, '').replace(/^0+/, '');
     const telefonoCompleto = `${codigoPais}${numeroLimpio}`;
 
-    onFinalizeOrder({
+    const orderData = {
       nombre, 
       cedula: `${tipoDocumento}${cedula}`, 
       telefono: telefonoCompleto,
@@ -148,14 +150,24 @@ export default function CheckoutModal({
       discountAmount: descuentoUSD,
       propina, 
       metodoPago: currentBank.type, 
-      bancoSeleccionado: currentBank, 
+      bancoSeleccionado: currentBank.name, 
       totalUSD: totalFinalUSD,
       totalBolivares: currentBank.type === 'pago_movil' ? totalBolivares : null, 
       tasaBcv,
       referencia: referenciaPago, 
       comprobante: nombreArchivo,
-    });
+      createdAt: new Date(),
+      status: 'pendiente'
+    };
 
+    try {
+      await addDoc(collection(db, 'orders'), orderData);
+      console.log("¡Orden sincronizada y guardada en Firestore con éxito!");
+    } catch (error) {
+      console.error("Error crítico al guardar la orden en Firestore:", error);
+    }
+
+    onFinalizeOrder(orderData);
     setPasoVista('exito');
   };
 
@@ -479,7 +491,7 @@ export default function CheckoutModal({
                   <CheckCircle2 className="w-7 h-7" />
                 </div>
                 <h3 className="text-lg font-black text-slate-900 leading-tight mb-1.5">¡Tu pedido ya está en la cocina! 🚀</h3>
-                <p className="text-[11px] text-slate-500 font-medium mb-3 px-2">En <strong className="text-[#fe6712]">D'una</strong> tú tienes el control. Elige cómo prefieres pagar:</p>
+                <p className="text-[11px] text-slate-500 font-medium mb-3 px-2">En <strong className="text-[#fe6712]">D&apos;una</strong> tú tienes el control. Elige cómo prefieres pagar:</p>
 
                 <div className="w-full bg-slate-50 rounded-2xl p-3 text-left space-y-2 border border-slate-100 shadow-sm">
                   <div className="flex gap-2.5 items-start">
