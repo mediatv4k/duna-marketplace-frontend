@@ -12,9 +12,11 @@ export interface CartItem {
   name: string;
   desc: string;
   price: number;
-  image: string;
+  image?: string;
+  img?: string;
   status: 'ACTIVE' | 'INACTIVE';
   qty: number;
+  breakdown?: string[]; // Integrado para recibir exclusiones y upsells del MasterModal
 }
 
 interface CartModalProps {
@@ -124,14 +126,27 @@ export default function CartModal({
             </h4>
           </div>
 
-          {/* Scroll Exclusivo de Productos */}
+          {/* Scroll Exclusivo de Productos (Con soporte para Breakdown/Exclusiones) */}
           <div className="flex-1 overflow-y-auto px-4 py-1 space-y-1.5 pr-2 [&::-webkit-scrollbar]:w-1.5 [&::-webkit-scrollbar-thumb]:bg-slate-200 [&::-webkit-scrollbar-thumb]:rounded-full hover:[&::-webkit-scrollbar-thumb]:bg-slate-300 [&::-webkit-scrollbar-track]:bg-transparent">
             <div className="space-y-1.5 pb-2">
               {cartItems && cartItems.length > 0 ? (
                 cartItems.map((item, idx) => (
                   <div key={item.code || idx} className="bg-white border border-slate-100 rounded-[12px] p-2.5 shadow-sm flex justify-between items-center">
-                    <div>
-                      <h5 className="text-[13px] font-black text-slate-900 leading-tight">{item.name || 'Producto'}</h5>
+                    <div className="min-w-0 flex-1 pr-2">
+                      <h5 className="text-[13px] font-black text-slate-900 leading-tight truncate">{item.name || 'Producto'}</h5>
+                      
+                      {/* Desglose de variantes, exclusiones y upsells */}
+                      {item.breakdown && item.breakdown.length > 0 && (
+                        <div className="my-1 space-y-0.5">
+                          {item.breakdown.map((b, bIdx) => (
+                            <p key={bIdx} className="text-[9px] font-semibold text-slate-500 flex items-start gap-1 leading-tight">
+                              <span className="text-[#fe6712] shrink-0">•</span> 
+                              <span className="truncate">{b}</span>
+                            </p>
+                          ))}
+                        </div>
+                      )}
+
                       <p className="text-[10px] text-slate-400 font-medium my-0.5">Cant: {item.qty || 1}</p>
                       <p className="text-[13px] font-black text-[#fe6712]">${((item.price || 0) * (item.qty || 1)).toFixed(2)} USD</p>
                     </div>

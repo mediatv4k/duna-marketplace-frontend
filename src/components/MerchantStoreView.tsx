@@ -49,16 +49,12 @@ export default function MerchantStoreView({
   const [isCartOpen, setIsCartOpen] = useState(false);
   const [showLeaveAlert, setShowLeaveAlert] = useState(false);
 
-  // Estado para el modal de variantes de Papá Helado
   const [isVariantModalOpen, setIsVariantModalOpen] = useState(false);
   const [activeProductForVariant, setActiveProductForVariant] = useState<Product | null>(null);
 
   const [bcvRate, setBcvRate] = useState<number>(48.50);
   const [deliveryMode, setDeliveryMode] = useState<'delivery' | 'pickup'>('delivery');
 
-  // =========================================================================
-  // MOTOR DE RECOMPENSA INTELIGENTE (DYNAMIC: Subtotal + $5 | FIXED: $15 exacto)
-  // =========================================================================
   const [rewardMode, setRewardMode] = useState<'DYNAMIC' | 'FIXED'>(
     merchant.rewardMode || 'DYNAMIC'
   );
@@ -83,16 +79,12 @@ export default function MerchantStoreView({
     return 0;
   });
 
-  // Manejador inteligente al hacer clic en "Agregar"
   const handleProductClick = (product: Product) => {
-    // Si el producto requiere variantes según nuestro Excel (ej. Papa Cono 12 Und -> H001-004)
     if (product.code === 'H001-004') {
       setActiveProductForVariant(product);
       setIsVariantModalOpen(true);
       return;
     }
-
-    // Productos de venta plana normal
     addToCartDirect(product);
   };
 
@@ -119,7 +111,6 @@ export default function MerchantStoreView({
     });
   };
 
-  // Callback cuando se completa el armado en el VariantModal
   const handleAddVariantToCart = (payload: VariantSelectionPayload) => {
     if (!activeProductForVariant) return;
     const compositeKey = `${payload.productCode}-${Date.now()}`;
@@ -149,14 +140,12 @@ export default function MerchantStoreView({
   const totalItems = cartItems.reduce((acc, item) => acc + item.qty, 0);
   const subtotalUSD = cartItems.reduce((acc, item) => acc + (item.price * item.qty), 0);
 
-  // Auto-cierre al vaciar bolsa
   useEffect(() => {
     if (totalItems === 0 && isCartOpen) {
       setIsCartOpen(false);
     }
   }, [totalItems, isCartOpen]);
 
-  // Recalibración reactiva
   useEffect(() => {
     if (rewardMode === 'FIXED') {
       setChallengeTarget(15);
@@ -270,7 +259,7 @@ export default function MerchantStoreView({
         <div className="grid grid-cols-1 sm:grid-cols-2 md:grid-cols-3 xl:grid-cols-4 gap-5">
           {filteredProducts.map(product => {
             const isSoldOut = product.status === 'INACTIVE';
-            const priceBs = product.price ? (product.price * bcvRate).toFixed(2) : '9.30'; // fallback para combo con variantes
+            const priceBs = product.price ? (product.price * bcvRate).toFixed(2) : '9.30'; 
 
             return (
               <div key={product.code} className={`bg-white rounded-2xl border border-slate-200 p-4 shadow-sm flex flex-col justify-between transition-all duration-300 relative group ${isSoldOut ? 'opacity-60 bg-slate-50' : 'hover:shadow-lg hover:-translate-y-1'}`}>

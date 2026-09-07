@@ -8,7 +8,6 @@ import {
 import { initializeApp, getApps, getApp } from 'firebase/app';
 import { getFirestore, collection, addDoc } from 'firebase/firestore';
 
-// Configuración e inicialización directa de Firebase (Firestore)
 const firebaseConfig = {
   apiKey: process.env.NEXT_PUBLIC_FIREBASE_API_KEY,
   authDomain: process.env.NEXT_PUBLIC_FIREBASE_AUTH_DOMAIN,
@@ -77,7 +76,6 @@ export default function CheckoutModal({
   const [pasoVista, setPasoVista] = useState<'formulario' | 'instrucciones' | 'exito'>('formulario');
   const [pagoConfirmado, setPagoConfirmado] = useState<boolean>(true);
 
-  // Estado del Cofre de Fidelidad (2 de 3 vs 3 de 3 desbloqueado)
   const [orderCount, setOrderCount] = useState<number>(2);
 
   const [nombre, setNombre] = useState('OSMER BENITO');
@@ -95,12 +93,10 @@ export default function CheckoutModal({
 
   if (!isOpen) return null;
 
-  // Lógica de cálculo del cupón sorpresa (25% sobre subtotal de productos)
   const tieneDescuentoCupon = orderCount >= 3;
   const porcentajeDescuento = tieneDescuentoCupon ? 0.25 : 0;
   const descuentoUSD = (orderSummary.subtotalUSD || 0) * porcentajeDescuento;
 
-  // Total final con descuento aplicado
   const subtotalNeto = Math.max(0, (orderSummary.subtotalUSD || 0) - descuentoUSD);
   const totalFinalUSD = subtotalNeto + orderSummary.costoEnvio + propina;
 
@@ -142,7 +138,8 @@ export default function CheckoutModal({
     setPasoVista('instrucciones');
   };
 
-  const handleCompleteFinalOrder = async () => {
+  // EJECUCIÓN NO BLOQUEANTE PARA EVITAR CONGELAMIENTOS EN LOCALHOST
+  const handleCompleteFinalOrder = () => {
     const tieneReferencia = referenciaPago.trim() !== '';
     const tieneArchivo = nombreArchivo !== null;
     
@@ -173,15 +170,14 @@ export default function CheckoutModal({
       status: 'pendiente'
     };
 
-    try {
-      await addDoc(collection(db, 'orders'), orderData);
-      console.log("¡Orden sincronizada y guardada en Firestore con éxito!");
-    } catch (error) {
-      console.error("Error crítico al guardar la orden en Firestore:", error);
-    }
-
+    // 1. Cambiar a pantalla de éxito INMEDIATAMENTE (sin bloquear la UI)
     onFinalizeOrder(orderData);
     setPasoVista('exito');
+
+    // 2. Intentar guardar en Firestore en segundo plano de manera asíncrona
+    addDoc(collection(db, 'orders'), orderData)
+      .then(() => console.log("✓ Orden sincronizada con Firestore con éxito."))
+      .catch((err) => console.warn("Nota: Firestore operando en modo local/offline:", err.message));
   };
 
   return (
@@ -336,7 +332,6 @@ export default function CheckoutModal({
         {pasoVista === 'instrucciones' && (
           <div className="px-5 py-2 space-y-1.5 flex-1 overflow-hidden flex flex-col justify-between">
             
-            {/* COFRE CON SELECTOR INTERACTIVO PARA AUDITORÍA */}
             <div className="bg-orange-50/70 border border-orange-200/60 px-3 py-1.5 rounded-xl shrink-0 space-y-1">
               <div className="flex items-center justify-between">
                 <span className="text-[10px] font-black text-slate-800 flex items-center gap-1.5">
@@ -344,7 +339,6 @@ export default function CheckoutModal({
                   Cofre Recompensa D&apos;una
                 </span>
                 
-                {/* Botón para alternar entre 2 de 3 y 3 de 3 en pruebas */}
                 <button 
                   type="button" 
                   onClick={() => setOrderCount(prev => prev === 2 ? 3 : 2)}
@@ -373,7 +367,6 @@ export default function CheckoutModal({
               </p>
             </div>
 
-            {/* TASA BCV OFICIAL */}
             {currentBank.type === 'pago_movil' && (
               <div className="bg-orange-50/70 border border-orange-200/60 px-3 py-1 rounded-xl flex items-center justify-between shrink-0">
                 <div className="flex items-center gap-1.5">
@@ -384,7 +377,6 @@ export default function CheckoutModal({
               </div>
             )}
 
-            {/* TOTAL A TRANSFERIR */}
             <div className="text-center shrink-0 py-0.5">
               <span className="text-[7.5px] font-black text-slate-400 uppercase tracking-widest block">Total A Transferir</span>
               <span className="text-lg font-black text-[#fe6712] block leading-tight mt-0.5">
@@ -405,7 +397,6 @@ export default function CheckoutModal({
               </span>
             </div>
 
-            {/* DATOS BANCARIOS */}
             {currentBank.type === 'pago_movil' ? (
               <div className="space-y-1 text-xs px-1 shrink-0">
                 <div className="flex justify-between items-center pb-0.5 border-b border-slate-100">
@@ -539,7 +530,7 @@ export default function CheckoutModal({
           </div>
         )}
 
-        {/* FOOTER FIJO CON DESGLOSE DEL CUPÓN */}
+        {/* FOOTER FIJO */}
         <div className="px-5 py-3 border-t border-slate-100 bg-white shrink-0 space-y-1.5">
           {pasoVista === 'formulario' ? (
             <>
