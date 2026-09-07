@@ -3,12 +3,10 @@
  * BITÁCORA DE ACTUALIZACIÓN - MOTOR GPS ESTRICTO (FASE 1)
  * ==============================================================================
  * Fecha: Lunes, 07 de Septiembre de 2026
- * Hora Local: 12:40 AM (Cabimas, Estado Zulia, Venezuela)
  * Archivo: src/lib/deliveryGps.ts
  * ==============================================================================
  */
 
-// Usamos el motor logístico existente en la misma carpeta lib
 import { getDistanceAndTime } from '@/lib/logisticsEngine';
 
 export async function calculateStrictGpsFare(store: any, customerCoords: { lat: number; lng: number }) {
@@ -33,9 +31,10 @@ export async function calculateStrictGpsFare(store: any, customerCoords: { lat: 
     }
 
     const apiKey = process.env.NEXT_PUBLIC_SERVER_API_KEY || 'bf8f1b64-6342-48c5-af05-501e4c15a6cb';
+    const storeId = store.id || store.info?.id || 'default-store';
     
     const response = await fetch(
-      https://dev.carjos-marketplace.cloud/delivery/request/purchase/deliveryRate?storeId=\&lat=\&lng=\&distance=\&duration=\,
+      `https://dev.carjos-marketplace.cloud/delivery/request/purchase/deliveryRate?storeId=${storeId}&lat=${customerCoords.lat}&lng=${customerCoords.lng}&distance=${distanceKm}&duration=${durationMin}`,
       {
         method: 'GET',
         headers: {
