@@ -30,6 +30,8 @@ interface MerchantStoreViewProps {
     image: string;
     badge: string;
     rewardMode?: 'DYNAMIC' | 'FIXED';
+    isNationalShippingEnabled?: boolean;
+    preferredNationalCouriers?: string[];
   };
   products: Product[];
   onBack: () => void;
@@ -53,7 +55,8 @@ export default function MerchantStoreView({
   const [activeProductForVariant, setActiveProductForVariant] = useState<Product | null>(null);
 
   const [bcvRate, setBcvRate] = useState<number>(48.50);
-  const [deliveryMode, setDeliveryMode] = useState<'delivery' | 'pickup'>('delivery');
+  // AHORA EL ESTADO SOPORTA EL ENVÍO NACIONAL
+  const [deliveryMode, setDeliveryMode] = useState<'delivery' | 'pickup' | 'national'>('delivery');
 
   const [rewardMode, setRewardMode] = useState<'DYNAMIC' | 'FIXED'>(
     merchant.rewardMode || 'DYNAMIC'
@@ -351,7 +354,7 @@ export default function MerchantStoreView({
         </div>
       )}
 
-      {/* COMPONENTE MODULAR DEL CARRITO */}
+      {/* COMPONENTE MODULAR DEL CARRITO (AHORA CON PERMISOS NACIONALES) */}
       <CartModal
         isOpen={isCartOpen}
         onClose={() => setIsCartOpen(false)}
@@ -370,6 +373,7 @@ export default function MerchantStoreView({
         totalUSD={totalUSD}
         onUpdateQty={updateQty}
         onOpenCheckout={onOpenCheckout}
+        isNationalShippingEnabled={merchant.isNationalShippingEnabled}
       />
 
       {/* MODAL DE VARIANTES (PAPÁ HELADO) */}

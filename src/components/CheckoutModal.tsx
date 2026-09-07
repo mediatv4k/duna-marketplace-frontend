@@ -3,7 +3,7 @@
 import React, { useState } from 'react';
 import { 
   ArrowRight, ArrowLeft, X, HeartHandshake, Check, 
-  Copy, Upload, CheckCircle2, Info, Clock, MessageCircle, FileText, CreditCard, Gift, Sparkles
+  Copy, Upload, CheckCircle2, Info, Clock, MessageCircle, FileText, CreditCard, Gift, Sparkles, Truck
 } from 'lucide-react';
 import { initializeApp, getApps, getApp } from 'firebase/app';
 import { getFirestore, collection, addDoc } from 'firebase/firestore';
@@ -47,11 +47,14 @@ interface CheckoutModalProps {
   isOpen: boolean;
   onClose: () => void;
   orderSummary: { 
-    metodoEntrega: 'delivery' | 'pickup'; 
+    metodoEntrega: 'delivery' | 'pickup' | 'national'; 
     direccion: string; 
     costoEnvio: number; 
     subtotalUSD: number;
     totalUSD: number; 
+    esEnvioNacional?: boolean;
+    agenciaNacional?: 'MRW' | 'ZOOM' | 'TEALCA' | 'LIBERTY';
+    costoEnvioNacional?: number; 
   };
   tasaBcv: number;
   merchantName?: string;
@@ -86,6 +89,8 @@ export default function CheckoutModal({
 
   const [propina, setPropina] = useState<number>(0.50);
   const [selectedBankId, setSelectedBankId] = useState<string>('bnc');
+  
+  const [modalidadNacional, setModalidadNacional] = useState<'PREPAID' | 'COD'>('COD');
 
   const [referenciaPago, setReferenciaPago] = useState('');
   const [nombreArchivo, setNombreArchivo] = useState<string | null>(null);
@@ -98,7 +103,12 @@ export default function CheckoutModal({
   const descuentoUSD = (orderSummary.subtotalUSD || 0) * porcentajeDescuento;
 
   const subtotalNeto = Math.max(0, (orderSummary.subtotalUSD || 0) - descuentoUSD);
-  const totalFinalUSD = subtotalNeto + orderSummary.costoEnvio + propina;
+  
+  const costoNacionalAplicado = (orderSummary.esEnvioNacional && modalidadNacional === 'PREPAID') 
+    ? (orderSummary.costoEnvioNacional || 0) 
+    : 0;
+
+  const totalFinalUSD = subtotalNeto + orderSummary.costoEnvio + costoNacionalAplicado + propina;
 
   const currentBank = BANK_CATALOG.find((b) => b.id === selectedBankId) || BANK_CATALOG[0];
   const totalBolivares = totalFinalUSD * tasaBcv;
@@ -138,7 +148,6 @@ export default function CheckoutModal({
     setPasoVista('instrucciones');
   };
 
-  // EJECUCIÓN NO BLOQUEANTE PARA EVITAR CONGELAMIENTOS EN LOCALHOST
   const handleCompleteFinalOrder = () => {
     const tieneReferencia = referenciaPago.trim() !== '';
     const tieneArchivo = nombreArchivo !== null;
@@ -155,6 +164,12 @@ export default function CheckoutModal({
       metodoEntrega: orderSummary.metodoEntrega, 
       direccion: orderSummary.direccion, 
       costoEnvio: orderSummary.costoEnvio,
+      
+      esEnvioNacional: orderSummary.esEnvioNacional || false,
+      agenciaNacional: orderSummary.agenciaNacional || null,
+      modalidadNacional: orderSummary.esEnvioNacional ? modalidadNacional : null,
+      costoEnvioNacional: orderSummary.esEnvioNacional ? orderSummary.costoEnvioNacional : null,
+
       subtotalUSD: orderSummary.subtotalUSD,
       couponCode: tieneDescuentoCupon ? 'SORPRESA25' : null,
       discountAmount: descuentoUSD,
@@ -170,11 +185,9 @@ export default function CheckoutModal({
       status: 'pendiente'
     };
 
-    // 1. Cambiar a pantalla de éxito INMEDIATAMENTE (sin bloquear la UI)
     onFinalizeOrder(orderData);
     setPasoVista('exito');
 
-    // 2. Intentar guardar en Firestore en segundo plano de manera asíncrona
     addDoc(collection(db, 'orders'), orderData)
       .then(() => console.log("✓ Orden sincronizada con Firestore con éxito."))
       .catch((err) => console.warn("Nota: Firestore operando en modo local/offline:", err.message));
@@ -221,27 +234,27 @@ export default function CheckoutModal({
           </div>
         )}
 
-        {/* PASO 1: FORMULARIO */}
+        {/* PASO 1: FORMULARIO (DISEÑO PLANO Y COMPACTO SIN SCROLL) */}
         {pasoVista === 'formulario' && (
-          <div className="px-5 py-3 space-y-3 flex-1 overflow-y-auto">
-            <div className="bg-slate-50/70 p-3 rounded-2xl border border-slate-100 space-y-2">
+          <div className="px-5 py-2 space-y-2 flex-1 overflow-hidden flex flex-col justify-between">
+            <div className="bg-slate-50/70 p-2.5 rounded-2xl border border-slate-100 space-y-1.5 shrink-0">
               <div>
-                <label className="text-[9px] font-black text-slate-400 uppercase tracking-wider block mb-0.5">Nombre Completo</label>
+                <label className="text-[8px] font-black text-slate-400 uppercase tracking-wider block mb-0.5">Nombre Completo</label>
                 <input 
                   type="text" 
                   value={nombre} 
                   onChange={(e) => setNombre(e.target.value)} 
-                  className="w-full rounded-xl border border-slate-200 bg-white px-3 py-1.5 text-xs font-bold text-slate-800 focus:border-[#fe6712] focus:outline-none transition shadow-2xs" 
+                  className="w-full rounded-xl border border-slate-200 bg-white px-3 py-1 text-xs font-bold text-slate-800 focus:border-[#fe6712] focus:outline-none transition shadow-2xs" 
                 />
               </div>
               <div className="grid grid-cols-2 gap-2">
                 <div>
-                  <label className="text-[9px] font-black text-slate-400 uppercase tracking-wider block mb-0.5">Cédula</label>
+                  <label className="text-[8px] font-black text-slate-400 uppercase tracking-wider block mb-0.5">Cédula</label>
                   <div className="flex gap-1">
                     <select 
                       value={tipoDocumento} 
                       onChange={(e) => setTipoDocumento(e.target.value)} 
-                      className="rounded-xl border border-slate-200 bg-white px-1.5 py-1 text-[10px] font-bold text-slate-700 focus:border-[#fe6712] focus:outline-none cursor-pointer"
+                      className="rounded-xl border border-slate-200 bg-white px-1 py-1 text-[10px] font-bold text-slate-700 focus:border-[#fe6712] focus:outline-none cursor-pointer"
                     >
                       <option value="V-">V-</option>
                       <option value="E-">E-</option>
@@ -257,12 +270,12 @@ export default function CheckoutModal({
                   </div>
                 </div>
                 <div>
-                  <label className="text-[9px] font-black text-slate-400 uppercase tracking-wider block mb-0.5">WhatsApp</label>
+                  <label className="text-[8px] font-black text-slate-400 uppercase tracking-wider block mb-0.5">WhatsApp</label>
                   <div className="flex gap-1">
                     <select 
                       value={codigoPais} 
                       onChange={(e) => setCodigoPais(e.target.value)} 
-                      className="rounded-xl border border-slate-200 bg-white px-1.5 py-1 text-[10px] font-bold text-slate-700 focus:border-[#fe6712] focus:outline-none cursor-pointer shrink-0"
+                      className="rounded-xl border border-slate-200 bg-white px-1 py-1 text-[10px] font-bold text-slate-700 focus:border-[#fe6712] focus:outline-none cursor-pointer shrink-0"
                     >
                       {COUNTRY_CODES.map((item) => (
                         <option key={item.code} value={item.code}>{item.label}</option>
@@ -280,8 +293,34 @@ export default function CheckoutModal({
               </div>
             </div>
 
-            <div>
-              <span className="text-[11px] font-bold text-slate-700 flex items-center gap-1 mb-1">
+            {/* FASE 3: SELECTOR COMPACTO HORIZONTAL (CERO SCROLL) */}
+            {orderSummary.esEnvioNacional && (
+              <div className="bg-sky-50/80 px-3 py-1.5 rounded-xl border border-sky-200 flex items-center justify-between gap-2 shrink-0">
+                <span className="text-[10px] font-black text-sky-900 flex items-center gap-1 shrink-0">
+                  <Truck className="h-3.5 w-3.5 text-sky-600" />
+                  {orderSummary.agenciaNacional}:
+                </span>
+                <div className="flex gap-1">
+                  <button 
+                    type="button"
+                    onClick={() => setModalidadNacional('COD')} 
+                    className={`px-2.5 py-0.5 rounded-lg text-[9px] font-black transition cursor-pointer ${modalidadNacional === 'COD' ? 'bg-sky-600 text-white shadow-xs' : 'bg-white border border-sky-200 text-sky-700'}`}
+                  >
+                    Cobro Destino
+                  </button>
+                  <button 
+                    type="button"
+                    onClick={() => setModalidadNacional('PREPAID')} 
+                    className={`px-2.5 py-0.5 rounded-lg text-[9px] font-black transition cursor-pointer ${modalidadNacional === 'PREPAID' ? 'bg-sky-600 text-white shadow-xs' : 'bg-white border border-sky-200 text-sky-700'}`}
+                  >
+                    Prepagado (${(orderSummary.costoEnvioNacional || 0).toFixed(2)})
+                  </button>
+                </div>
+              </div>
+            )}
+
+            <div className="shrink-0">
+              <span className="text-[10px] font-bold text-slate-700 flex items-center gap-1 mb-1">
                 <HeartHandshake className="h-3.5 w-3.5 text-[#fe6712]" />
                 Propina al Conductor (Opcional)
               </span>
@@ -291,7 +330,7 @@ export default function CheckoutModal({
                     type="button" 
                     key={monto} 
                     onClick={() => handleToggleTip(monto)} 
-                    className={`py-1.5 rounded-xl text-xs font-black transition cursor-pointer ${propina === monto ? 'bg-[#fe6712] text-white shadow-xs' : 'border border-slate-200 text-slate-600 hover:bg-slate-50'}`}
+                    className={`py-1 rounded-xl text-xs font-black transition cursor-pointer ${propina === monto ? 'bg-[#fe6712] text-white shadow-xs' : 'border border-slate-200 text-slate-600 hover:bg-slate-50'}`}
                   >
                     ${monto.toFixed(2)}
                   </button>
@@ -299,8 +338,8 @@ export default function CheckoutModal({
               </div>
             </div>
 
-            <div>
-              <label className="text-[11px] font-bold text-slate-700 block mb-1">Selecciona El Método de Pago</label>
+            <div className="shrink-0">
+              <label className="text-[10px] font-bold text-slate-700 block mb-1">Selecciona El Método de Pago</label>
               <div className="grid grid-cols-2 gap-1.5">
                 {BANK_CATALOG.map((banco) => { 
                   const isSelected = selectedBankId === banco.id; 
@@ -312,11 +351,11 @@ export default function CheckoutModal({
                     >
                       {banco.renderLogo()}
                       <div className="min-w-0 flex-1">
-                        <p className="text-[11px] font-black text-slate-900 leading-tight truncate">{banco.shortName}</p>
-                        <p className="text-[8px] font-medium text-slate-400">Pago / Divisas</p>
+                        <p className="text-[10.5px] font-black text-slate-900 leading-tight truncate">{banco.shortName}</p>
+                        <p className="text-[7.5px] font-medium text-slate-400">Pago / Divisas</p>
                       </div>
                       {isSelected && (
-                        <div className="flex h-3.5 w-3.5 items-center justify-center rounded-full bg-[#fe6712] text-white shrink-0">
+                        <div className="flex h-3 w-3 items-center justify-center rounded-full bg-[#fe6712] text-white shrink-0">
                           <Check className="h-2 w-2 stroke-[3]" />
                         </div>
                       )}
@@ -531,10 +570,10 @@ export default function CheckoutModal({
         )}
 
         {/* FOOTER FIJO */}
-        <div className="px-5 py-3 border-t border-slate-100 bg-white shrink-0 space-y-1.5">
+        <div className="px-5 py-2.5 border-t border-slate-100 bg-white shrink-0 space-y-1">
           {pasoVista === 'formulario' ? (
             <>
-              <div className="space-y-0.5 mb-1.5">
+              <div className="space-y-0.5 mb-1">
                 {tieneDescuentoCupon && (
                   <div className="flex items-center justify-between text-emerald-600 font-black text-[11px]">
                     <span className="flex items-center gap-1">
@@ -544,7 +583,9 @@ export default function CheckoutModal({
                   </div>
                 )}
                 <div className="flex items-center justify-between">
-                  <span className="text-xs font-bold text-slate-500">Total Definitivo</span>
+                  <span className="text-xs font-bold text-slate-500">
+                    Total Definitivo {orderSummary.esEnvioNacional && modalidadNacional === 'PREPAID' && <span className="text-[8px] text-sky-600 block leading-none">(+ Flete Nacional)</span>}
+                  </span>
                   <div className="text-right">
                     {currentBank.type === 'pago_movil' ? (
                       <>
@@ -567,14 +608,14 @@ export default function CheckoutModal({
                 <button 
                   type="button" 
                   onClick={onBackToCart} 
-                  className="flex items-center justify-center rounded-2xl border border-slate-200 px-3 py-2 text-xs font-bold text-slate-600 hover:bg-slate-50 transition cursor-pointer"
+                  className="flex items-center justify-center rounded-2xl border border-slate-200 px-3 py-1.5 text-xs font-bold text-slate-600 hover:bg-slate-50 transition cursor-pointer"
                 >
                   <ArrowLeft className="h-4 w-4" />
                 </button>
                 <button 
                   type="button" 
                   onClick={handleProceedToInstructions} 
-                  className="flex-1 flex items-center justify-center gap-2 rounded-2xl bg-[#fe6712] hover:bg-[#e0580d] py-2.5 text-xs font-black text-white shadow-md transition active:scale-[0.98] cursor-pointer"
+                  className="flex-1 flex items-center justify-center gap-2 rounded-2xl bg-[#fe6712] hover:bg-[#e0580d] py-2 text-xs font-black text-white shadow-md transition active:scale-[0.98] cursor-pointer"
                 >
                   <span>CONTINUAR AL PAGO</span>
                   <ArrowRight className="h-4 w-4" />
@@ -582,11 +623,11 @@ export default function CheckoutModal({
               </div>
             </>
           ) : pasoVista === 'instrucciones' ? (
-            <div className="space-y-2">
+            <div className="space-y-1.5">
               <button 
                 type="button" 
                 onClick={handleCompleteFinalOrder} 
-                className="w-full flex items-center justify-center gap-2 rounded-full bg-[#fe6712] hover:bg-[#e0580d] py-2.5 text-xs font-black text-white shadow-md transition active:scale-[0.98] cursor-pointer"
+                className="w-full flex items-center justify-center gap-2 rounded-full bg-[#fe6712] hover:bg-[#e0580d] py-2 text-xs font-black text-white shadow-md transition active:scale-[0.98] cursor-pointer"
               >
                 <span>Completar pedido</span>
                 <Check className="h-4 w-4 stroke-[3]" />
@@ -602,11 +643,11 @@ export default function CheckoutModal({
               </div>
             </div>
           ) : (
-            <div className="space-y-2">
+            <div className="space-y-1.5">
               <button 
                 type="button" 
                 onClick={onViewTracking} 
-                className="w-full flex items-center justify-center gap-2 rounded-full bg-[#fe6712] hover:bg-[#e0580d] py-2.5 text-xs font-black text-white shadow-md transition active:scale-[0.98] cursor-pointer"
+                className="w-full flex items-center justify-center gap-2 rounded-full bg-[#fe6712] hover:bg-[#e0580d] py-2 text-xs font-black text-white shadow-md transition active:scale-[0.98] cursor-pointer"
               >
                 <Clock className="h-4 w-4" />
                 <span>Ver seguimiento de pedido</span>
@@ -614,7 +655,7 @@ export default function CheckoutModal({
               <button 
                 type="button" 
                 onClick={onClose} 
-                className="w-full flex items-center justify-center rounded-full bg-white border border-slate-200 hover:bg-slate-50 py-2.5 text-xs font-bold text-slate-700 transition active:scale-[0.98] cursor-pointer"
+                className="w-full flex items-center justify-center rounded-full bg-white border border-slate-200 hover:bg-slate-50 py-2 text-xs font-bold text-slate-700 transition active:scale-[0.98] cursor-pointer"
               >
                 Continuar
               </button>

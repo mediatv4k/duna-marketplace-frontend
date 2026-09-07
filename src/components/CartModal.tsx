@@ -1,9 +1,9 @@
 'use client';
 
-import React from 'react';
+import React, { useState } from 'react';
 import { 
   X, Bike, Store, Navigation, MapPin, 
-  Trash2, ArrowRight, Gift 
+  Trash2, ArrowRight, Gift, Truck 
 } from 'lucide-react';
 
 export interface CartItem {
@@ -16,7 +16,7 @@ export interface CartItem {
   img?: string;
   status: 'ACTIVE' | 'INACTIVE';
   qty: number;
-  breakdown?: string[]; // Integrado para recibir exclusiones y upsells del MasterModal
+  breakdown?: string[];
 }
 
 interface CartModalProps {
@@ -25,8 +25,8 @@ interface CartModalProps {
   cartItems: CartItem[];
   totalItems: number;
   subtotalUSD: number;
-  deliveryMode: 'delivery' | 'pickup';
-  setDeliveryMode: (mode: 'delivery' | 'pickup') => void;
+  deliveryMode: 'delivery' | 'pickup' | 'national';
+  setDeliveryMode: (mode: 'delivery' | 'pickup' | 'national') => void;
   rewardMode: 'DYNAMIC' | 'FIXED';
   setRewardMode: React.Dispatch<React.SetStateAction<'DYNAMIC' | 'FIXED'>>;
   faltaParaEnvioGratis: number;
@@ -37,6 +37,7 @@ interface CartModalProps {
   totalUSD: number;
   onUpdateQty: (code: string, delta: number) => void;
   onOpenCheckout: (summary: any) => void;
+  isNationalShippingEnabled?: boolean;
 }
 
 export default function CartModal({
@@ -57,8 +58,16 @@ export default function CartModal({
   totalUSD,
   onUpdateQty,
   onOpenCheckout,
+  isNationalShippingEnabled = true,
 }: CartModalProps) {
+  
+  const [selectedAgency, setSelectedAgency] = useState<'MRW' | 'ZOOM' | 'TEALCA'>('MRW');
+  const costoNacionalFijo = 4.50; 
+
   if (!isOpen) return null;
+
+  const fleteFinalMostrado = deliveryMode === 'national' ? costoNacionalFijo : (esEnvioGratis ? 0 : deliveryCost);
+  const totalCalculadoFinal = subtotalUSD + fleteFinalMostrado;
 
   return (
     <div className="fixed inset-0 z-[140] flex items-center justify-center bg-black/75 p-4 backdrop-blur-sm animate-in fade-in duration-150">
@@ -108,7 +117,6 @@ export default function CartModal({
                 <div className="bg-[#fe6712] h-full transition-all duration-500" style={{ width: `${progresoEnvio}%` }}></div>
               </div>
 
-              {/* Cintillo de Neuromarketing */}
               <p className="text-[9px] font-medium text-slate-600">
                 {esEnvioGratis ? (
                   <span>🎉 ¡Felicidades! Desbloqueaste tu <strong className="text-[#fe6712]">Delivery 100% GRATIS</strong></span>
@@ -126,7 +134,7 @@ export default function CartModal({
             </h4>
           </div>
 
-          {/* Scroll Exclusivo de Productos (Con soporte para Breakdown/Exclusiones) */}
+          {/* Scroll Exclusivo de Productos */}
           <div className="flex-1 overflow-y-auto px-4 py-1 space-y-1.5 pr-2 [&::-webkit-scrollbar]:w-1.5 [&::-webkit-scrollbar-thumb]:bg-slate-200 [&::-webkit-scrollbar-thumb]:rounded-full hover:[&::-webkit-scrollbar-thumb]:bg-slate-300 [&::-webkit-scrollbar-track]:bg-transparent">
             <div className="space-y-1.5 pb-2">
               {cartItems && cartItems.length > 0 ? (
@@ -135,7 +143,6 @@ export default function CartModal({
                     <div className="min-w-0 flex-1 pr-2">
                       <h5 className="text-[13px] font-black text-slate-900 leading-tight truncate">{item.name || 'Producto'}</h5>
                       
-                      {/* Desglose de variantes, exclusiones y upsells */}
                       {item.breakdown && item.breakdown.length > 0 && (
                         <div className="my-1 space-y-0.5">
                           {item.breakdown.map((b, bIdx) => (
@@ -172,52 +179,78 @@ export default function CartModal({
         <div className="h-[265px] shrink-0 px-4 pt-2 pb-2.5 bg-white flex flex-col justify-between">
           
           <div className="space-y-1">
-            <div className="flex gap-1.5">
+            {/* SWITCH DE MODOS DE ENTREGA AHORA CON GRID DINÁMICO */}
+            <div className={`grid gap-1.5 ${isNationalShippingEnabled ? 'grid-cols-3' : 'grid-cols-2'}`}>
               <button 
                 type="button"
                 onClick={() => setDeliveryMode('delivery')} 
-                className={`flex-1 py-1 rounded-full text-[12px] font-black flex items-center justify-center gap-1 transition-all ${deliveryMode === 'delivery' ? 'bg-[#fe6712] text-white shadow-md' : 'bg-white border border-slate-200 text-slate-500 hover:bg-slate-50'}`}
+                className={`py-1 rounded-full text-[11px] font-black flex items-center justify-center gap-1 transition-all ${deliveryMode === 'delivery' ? 'bg-[#fe6712] text-white shadow-md' : 'bg-white border border-slate-200 text-slate-500 hover:bg-slate-50'}`}
               >
-                <Bike className="w-3.5 h-3.5" /> Delivery
+                <Bike className="w-3 h-3" /> Delivery
               </button>
               <button 
                 type="button"
                 onClick={() => setDeliveryMode('pickup')} 
-                className={`flex-1 py-1 rounded-full text-[12px] font-black flex items-center justify-center gap-1 transition-all ${deliveryMode === 'pickup' ? 'bg-[#fe6712] text-white shadow-md' : 'bg-white border border-slate-200 text-slate-500 hover:bg-slate-50'}`}
+                className={`py-1 rounded-full text-[11px] font-black flex items-center justify-center gap-1 transition-all ${deliveryMode === 'pickup' ? 'bg-[#fe6712] text-white shadow-md' : 'bg-white border border-slate-200 text-slate-500 hover:bg-slate-50'}`}
               >
-                <Store className="w-3.5 h-3.5" /> Pickup
+                <Store className="w-3 h-3" /> Pickup
               </button>
+              {isNationalShippingEnabled && (
+                <button 
+                  type="button"
+                  onClick={() => setDeliveryMode('national')} 
+                  className={`py-1 rounded-full text-[11px] font-black flex items-center justify-center gap-1 transition-all ${deliveryMode === 'national' ? 'bg-sky-600 text-white shadow-md' : 'bg-white border border-sky-200 text-sky-700 hover:bg-sky-50'}`}
+                >
+                  <Truck className="w-3 h-3" /> Nacional
+                </button>
+              )}
             </div>
 
-            <div className="flex gap-1.5">
-              <button 
-                type="button"
-                className="flex-1 border border-orange-200 text-[#fe6712] py-1 rounded-full text-[12px] font-black flex items-center justify-center gap-1 hover:bg-orange-50 transition cursor-pointer"
-              >
-                <Navigation className="w-3.5 h-3.5" /> Mi Ubicación
-              </button>
-              <button 
-                type="button"
-                className="w-7 h-7 border border-orange-200 text-[#fe6712] rounded-full flex items-center justify-center hover:bg-orange-50 transition cursor-pointer shrink-0"
-              >
-                <MapPin className="w-3.5 h-3.5" />
-              </button>
-            </div>
-            
-            <div className="bg-slate-50 rounded-full py-1 px-3 text-center border border-slate-200 flex items-center justify-center gap-1">
-              <span>📍</span>
-              <span className="text-[10px] font-bold text-slate-700 truncate">Cabimas Centro (Sector Av. Intercomunal)</span>
-            </div>
+            {/* ZONA DE CONFIGURACIÓN DE DESTINO */}
+            {deliveryMode === 'national' ? (
+              <div className="bg-sky-50/80 rounded-2xl py-1.5 px-3 border border-sky-200 flex items-center justify-between gap-2">
+                <span className="text-[11px] font-bold text-sky-900 flex items-center gap-1 shrink-0">
+                  📦 Courier:
+                </span>
+                <select
+                  value={selectedAgency}
+                  onChange={(e) => setSelectedAgency(e.target.value as any)}
+                  className="bg-white border border-sky-300 text-sky-900 text-[11px] font-black rounded-lg px-2 py-0.5 focus:outline-none cursor-pointer w-full max-w-[170px]"
+                >
+                  <option value="MRW">MRW Encomiendas</option>
+                  <option value="ZOOM">Grupo Zoom</option>
+                  <option value="TEALCA">Tealca Nacional</option>
+                </select>
+              </div>
+            ) : (
+              <>
+                <div className="flex gap-1.5">
+                  <button 
+                    type="button"
+                    className="flex-1 border border-orange-200 text-[#fe6712] py-1 rounded-full text-[12px] font-black flex items-center justify-center gap-1 hover:bg-orange-50 transition cursor-pointer"
+                  >
+                    <Navigation className="w-3.5 h-3.5" /> Mi Ubicación
+                  </button>
+                  <button 
+                    type="button"
+                    className="w-7 h-7 border border-orange-200 text-[#fe6712] rounded-full flex items-center justify-center hover:bg-orange-50 transition cursor-pointer shrink-0"
+                  >
+                    <MapPin className="w-3.5 h-3.5" />
+                  </button>
+                </div>
+                
+                <div className="bg-slate-50 rounded-full py-1 px-3 text-center border border-slate-200 flex items-center justify-center gap-1">
+                  <span>📍</span>
+                  <span className="text-[10px] font-bold text-slate-700 truncate">Cabimas Centro (Sector Av. Intercomunal)</span>
+                </div>
+              </>
+            )}
 
             {deliveryMode === 'delivery' && (
               <div className="grid grid-cols-3 pt-0.5">
                 <div className="text-center">
                   <p className="text-[8px] font-black text-slate-400 uppercase tracking-widest">Flete Final</p>
-                  <p className="text-[10px] font-black">
-                    <span className="text-[#fe6712]">
-                      {esEnvioGratis ? 'GRATIS' : `$${deliveryCost.toFixed(2)}`}
-                    </span>
-                  </p>
+                  <p className="text-[10px] font-black"><span className="text-[#fe6712]">{esEnvioGratis ? 'GRATIS' : `$${deliveryCost.toFixed(2)}`}</span></p>
                 </div>
                 <div className="text-center border-l border-slate-100">
                   <p className="text-[8px] font-black text-slate-400 uppercase tracking-widest">Distancia</p>
@@ -229,6 +262,19 @@ export default function CartModal({
                 </div>
               </div>
             )}
+
+            {deliveryMode === 'national' && (
+              <div className="grid grid-cols-2 pt-0.5 px-2 bg-sky-50/50 rounded-xl py-1 border border-sky-100">
+                <div className="text-center">
+                  <p className="text-[8px] font-black text-sky-600 uppercase tracking-widest">Tramo 1 (Local D'una)</p>
+                  <p className="text-[10px] font-black text-slate-800">Incluido</p>
+                </div>
+                <div className="text-center border-l border-sky-200">
+                  <p className="text-[8px] font-black text-sky-600 uppercase tracking-widest">Courier Interurbano</p>
+                  <p className="text-[10px] font-black text-sky-900">${costoNacionalFijo.toFixed(2)} USD</p>
+                </div>
+              </div>
+            )}
           </div>
 
           <div className="border-t border-slate-100 pt-1 flex flex-col gap-0.5">
@@ -236,14 +282,13 @@ export default function CartModal({
               <span className="text-[12px]">Subtotal:</span>
               <span className="font-black text-slate-800 text-[12px]">${subtotalUSD.toFixed(2)} USD</span>
             </div>
+            
             {deliveryMode === 'delivery' && (
               <div className="flex justify-between items-center text-slate-500 font-medium">
                 <span className="flex items-center gap-1 text-[12px]">
                   Delivery:
                   {esEnvioGratis && (
-                    <span className="bg-emerald-100 text-emerald-800 text-[8px] font-black px-1.5 py-0.2 rounded uppercase">
-                      100% OFF
-                    </span>
+                    <span className="bg-emerald-100 text-emerald-800 text-[8px] font-black px-1.5 py-0.2 rounded uppercase">100% OFF</span>
                   )}
                 </span>
                 <span className="font-black text-[#fe6712] text-[12px]">
@@ -251,9 +296,21 @@ export default function CartModal({
                 </span>
               </div>
             )}
+
+            {deliveryMode === 'national' && (
+              <div className="flex justify-between items-center text-slate-500 font-medium">
+                <span className="flex items-center gap-1 text-[12px] text-sky-800 font-bold">
+                  Envío Nacional ({selectedAgency}):
+                </span>
+                <span className="font-black text-sky-700 text-[12px]">
+                  ${costoNacionalFijo.toFixed(2)} USD
+                </span>
+              </div>
+            )}
+
             <div className="flex justify-between items-end pt-0.5">
               <span className="text-[14px] font-semibold text-slate-700">Total a pagar:</span>
-              <span className="text-[18px] font-black text-[#fe6712] leading-none">${totalUSD.toFixed(2)} USD</span>
+              <span className="text-[18px] font-black text-[#fe6712] leading-none">${totalCalculadoFinal.toFixed(2)} USD</span>
             </div>
 
             <button 
@@ -262,13 +319,16 @@ export default function CartModal({
                 onClose(); 
                 onOpenCheckout({ 
                   metodoEntrega: deliveryMode, 
-                  direccion: 'Cabimas Centro (Sector Av. Intercomunal)', 
-                  costoEnvio: deliveryCost, 
+                  direccion: deliveryMode === 'national' ? `Agencia ${selectedAgency} (Cabimas)` : 'Cabimas Centro (Sector Av. Intercomunal)', 
+                  costoEnvio: deliveryMode === 'national' ? 0 : deliveryCost, 
                   subtotalUSD: subtotalUSD, 
-                  totalUSD: totalUSD 
+                  totalUSD: totalCalculadoFinal,
+                  esEnvioNacional: deliveryMode === 'national',
+                  agenciaNacional: deliveryMode === 'national' ? selectedAgency : null,
+                  costoEnvioNacional: deliveryMode === 'national' ? costoNacionalFijo : 0
                 }); 
               }} 
-              className="w-full bg-[#fe6712] hover:bg-[#e0580d] text-white font-black py-1.5 mt-1 rounded-full transition shadow-md text-[12px] flex items-center justify-center gap-1.5 cursor-pointer active:scale-95"
+              className={`w-full text-white font-black py-1.5 mt-1 rounded-full transition shadow-md text-[12px] flex items-center justify-center gap-1.5 cursor-pointer active:scale-95 ${deliveryMode === 'national' ? 'bg-sky-600 hover:bg-sky-700' : 'bg-[#fe6712] hover:bg-[#e0580d]'}`}
             >
               <span>PROCEDER AL PAGO</span>
               <ArrowRight className="w-3.5 h-3.5" />
