@@ -11,7 +11,7 @@
 export type StoreNiche = 'BOUTIQUE' | 'PIZZERIA' | 'FAST_FOOD' | 'ABASTO' | 'BODEGON' | 'GENERAL';
 
 export function detectStoreNiche(store: { categories?: string; name?: string; code?: string }): StoreNiche {
-  const text = \\ \ \\.toUpperCase();
+  const text = `${store.categories || ''} ${store.name || ''} ${store.code || ''}`.toUpperCase();
   
   if (text.includes('BOUTIQUE') || text.includes('MODA') || text.includes('ROPA')) return 'BOUTIQUE';
   if (text.includes('PIZZA') || text.includes('PIZZERIA') || text.includes('PELUCHE') || text.includes('N&H')) return 'PIZZERIA';
