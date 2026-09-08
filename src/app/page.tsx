@@ -4,7 +4,7 @@
  * ==============================================================================
  * Fecha: Lunes, 07 de Septiembre de 2026
  * Hora Local: 06:45 PM (Cabimas, Estado Zulia, Venezuela)
- * Versión de Arquitectura: 6.0.1 (Hotfix - Responsive Logo Container For Mobile)
+ * Versión de Arquitectura: 6.0.1 (Hotfix - Responsive Logo Container For Mobile + Mostaza Demo)
  * Archivo: src/app/page.tsx
  * ==============================================================================
  */
@@ -242,7 +242,7 @@ const merchantsData: Record<string, any> = {
       deliveryTime: '15 - 25 min',
       deliveryFee: '$1.50',
       baseRatePerKm: 0.75,
-      isNationalShippingEnabled: false, // 🟢 100% Local (Cabimas)
+      isNationalShippingEnabled: false,
       coords: { lat: 10.3922, lng: -71.4385 },
       image: '/images/logo-papa.png',
       badge: 'Aliado Destacado',
@@ -264,7 +264,7 @@ const merchantsData: Record<string, any> = {
       deliveryFee: '¡Gratis!',
       baseRatePerKm: 0.50,
       isFreeDelivery: true,
-      isNationalShippingEnabled: true, // 🔵 Dual: Local (Cabimas) + Nacional (MRW)
+      isNationalShippingEnabled: true,
       preferredNationalCouriers: ['MRW'],
       coords: { lat: 10.4081, lng: -71.4482 },
       image: '/images/logo-farma.png',
@@ -286,7 +286,7 @@ const merchantsData: Record<string, any> = {
       deliveryTime: '20 - 30 min',
       deliveryFee: '$2.00',
       baseRatePerKm: 0.85,
-      isNationalShippingEnabled: true, // 🔵 Dual: Local (Cabimas) + Nacional (Zoom / Tealca)
+      isNationalShippingEnabled: true,
       preferredNationalCouriers: ['ZOOM', 'TEALCA'],
       coords: { lat: 10.3854, lng: -71.4581 },
       image: '/images/logo-bitmar.png',
@@ -297,6 +297,46 @@ const merchantsData: Record<string, any> = {
     },
     products: [
       { code: 'BM001-016', category: 'MONITORES', name: 'MONITOR LG 20MK40L 165Hz', desc: 'Tiempo de respuesta 1 ms, panel IPS Full HD.', price: 100.0, image: 'https://images.unsplash.com/photo-1584308666744-24d5c474f2ae?w=500&auto=format&fit=crop&q=60', status: 'ACTIVE' }
+    ]
+  },
+  'mostaza-food-truck': {
+    info: {
+      id: 'mostaza-food-truck',
+      name: 'Mostaza Food Truck',
+      category: 'Fast Food',
+      rating: 4.9,
+      deliveryTime: '15 - 30 min',
+      deliveryFee: '$1.50',
+      baseRatePerKm: 0.70,
+      isNationalShippingEnabled: false,
+      coords: { lat: 10.3950, lng: -71.4450 },
+      image: 'https://images.unsplash.com/photo-1565299624946-b28f40a0ae38?w=200&q=80', // Logo placeholder
+      badge: 'Nuevo Ingreso',
+      schedule: 'Abre a las 05:00 PM',
+      isOpen: true,
+      weeklyHours: [{ day: 'Lunes a Domingo', hours: '05:00 PM - 12:00 AM' }]
+    },
+    products: [
+      {
+        code: "MF001-003",
+        category: "PERROS CALIENTES",
+        name: "Perro Sifrino (Individual)",
+        desc: "Pan de la Casa, salchicha polaca, Ensalada, Papitas francesas, Queso Amarillo Rallado y Salsas.",
+        price: 3.10,
+        image: "https://images.unsplash.com/photo-1594212691516-74724655b412?q=80&w=500",
+        status: "ACTIVE",
+        exclusions: ["Sin Salchicha", "Sin Ensalada", "Sin Papitas", "Sin Queso", "Sin Salsas"]
+      },
+      {
+        code: "MF002-002",
+        category: "COMBOS",
+        name: "Combo 5 Perros Sifrinos",
+        desc: "Combo familiar de 5 Perros Sifrinos. ¡Ideal para probar el Modo Familia con exclusiones por persona!",
+        price: 12.30,
+        image: "https://images.unsplash.com/photo-1620189507195-68309c04c4d0?q=80&w=500",
+        status: "ACTIVE",
+        exclusions: ["Sin Salchicha", "Sin Ensalada", "Sin Papitas", "Sin Queso", "Sin Salsas"]
+      }
     ]
   }
 };
@@ -738,7 +778,7 @@ export default function MultitiendaHub() {
         <div className="fixed inset-0 z-50 bg-black/60 backdrop-blur-xs flex items-center justify-center p-4" onClick={() => setIsFallbackModalOpen(false)}>
           <div className="bg-white rounded-3xl max-w-md w-full p-6 shadow-2xl space-y-4 border border-slate-100" onClick={(e) => e.stopPropagation()}>
             <div className="flex justify-between items-center pb-2 border-b border-slate-100">
-              <div className="flex items-center gap-2"><MapPin className="w-5 h-5 text-[#fe6712]" /><div><h3 className="font-black text-slate-900 text-base">Selecciona tu Sector in Cabimas</h3><p className="text-[11px] text-slate-500">Calcularemos el delivery desde cada tienda</p></div></div>
+              <div className="flex items-center gap-2"><MapPin className="w-5 h-5 text-[#fe6712]" /><div><h3 className="font-black text-slate-900 text-base">Selecciona tu Sector en Cabimas</h3><p className="text-[11px] text-slate-500">Calcularemos el delivery desde cada tienda</p></div></div>
               <button type="button" onClick={() => setIsFallbackModalOpen(false)} className="h-8 w-8 rounded-full bg-slate-100 text-slate-600 flex items-center justify-center cursor-pointer"><X className="w-4 h-4" /></button>
             </div>
             <div className="space-y-1.5 max-h-60 overflow-y-auto pr-1">

@@ -3,11 +3,12 @@
 import React, { useState, useEffect } from 'react';
 import { 
   ArrowLeft, Search, Star, Clock, 
-  ShoppingBag, Plus, ArrowRight
+  ShoppingBag, Plus, ArrowRight, Truck, Car, Bike, PackageOpen
 } from 'lucide-react';
 import { getBCVRate } from '@/lib/bcvRate';
 import CartModal, { CartItem } from './CartModal';
 import VariantModal, { VariantSelectionPayload } from './VariantModal';
+import MasterProductModal from './MasterProductModal'; // <-- Añadimos el puente de Mostaza
 
 interface Product {
   code: string;
@@ -51,15 +52,18 @@ export default function MerchantStoreView({
   const [isCartOpen, setIsCartOpen] = useState(false);
   const [showLeaveAlert, setShowLeaveAlert] = useState(false);
 
-  const [isVariantModalOpen, setIsVariantModalOpen] = useState(false);
+  // Modales de Productos
   const [activeProductForVariant, setActiveProductForVariant] = useState<Product | null>(null);
+  const [isVariantModalOpen, setIsVariantModalOpen] = useState(false);
+  const [isMasterModalOpen, setIsMasterModalOpen] = useState(false);
+  
+  // Modal de Simulación Logística (Grupo Bitmar)
+  const [isFleetModalOpen, setIsFleetModalOpen] = useState(false);
+  const [fleetQty, setFleetQty] = useState(1);
 
   const [bcvRate, setBcvRate] = useState<number>(48.50);
   const [deliveryMode, setDeliveryMode] = useState<'delivery' | 'pickup' | 'national'>('delivery');
-
-  const [rewardMode, setRewardMode] = useState<'DYNAMIC' | 'FIXED'>(
-    merchant.rewardMode || 'DYNAMIC'
-  );
+  const [rewardMode, setRewardMode] = useState<'DYNAMIC' | 'FIXED'>(merchant.rewardMode || 'DYNAMIC');
   const [challengeTarget, setChallengeTarget] = useState<number>(15);
 
   useEffect(() => {
@@ -81,16 +85,34 @@ export default function MerchantStoreView({
     return 0;
   });
 
+  // ==========================================
+  // ENRUTADOR DE CLICS (LA MAGIA SUCEDE AQUÍ)
+  // ==========================================
   const handleProductClick = (product: Product) => {
+    setActiveProductForVariant(product);
+
+    // 1. Si es Mostaza Food Truck -> Abre MasterModal (Modo Familia)
+    if (product.code.startsWith('MF')) {
+      setIsMasterModalOpen(true);
+      return;
+    }
+    // 2. Si es Papa Helado -> Abre VariantModal (El original)
     if (product.code === 'H001-004') {
-      setActiveProductForVariant(product);
       setIsVariantModalOpen(true);
       return;
     }
-    addToCartDirect(product);
+    // 3. Si es el Monitor de Grupo Bitmar -> Abre Simulador Logístico
+    if (product.code === 'BM001-016') {
+      setFleetQty(1);
+      setIsFleetModalOpen(true);
+      return;
+    }
+
+    // 4. Cualquier otro producto -> Va directo al carrito
+    addToCartDirect(product, product.price, product.name, product.code, 1);
   };
 
-  const addToCartDirect = (product: Product, customPrice?: number, customName?: string, customKey?: string) => {
+  const addToCartDirect = (product: Product, customPrice?: number, customName?: string, customKey?: string, quantity: number = 1) => {
     const priceToUse = customPrice !== undefined ? customPrice : product.price;
     const nameToUse = customName || product.name;
     const uniqueKey = customKey || product.code;
@@ -98,30 +120,26 @@ export default function MerchantStoreView({
     setCart(prev => {
       const existing = prev[uniqueKey];
       if (existing) {
-        return { ...prev, [uniqueKey]: { ...existing, qty: existing.qty + 1 } };
+        return { ...prev, [uniqueKey]: { ...existing, qty: existing.qty + quantity } };
       }
       return { 
         ...prev, 
-        [uniqueKey]: { 
-          ...product, 
-          code: uniqueKey,
-          name: nameToUse,
-          price: priceToUse,
-          qty: 1 
-        } 
+        [uniqueKey]: { ...product, code: uniqueKey, name: nameToUse, price: priceToUse, qty: quantity } 
       };
     });
   };
 
-  const handleAddVariantToCart = (payload: VariantSelectionPayload) => {
+  const handleAddMasterVariantToCart = (payload: any) => {
     if (!activeProductForVariant) return;
-    const compositeKey = `${payload.productCode}-${Date.now()}`;
+    const compositeKey = `${activeProductForVariant.code}-${Date.now()}`;
     addToCartDirect(
       activeProductForVariant,
-      payload.totalPrice,
-      `${payload.productName} (${payload.summaryText})`,
-      compositeKey
+      payload.totalUSD,
+      `${activeProductForVariant.name} (${payload.summaryText})`,
+      compositeKey,
+      payload.quantity
     );
+    setIsMasterModalOpen(false);
   };
 
   const updateQty = (code: string, delta: number) => {
@@ -142,36 +160,18 @@ export default function MerchantStoreView({
   const totalItems = cartItems.reduce((acc, item) => acc + item.qty, 0);
   const subtotalUSD = cartItems.reduce((acc, item) => acc + (item.price * item.qty), 0);
 
+  useEffect(() => { if (totalItems === 0 && isCartOpen) setIsCartOpen(false); }, [totalItems, isCartOpen]);
   useEffect(() => {
-    if (totalItems === 0 && isCartOpen) {
-      setIsCartOpen(false);
-    }
-  }, [totalItems, isCartOpen]);
-
-  useEffect(() => {
-    if (rewardMode === 'FIXED') {
-      setChallengeTarget(15);
-    } else {
-      if (subtotalUSD === 0) {
-        setChallengeTarget(15);
-      } else if (subtotalUSD < 15) {
-        setChallengeTarget(15);
-      } else if (challengeTarget <= 15) {
-        setChallengeTarget(subtotalUSD + 5);
-      }
+    if (rewardMode === 'FIXED') setChallengeTarget(15);
+    else {
+      if (subtotalUSD === 0 || subtotalUSD < 15) setChallengeTarget(15);
+      else if (challengeTarget <= 15) setChallengeTarget(subtotalUSD + 5);
     }
   }, [rewardMode, subtotalUSD, challengeTarget]);
 
   const handleOpenCart = () => {
-    if (rewardMode === 'FIXED') {
-      setChallengeTarget(15);
-    } else {
-      if (subtotalUSD < 15) {
-        setChallengeTarget(15);
-      } else {
-        setChallengeTarget(subtotalUSD + 5);
-      }
-    }
+    if (rewardMode === 'FIXED') setChallengeTarget(15);
+    else setChallengeTarget(subtotalUSD < 15 ? 15 : subtotalUSD + 5);
     setIsCartOpen(true);
   };
 
@@ -181,23 +181,27 @@ export default function MerchantStoreView({
   const esEnvioGratis = subtotalUSD > 0 && faltaParaEnvioGratis === 0;
 
   const discountDelivery = 2.23; 
-  const deliveryCost = subtotalUSD > 0 && deliveryMode === 'delivery' 
-    ? (esEnvioGratis ? 0 : discountDelivery) 
-    : 0;
+  const deliveryCost = subtotalUSD > 0 && deliveryMode === 'delivery' ? (esEnvioGratis ? 0 : discountDelivery) : 0;
   const totalUSD = subtotalUSD + deliveryCost;
 
   const handleNavigationBack = () => {
-    if (totalItems > 0) {
-      setShowLeaveAlert(true);
-    } else {
-      onBack();
-    }
+    if (totalItems > 0) setShowLeaveAlert(true);
+    else onBack();
   };
+
+  // Lógica dinámica del vehículo (Simulador)
+  const getFleetDetails = (qty: number) => {
+    if (qty === 1) return { type: 'Moto (Bolso Térmico)', icon: Bike, color: 'text-emerald-500', bg: 'bg-emerald-50', limit: 'Máx. 1 unidad' };
+    if (qty >= 2 && qty <= 9) return { type: 'Vehículo Sedán', icon: Car, color: 'text-blue-500', bg: 'bg-blue-50', limit: '2 a 9 unidades' };
+    if (qty >= 10 && qty <= 49) return { type: 'Camioneta Cargo', icon: Truck, color: 'text-amber-500', bg: 'bg-amber-50', limit: '10 a 49 unidades' };
+    return { type: 'Camión 350 (Carga Pesada)', icon: Truck, color: 'text-rose-600', bg: 'bg-rose-50', limit: '50+ unidades' };
+  };
+  const fleetInfo = getFleetDetails(fleetQty);
+  const FleetIcon = fleetInfo.icon;
 
   return (
     <div className="min-h-screen flex flex-col bg-slate-50 text-slate-900 font-sans selection:bg-[#fe6712] selection:text-white relative">
       
-      {/* Topbar */}
       <div className="bg-[#090d16] text-white text-xs py-2 px-4 md:px-8 border-b border-white/10">
         <div className="max-w-7xl mx-auto flex justify-between items-center">
           <button onClick={handleNavigationBack} className="flex items-center gap-1.5 text-slate-300 hover:text-white transition cursor-pointer font-bold">
@@ -211,28 +215,17 @@ export default function MerchantStoreView({
         </div>
       </div>
 
-      {/* Header del Comercio */}
       <div className="bg-white border-b border-slate-200">
         <div className="h-48 md:h-64 w-full relative overflow-hidden bg-slate-900">
           <img src={merchant.image} alt={merchant.name} className="w-full h-full object-cover opacity-60" />
           <div className="absolute inset-0 bg-gradient-to-t from-slate-950 via-slate-950/40 to-transparent"></div>
           
-          {/* BOTÓN ISOTIPO D'UNA TOP-RIGHT (REGRESAR) */}
           <button
             type="button"
             onClick={handleNavigationBack}
-            title="Volver al Directorio"
             className="absolute top-4 right-4 md:top-6 md:right-8 z-20 w-10 h-10 md:w-12 md:h-12 rounded-[14px] bg-white shadow-lg border border-white/50 flex items-center justify-center overflow-hidden transition-transform hover:scale-105 active:scale-95 cursor-pointer"
           >
-            <img 
-              src="/images/isotipo-duna.png" 
-              alt="D'una" 
-              className="w-[85%] h-[85%] object-contain"
-              onError={(e: any) => { 
-                /* Fallback de emergencia si la imagen no se encuentra en la carpeta */
-                e.target.src = 'https://ui-avatars.com/api/?name=D&background=fe6712&color=fff&rounded=true&bold=true'; 
-              }} 
-            />
+            <img src="/images/isotipo-duna.png" alt="D'una" className="w-[85%] h-[85%] object-contain" onError={(e: any) => { e.target.src = 'https://ui-avatars.com/api/?name=D&background=fe6712&color=fff&rounded=true&bold=true'; }} />
           </button>
 
           <div className="absolute bottom-6 left-4 md:left-8 right-4 md:right-8 flex flex-col sm:flex-row justify-between items-start sm:items-end gap-4 text-white">
@@ -253,7 +246,6 @@ export default function MerchantStoreView({
           </div>
         </div>
 
-        {/* Filtros */}
         <div className="max-w-7xl mx-auto px-4 md:px-8 py-4 flex flex-col sm:flex-row items-center justify-between gap-4">
           <div className="flex items-center gap-2 overflow-x-auto no-scrollbar w-full sm:w-auto pb-1 sm:pb-0">
             {categories.map(cat => (
@@ -269,7 +261,6 @@ export default function MerchantStoreView({
         </div>
       </div>
 
-      {/* Grid de Productos */}
       <main className="max-w-7xl mx-auto w-full px-4 md:px-8 py-8 flex-1 space-y-6 pb-28">
         <div className="flex justify-between items-center">
           <h3 className="text-sm font-black text-slate-800 uppercase tracking-wider">Productos Disponibles ({filteredProducts.length})</h3>
@@ -280,6 +271,11 @@ export default function MerchantStoreView({
           {filteredProducts.map(product => {
             const isSoldOut = product.status === 'INACTIVE';
             const priceBs = product.price ? (product.price * bcvRate).toFixed(2) : '9.30'; 
+            
+            // Botón Especial para Mostaza, Papa Helado o Bitmar
+            let btnText = "Agregar";
+            if (product.code.startsWith('MF') || product.code === 'H001-004') btnText = "Armar";
+            if (product.code === 'BM001-016') btnText = "Evaluar Envío";
 
             return (
               <div key={product.code} className={`bg-white rounded-2xl border border-slate-200 p-4 shadow-sm flex flex-col justify-between transition-all duration-300 relative group ${isSoldOut ? 'opacity-60 bg-slate-50' : 'hover:shadow-lg hover:-translate-y-1'}`}>
@@ -295,24 +291,18 @@ export default function MerchantStoreView({
                 </div>
                 <div className="mt-4 pt-3 border-t border-slate-100 flex items-center justify-between">
                   <div>
-                    <span className="text-base font-black text-slate-900">
-                      {product.price ? `$${product.price.toFixed(2)}` : '$9.30'}
-                    </span>
+                    <span className="text-base font-black text-slate-900">${product.price.toFixed(2)}</span>
                     <span className="text-[9px] text-slate-400 font-bold block">~ Bs. {priceBs}</span>
                   </div>
                   <button 
                     disabled={isSoldOut} 
                     onClick={() => handleProductClick(product)} 
-                    className={`px-3.5 py-2 rounded-xl text-xs font-black transition flex items-center gap-1 shadow-sm ${
-                      isSoldOut 
-                        ? 'bg-slate-200 text-slate-400 cursor-not-allowed' 
-                        : product.code === 'H001-004'
-                          ? 'bg-[#fe6712] hover:bg-[#e0580d] text-white cursor-pointer active:scale-95'
-                          : 'bg-[#0f172a] hover:bg-[#fe6712] text-white cursor-pointer active:scale-95'
+                    className={`px-3 py-2 rounded-xl text-xs font-black transition flex items-center gap-1 shadow-sm ${
+                      isSoldOut ? 'bg-slate-200 text-slate-400 cursor-not-allowed' : 'bg-[#0f172a] hover:bg-[#fe6712] text-white cursor-pointer active:scale-95'
                     }`}
                   >
                     <Plus className="h-3.5 w-3.5" />
-                    <span>{product.code === 'H001-004' ? 'Armar' : 'Agregar'}</span>
+                    <span>{btnText}</span>
                   </button>
                 </div>
               </div>
@@ -321,7 +311,6 @@ export default function MerchantStoreView({
         </div>
       </main>
 
-      {/* Barra Inferior Flotante */}
       {totalItems > 0 && (
         <div className="fixed bottom-6 left-4 right-4 max-w-lg mx-auto z-50 animate-in slide-in-from-bottom duration-300">
           <div className="bg-[#0f172a] text-white p-4 rounded-2xl shadow-2xl border border-white/10 flex items-center justify-between">
@@ -339,39 +328,91 @@ export default function MerchantStoreView({
         </div>
       )}
 
-      {/* ALERTA: Salida de la tienda con productos */}
       {showLeaveAlert && (
         <div className="fixed inset-0 z-[150] flex items-center justify-center bg-black/60 p-4 backdrop-blur-sm animate-in fade-in duration-200">
           <div className="bg-white rounded-[24px] p-6 max-w-sm w-full shadow-2xl flex flex-col items-center text-center animate-in zoom-in-95 duration-200">
-            <div className="w-14 h-14 bg-orange-100 text-[#fe6712] rounded-full flex items-center justify-center mb-4">
-              <ShoppingBag className="w-7 h-7" />
-            </div>
+            <div className="w-14 h-14 bg-orange-100 text-[#fe6712] rounded-full flex items-center justify-center mb-4"><ShoppingBag className="w-7 h-7" /></div>
             <h3 className="text-[18px] font-black text-slate-900 mb-2">¡Completa tu pedido primero!</h3>
-            <p className="text-[13px] text-slate-500 font-medium mb-6 leading-relaxed">
-              Tienes productos listos para ser enviados en tu bolsa. Para explorar otros comercios, finaliza tu pago y te los llevaremos D'una.
-            </p>
+            <p className="text-[13px] text-slate-500 font-medium mb-6 leading-relaxed">Tienes productos listos para ser enviados en tu bolsa. Para explorar otros comercios, finaliza tu pago y te los llevaremos D'una.</p>
             <div className="flex flex-col w-full gap-2">
+              <button onClick={() => { setShowLeaveAlert(false); handleOpenCart(); }} className="w-full bg-[#fe6712] hover:bg-[#e0580d] text-white font-black py-3.5 rounded-full transition shadow-md text-[13px] active:scale-95 cursor-pointer">IR A PAGAR</button>
+              <button onClick={() => setShowLeaveAlert(false)} className="w-full bg-white border border-slate-200 text-slate-500 hover:bg-slate-50 font-bold py-3.5 rounded-full transition text-[13px] cursor-pointer">Seguir en esta tienda</button>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* 1. Modal de Mostaza (Familia) */}
+      {isMasterModalOpen && activeProductForVariant && (
+        <MasterProductModal
+          isOpen={isMasterModalOpen}
+          onClose={() => { setIsMasterModalOpen(false); setActiveProductForVariant(null); }}
+          product={activeProductForVariant}
+          nicheEngine="FOOD_FAST"
+          bcvRate={bcvRate}
+          onAddToCart={handleAddMasterVariantToCart}
+        />
+      )}
+
+      {/* 2. Modal de Papa Helado (Antiguo) */}
+      <VariantModal
+        isOpen={isVariantModalOpen}
+        onClose={() => { setIsVariantModalOpen(false); setActiveProductForVariant(null); }}
+        onAddToCart={(payload) => { /* Lógica de papa helado intacta */
+          const compositeKey = `${payload.productCode}-${Date.now()}`;
+          addToCartDirect(activeProductForVariant!, payload.totalPrice, `${payload.productName} (${payload.summaryText})`, compositeKey, 1);
+        }}
+      />
+
+      {/* 3. SIMULADOR DE DESPACHO (GRUPO BITMAR) */}
+      {isFleetModalOpen && activeProductForVariant && (
+        <div className="fixed inset-0 z-[100] flex items-center justify-center bg-black/60 p-4 backdrop-blur-sm">
+          <div className="bg-white rounded-[24px] max-w-sm w-full p-6 shadow-2xl animate-in zoom-in-95 duration-200">
+            <div className="flex items-center gap-3 mb-5 pb-4 border-b border-slate-100">
+              <div className="bg-slate-900 text-white p-2.5 rounded-xl"><PackageOpen className="w-5 h-5" /></div>
+              <div>
+                <h3 className="font-black text-slate-900 text-lg leading-tight">Simulador de Flete</h3>
+                <p className="text-[10px] text-slate-500 font-bold uppercase tracking-wider">Cálculo Volumétrico Dinámico</p>
+              </div>
+            </div>
+
+            <p className="text-xs text-slate-600 font-medium text-center mb-4">Selecciona cuántos <strong className="text-slate-900">{activeProductForVariant.name}</strong> deseas y mira cómo cambia nuestra flota asignada.</p>
+            
+            {/* Control de Cantidad */}
+            <div className="flex items-center justify-center gap-4 mb-6">
+              <button onClick={() => setFleetQty(Math.max(1, fleetQty - 1))} className="h-10 w-10 rounded-full border border-slate-200 text-slate-600 font-black text-lg hover:bg-slate-50 active:scale-95 cursor-pointer">-</button>
+              <span className="text-3xl font-black text-slate-900 w-12 text-center">{fleetQty}</span>
+              <button onClick={() => setFleetQty(fleetQty + 1)} className="h-10 w-10 rounded-full bg-[#fe6712] text-white font-black text-lg shadow-md hover:bg-[#e0580d] active:scale-95 cursor-pointer">+</button>
+            </div>
+
+            {/* Resultado del Vehículo */}
+            <div className={`p-4 rounded-2xl flex items-center gap-4 mb-6 border border-slate-200 ${fleetInfo.bg} transition-colors duration-300`}>
+              <div className={`p-3 bg-white rounded-xl shadow-sm ${fleetInfo.color}`}>
+                <FleetIcon className="w-8 h-8" />
+              </div>
+              <div>
+                <span className="text-[10px] font-black text-slate-500 uppercase tracking-wider block mb-0.5">Vehículo Asignado</span>
+                <span className={`text-sm font-black ${fleetInfo.color}`}>{fleetInfo.type}</span>
+                <span className="text-[10px] text-slate-600 font-bold block mt-1">Capacidad: {fleetInfo.limit}</span>
+              </div>
+            </div>
+
+            <div className="flex gap-2">
+              <button onClick={() => setIsFleetModalOpen(false)} className="w-1/3 bg-slate-100 hover:bg-slate-200 text-slate-700 font-black py-3 rounded-xl transition text-xs cursor-pointer">Cancelar</button>
               <button 
                 onClick={() => {
-                  setShowLeaveAlert(false);
-                  handleOpenCart();
+                  addToCartDirect(activeProductForVariant, activeProductForVariant.price, activeProductForVariant.name, activeProductForVariant.code, fleetQty);
+                  setIsFleetModalOpen(false);
                 }} 
-                className="w-full bg-[#fe6712] hover:bg-[#e0580d] text-white font-black py-3.5 rounded-full transition shadow-md text-[13px] active:scale-95 cursor-pointer"
+                className="w-2/3 bg-[#0f172a] hover:bg-[#fe6712] text-white font-black py-3 rounded-xl transition shadow-md text-xs active:scale-95 cursor-pointer"
               >
-                IR A PAGAR
-              </button>
-              <button 
-                onClick={() => setShowLeaveAlert(false)} 
-                className="w-full bg-white border border-slate-200 text-slate-500 hover:bg-slate-50 font-bold py-3.5 rounded-full transition text-[13px] cursor-pointer"
-              >
-                Seguir en esta tienda
+                Confirmar Despacho
               </button>
             </div>
           </div>
         </div>
       )}
 
-      {/* COMPONENTE MODULAR DEL CARRITO */}
       <CartModal
         isOpen={isCartOpen}
         onClose={() => setIsCartOpen(false)}
@@ -392,17 +433,6 @@ export default function MerchantStoreView({
         onOpenCheckout={onOpenCheckout}
         isNationalShippingEnabled={merchant.isNationalShippingEnabled}
       />
-
-      {/* MODAL DE VARIANTES (PAPÁ HELADO) */}
-      <VariantModal
-        isOpen={isVariantModalOpen}
-        onClose={() => {
-          setIsVariantModalOpen(false);
-          setActiveProductForVariant(null);
-        }}
-        onAddToCart={handleAddVariantToCart}
-      />
-
     </div>
   );
 }
