@@ -55,7 +55,6 @@ export default function MerchantStoreView({
   const [activeProductForVariant, setActiveProductForVariant] = useState<Product | null>(null);
 
   const [bcvRate, setBcvRate] = useState<number>(48.50);
-  // AHORA EL ESTADO SOPORTA EL ENVÍO NACIONAL
   const [deliveryMode, setDeliveryMode] = useState<'delivery' | 'pickup' | 'national'>('delivery');
 
   const [rewardMode, setRewardMode] = useState<'DYNAMIC' | 'FIXED'>(
@@ -196,7 +195,7 @@ export default function MerchantStoreView({
   };
 
   return (
-    <div className="min-h-screen flex flex-col bg-slate-50 text-slate-900 font-sans selection:bg-[#fe6712] selection:text-white">
+    <div className="min-h-screen flex flex-col bg-slate-50 text-slate-900 font-sans selection:bg-[#fe6712] selection:text-white relative">
       
       {/* Topbar */}
       <div className="bg-[#090d16] text-white text-xs py-2 px-4 md:px-8 border-b border-white/10">
@@ -218,6 +217,24 @@ export default function MerchantStoreView({
           <img src={merchant.image} alt={merchant.name} className="w-full h-full object-cover opacity-60" />
           <div className="absolute inset-0 bg-gradient-to-t from-slate-950 via-slate-950/40 to-transparent"></div>
           
+          {/* BOTÓN ISOTIPO D'UNA TOP-RIGHT (REGRESAR) */}
+          <button
+            type="button"
+            onClick={handleNavigationBack}
+            title="Volver al Directorio"
+            className="absolute top-4 right-4 md:top-6 md:right-8 z-20 w-10 h-10 md:w-12 md:h-12 rounded-[14px] bg-white shadow-lg border border-white/50 flex items-center justify-center overflow-hidden transition-transform hover:scale-105 active:scale-95 cursor-pointer"
+          >
+            <img 
+              src="/images/isotipo-duna.png" 
+              alt="D'una" 
+              className="w-[85%] h-[85%] object-contain"
+              onError={(e: any) => { 
+                /* Fallback de emergencia si la imagen no se encuentra en la carpeta */
+                e.target.src = 'https://ui-avatars.com/api/?name=D&background=fe6712&color=fff&rounded=true&bold=true'; 
+              }} 
+            />
+          </button>
+
           <div className="absolute bottom-6 left-4 md:left-8 right-4 md:right-8 flex flex-col sm:flex-row justify-between items-start sm:items-end gap-4 text-white">
             <div className="space-y-1">
               <span className="bg-[#fe6712] text-white text-[10px] font-black px-3 py-1 rounded-full uppercase tracking-wider">{merchant.badge}</span>
@@ -354,7 +371,7 @@ export default function MerchantStoreView({
         </div>
       )}
 
-      {/* COMPONENTE MODULAR DEL CARRITO (AHORA CON PERMISOS NACIONALES) */}
+      {/* COMPONENTE MODULAR DEL CARRITO */}
       <CartModal
         isOpen={isCartOpen}
         onClose={() => setIsCartOpen(false)}
