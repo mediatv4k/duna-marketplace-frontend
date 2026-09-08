@@ -128,13 +128,13 @@ export default function CartModal({
           </div>
 
           {/* Título de Sección Fijo */}
-          <div className="px-4 pt-1 pb-0.5 shrink-0">
+          <div className="px-4 pt-1 pb-0.5 shrink-0 flex justify-between items-center">
             <h4 className="text-[9px] font-black text-slate-400 uppercase tracking-widest">
               Productos Seleccionados ({totalItems})
             </h4>
           </div>
 
-          {/* Scroll Exclusivo de Productos */}
+          {/* Scroll Exclusivo de Productos con Autocierre si queda en 0 */}
           <div className="flex-1 overflow-y-auto px-4 py-1 space-y-1.5 pr-2 [&::-webkit-scrollbar]:w-1.5 [&::-webkit-scrollbar-thumb]:bg-slate-200 [&::-webkit-scrollbar-thumb]:rounded-full hover:[&::-webkit-scrollbar-thumb]:bg-slate-300 [&::-webkit-scrollbar-track]:bg-transparent">
             <div className="space-y-1.5 pb-2">
               {cartItems && cartItems.length > 0 ? (
@@ -159,7 +159,13 @@ export default function CartModal({
                     </div>
                     <button 
                       type="button"
-                      onClick={() => onUpdateQty(item.code, -(item.qty || 1))} 
+                      onClick={() => {
+                        // Si es la última unidad del último ítem, cerramos el modal de inmediato
+                        if (totalItems <= 1) {
+                          onClose();
+                        }
+                        onUpdateQty(item.code, -(item.qty || 1));
+                      }} 
                       className="w-7 h-7 rounded-lg border border-slate-100 bg-slate-50 flex items-center justify-center text-slate-400 hover:text-red-500 hover:bg-red-50 transition cursor-pointer shrink-0"
                     >
                       <Trash2 className="h-3.5 w-3.5" />
@@ -179,7 +185,6 @@ export default function CartModal({
         <div className="h-[265px] shrink-0 px-4 pt-2 pb-2.5 bg-white flex flex-col justify-between">
           
           <div className="space-y-1">
-            {/* SWITCH DE MODOS DE ENTREGA AHORA CON GRID DINÁMICO */}
             <div className={`grid gap-1.5 ${isNationalShippingEnabled ? 'grid-cols-3' : 'grid-cols-2'}`}>
               <button 
                 type="button"
@@ -206,7 +211,6 @@ export default function CartModal({
               )}
             </div>
 
-            {/* ZONA DE CONFIGURACIÓN DE DESTINO */}
             {deliveryMode === 'national' ? (
               <div className="bg-sky-50/80 rounded-2xl py-1.5 px-3 border border-sky-200 flex items-center justify-between gap-2">
                 <span className="text-[11px] font-bold text-sky-900 flex items-center gap-1 shrink-0">

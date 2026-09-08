@@ -1,7 +1,7 @@
 'use client';
 
 import React, { useState, useEffect, useMemo } from 'react';
-import { X, Check, ArrowRight, ShoppingCart, Plus, Minus, Info } from 'lucide-react';
+import { X, Check, ArrowRight, ShoppingCart, Plus, Minus, Info, Users, Sparkles } from 'lucide-react';
 
 export interface VariantSelectionPayload {
   productCode: string;
@@ -32,7 +32,15 @@ export default function MasterProductModal({
   const [step, setStep] = useState<number>(1);
   const [qty, setQty] = useState<number>(1);
 
+  // Estados globales de exclusiones (si van todas iguales)
   const [selectedExclusions, setSelectedExclusions] = useState<string[]>([]);
+  
+  // MODO FAMILIA: Personalización independiente por unidad
+  const [customizePerUnit, setCustomizePerUnit] = useState<boolean>(false);
+  const [activeUnitTab, setActiveUnitTab] = useState<number>(0);
+  const [unitNamesMap, setUnitNamesMap] = useState<Record<number, string>>({});
+  const [unitExclusionsMap, setUnitExclusionsMap] = useState<Record<number, string[]>>({});
+
   const [selectedVariants, setSelectedVariants] = useState<Record<string, any>>({});
   const [upsellSelections, setUpsellSelections] = useState<Record<string, any>>({});
 
@@ -41,6 +49,10 @@ export default function MasterProductModal({
       setStep(1);
       setQty(1);
       setSelectedExclusions([]);
+      setCustomizePerUnit(false);
+      setActiveUnitTab(0);
+      setUnitNamesMap({});
+      setUnitExclusionsMap({});
       setUpsellSelections({});
       
       const initialVariants: Record<string, any> = {};
@@ -60,6 +72,18 @@ export default function MasterProductModal({
     else document.body.style.overflow = 'unset';
     return () => { document.body.style.overflow = 'unset'; };
   }, [isOpen]);
+
+  // Sincronizar mapas cuando cambia la cantidad (qty)
+  useEffect(() => {
+    const newExclMap = { ...unitExclusionsMap };
+    const newNamesMap = { ...unitNamesMap };
+    for (let i = 0; i < qty; i++) {
+      if (!newExclMap[i]) newExclMap[i] = [...selectedExclusions];
+      if (!newNamesMap[i]) newNamesMap[i] = `Persona #${i + 1}`;
+    }
+    setUnitExclusionsMap(newExclMap);
+    setUnitNamesMap(newNamesMap);
+  }, [qty]);
 
   const { unitPrice, totalVariantsPrice, totalUpsells } = useMemo(() => {
     let base = product?.price || 0;
@@ -99,9 +123,23 @@ export default function MasterProductModal({
   const totalCalculated = ((unitPrice + totalVariantsPrice) * qty) + totalUpsells;
 
   const toggleExclusion = (exc: string) => {
-    setSelectedExclusions(prev => 
-      prev.includes(exc) ? prev.filter(i => i !== exc) : [...prev, exc]
-    );
+    if (customizePerUnit) {
+      setUnitExclusionsMap(prev => {
+        const currentList = prev[activeUnitTab] || [];
+        const updatedList = currentList.includes(exc) 
+          ? currentList.filter(i => i !== exc) 
+          : [...currentList, exc];
+        return { ...prev, [activeUnitTab]: updatedList };
+      });
+    } else {
+      setSelectedExclusions(prev => 
+        prev.includes(exc) ? prev.filter(i => i !== exc) : [...prev, exc]
+      );
+    }
+  };
+
+  const handleUnitNameChange = (name: string) => {
+    setUnitNamesMap(prev => ({ ...prev, [activeUnitTab]: name }));
   };
 
   const handleRadioChange = (groupIdx: number, option: any) => {
@@ -140,8 +178,22 @@ export default function MasterProductModal({
       }
     });
 
-    if (selectedExclusions.length > 0) {
-      breakdown.push(`Firma: ${selectedExclusions.join(', ')}`);
+    // Desglose Inteligente por Unidad (Modo Familia)
+    if (customizePerUnit && qty > 1) {
+      breakdown.push(`--- Detalle por Persona ---`);
+      for (let i = 0; i < qty; i++) {
+        const uName = unitNamesMap[i] || `Persona #${i + 1}`;
+        const uList = unitExclusionsMap[i] || [];
+        if (uList.length > 0) {
+          breakdown.push(`👤 [${uName}]: Sin ${uList.join(', ')}`);
+        } else {
+          breakdown.push(`👤 [${uName}]: Con todo (Estándar)`);
+        }
+      }
+    } else {
+      if (selectedExclusions.length > 0) {
+        breakdown.push(`Firma D'una: Sin ${selectedExclusions.join(', ')}`);
+      }
     }
 
     Object.values(upsellSelections).forEach(up => {
@@ -182,7 +234,6 @@ export default function MasterProductModal({
   };
   const currentUpsells = getUpsellsByNiche();
 
-  // EL REQUISITO DE REACT: Los ganchos terminan arriba, el return va abajo de todo
   if (!isOpen || !product) return null;
 
   return (
@@ -227,7 +278,7 @@ export default function MasterProductModal({
                   <p className="text-xs text-slate-600 font-medium leading-relaxed">{product.desc || product.description || 'Configura las opciones para este artículo.'}</p>
                   
                   <div className="flex items-center justify-between pt-3 border-t border-slate-200">
-                    <span className="text-xs font-bold text-slate-700">Cantidad (Packs/Unid):</span>
+                    <span className="text-xs font-bold text-slate-700">Cantidad (Unidades):</span>
                     <div className="flex items-center gap-3 bg-white px-2 py-1 rounded-xl border border-slate-200 shadow-sm">
                       <button onClick={() => setQty(Math.max(1, qty - 1))} className="w-6 h-6 flex items-center justify-center text-[#fe6712] hover:bg-orange-50 rounded-lg transition cursor-pointer">
                         <Minus className="w-4 h-4 stroke-[3]" />
@@ -265,24 +316,104 @@ export default function MasterProductModal({
                 </div>
               ))}
 
+              {/* MODO FAMILIA: EXCLUSIONES E INTELIGENCIA POR UNIDAD */}
               {product.exclusions && product.exclusions.length > 0 && (
-                <div className="bg-gradient-to-r from-orange-50/70 to-amber-50/50 p-4 rounded-2xl border border-orange-200 space-y-3">
-                  <label className="text-xs font-black text-slate-900 uppercase tracking-wider flex items-center gap-1.5">
-                    <Info className="w-4 h-4 text-[#fe6712]" /> Ponle tu firma D&apos;una (Exclusiones):
-                  </label>
-                  <div className="grid grid-cols-2 gap-2">
-                    {product.exclusions.map((exc: string) => (
-                      <label key={exc} className="flex items-center gap-2 bg-white p-2.5 rounded-xl border border-slate-200 text-xs font-bold text-slate-700 cursor-pointer shadow-xs hover:border-[#fe6712] transition">
-                        <input 
-                          type="checkbox" 
-                          checked={selectedExclusions.includes(exc)}
-                          onChange={() => toggleExclusion(exc)}
-                          className="w-4 h-4 accent-[#fe6712] rounded cursor-pointer"
-                        />
-                        <span className="truncate">{exc}</span>
-                      </label>
-                    ))}
+                <div className="bg-gradient-to-r from-orange-50/70 to-amber-50/50 p-4 rounded-2xl border border-orange-200 space-y-3.5">
+                  <div className="flex flex-col sm:flex-row justify-between items-start sm:items-center gap-2">
+                    <label className="text-xs font-black text-slate-900 uppercase tracking-wider flex items-center gap-1.5">
+                      <Sparkles className="w-4 h-4 text-[#fe6712]" /> Firma D&apos;una (Exclusiones):
+                    </label>
+
+                    {qty > 1 && (
+                      <button
+                        type="button"
+                        onClick={() => setCustomizePerUnit(prev => !prev)}
+                        className={`text-[10px] font-black px-3 py-1.5 rounded-xl border transition cursor-pointer flex items-center gap-1.5 shadow-2xs ${
+                          customizePerUnit 
+                            ? 'bg-[#fe6712] text-white border-[#fe6712]' 
+                            : 'bg-white text-[#fe6712] border-orange-200 hover:bg-orange-50'
+                        }`}
+                      >
+                        <Users className="w-3.5 h-3.5" />
+                        <span>{customizePerUnit ? '✓ Modo Familia Activado' : '¿Personalizar cada unidad individual?'}</span>
+                      </button>
+                    )}
                   </div>
+
+                  {/* Wizard de Pestañas por Unidad cuando hay más de 1 cantidad */}
+                  {customizePerUnit && qty > 1 ? (
+                    <div className="space-y-3 pt-2 border-t border-orange-200/60">
+                      <div className="flex gap-1.5 overflow-x-auto no-scrollbar pb-1">
+                        {Array.from({ length: qty }).map((_, idx) => (
+                          <button
+                            key={idx}
+                            type="button"
+                            onClick={() => setActiveUnitTab(idx)}
+                            className={`px-3.5 py-1.5 rounded-xl text-xs font-black transition cursor-pointer whitespace-nowrap shadow-2xs ${
+                              activeUnitTab === idx
+                                ? 'bg-slate-900 text-white'
+                                : 'bg-white text-slate-600 border border-slate-200 hover:bg-slate-100'
+                            }`}
+                          >
+                            Unidad #{idx + 1} ({unitNamesMap[idx] || `Persona #${idx + 1}`})
+                          </button>
+                        ))}
+                      </div>
+
+                      <div className="p-3.5 bg-white rounded-2xl border border-orange-100 shadow-2xs space-y-3">
+                        <div>
+                          <label className="text-[9px] font-black text-slate-400 uppercase tracking-wider block mb-1">
+                            ¿Para quién es la Unidad #{activeUnitTab + 1}? (Nombre)
+                          </label>
+                          <input 
+                            type="text"
+                            value={unitNamesMap[activeUnitTab] || ''}
+                            onChange={(e) => handleUnitNameChange(e.target.value)}
+                            placeholder="Ej. Omar, Esposa, Hijo..."
+                            className="w-full rounded-xl border border-slate-200 bg-slate-50 px-3 py-1.5 text-xs font-bold text-slate-800 focus:border-[#fe6712] focus:outline-none transition"
+                          />
+                        </div>
+
+                        <div>
+                          <span className="text-[10px] font-black text-[#fe6712] uppercase block mb-1.5">
+                            Exclusiones para esta unidad:
+                          </span>
+                          <div className="grid grid-cols-2 gap-2">
+                            {product.exclusions.map((exc: string) => {
+                              const currentUnitList = unitExclusionsMap[activeUnitTab] || [];
+                              const isExcChecked = currentUnitList.includes(exc);
+                              return (
+                                <label key={exc} className="flex items-center gap-2 bg-slate-50 p-2.5 rounded-xl border border-slate-200 text-xs font-bold text-slate-700 cursor-pointer shadow-2xs hover:border-[#fe6712] transition">
+                                  <input 
+                                    type="checkbox" 
+                                    checked={isExcChecked}
+                                    onChange={() => toggleExclusion(exc)}
+                                    className="w-4 h-4 accent-[#fe6712] rounded cursor-pointer"
+                                  />
+                                  <span className="truncate">{exc}</span>
+                                </label>
+                              );
+                            })}
+                          </div>
+                        </div>
+                      </div>
+                    </div>
+                  ) : (
+                    // Comportamiento estándar (Aplicar a todas las unidades por igual)
+                    <div className="grid grid-cols-2 gap-2">
+                      {product.exclusions.map((exc: string) => (
+                        <label key={exc} className="flex items-center gap-2 bg-white p-2.5 rounded-xl border border-slate-200 text-xs font-bold text-slate-700 cursor-pointer shadow-xs hover:border-[#fe6712] transition">
+                          <input 
+                            type="checkbox" 
+                            checked={selectedExclusions.includes(exc)}
+                            onChange={() => toggleExclusion(exc)}
+                            className="w-4 h-4 accent-[#fe6712] rounded cursor-pointer"
+                          />
+                          <span className="truncate">{exc}</span>
+                        </label>
+                      ))}
+                    </div>
+                  )}
                 </div>
               )}
             </div>
