@@ -1,5 +1,5 @@
 {
-  "/test-plantilla/page": "app/test-plantilla/page.js",
+  "/_not-found/page": "app/_not-found/page.js",
   "/page": "app/page.js",
-  "/tienda/[slug]/page": "app/tienda/[slug]/page.js"
+  "/api/bcv/route": "app/api/bcv/route.js"
 }
