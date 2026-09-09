@@ -2,9 +2,8 @@
  * ==============================================================================
  * BITÁCORA DE ACTUALIZACIÓN - MOTOR MAESTRO D'UNA MARKETPLACE
  * ==============================================================================
- * Fecha: Lunes, 07 de Septiembre de 2026
- * Hora Local: 06:45 PM (Cabimas, Estado Zulia, Venezuela)
- * Versión de Arquitectura: 6.0.1 (Hotfix - Responsive Logo Container For Mobile + Mostaza Demo)
+ * Fecha: Miércoles, 09 de Septiembre de 2026
+ * Arquitectura: Puente Global "forceCartOpenCount" para retroceso de Checkout a Carrito
  * Archivo: src/app/page.tsx
  * ==============================================================================
  */
@@ -33,14 +32,8 @@ import {
   Bike
 } from 'lucide-react';
 
-// ==========================================================
-// TASA OFICIAL Y CONFIGURACIÓN BIMONETARIA
-// ==========================================================
 const TASA_BCV_ACTUAL = 48.50; // Bs. por USD
 
-// ==========================================================
-// ÍCONOS VECTORIALES DE CATEGORÍAS (ARTE LINEAL CALIBRADO)
-// ==========================================================
 function IconTodos({ className = "w-8 h-8" }: { className?: string }) {
   return (
     <svg className={className} viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.9" strokeLinecap="round" strokeLinejoin="round">
@@ -310,7 +303,7 @@ const merchantsData: Record<string, any> = {
       baseRatePerKm: 0.70,
       isNationalShippingEnabled: false,
       coords: { lat: 10.3950, lng: -71.4450 },
-      image: 'https://images.unsplash.com/photo-1565299624946-b28f40a0ae38?w=200&q=80', // Logo placeholder
+      image: 'https://images.unsplash.com/photo-1565299624946-b28f40a0ae38?w=200&q=80',
       badge: 'Nuevo Ingreso',
       schedule: 'Abre a las 05:00 PM',
       isOpen: true,
@@ -368,6 +361,9 @@ export default function MultitiendaHub() {
   const [isTrackingOpen, setIsTrackingOpen] = useState(false);
   const [activeOrderId, setActiveOrderId] = useState<string>('788');
   const [hasCompletedOrder, setHasCompletedOrder] = useState<boolean>(false);
+
+  // ESTADO PUENTE PARA ABRIR EL CARRITO DE NUEVO DESDE EL CHECKOUT
+  const [forceCartOpenCount, setForceCartOpenCount] = useState<number>(0);
 
   const [scheduleModalMerchant, setScheduleModalMerchant] = useState<any | null>(null);
   const [userLocation, setUserLocation] = useState<{ lat: number; lng: number; label: string } | null>(null);
@@ -507,6 +503,7 @@ export default function MultitiendaHub() {
             });
             setIsCheckoutOpen(true);
           }}
+          forceOpenCartTrigger={forceCartOpenCount}
         />
 
         <CheckoutModal 
@@ -521,7 +518,10 @@ export default function MultitiendaHub() {
             setActiveOrderId(idGen);
             if (typeof window !== 'undefined') localStorage.setItem('last_active_order_id', idGen);
           }}
-          onBackToCart={() => setIsCheckoutOpen(false)}
+          onBackToCart={() => {
+            setIsCheckoutOpen(false);
+            setForceCartOpenCount(prev => prev + 1); // <--- CONEXIÓN EXACTA DEL BOTÓN VOLVER
+          }}
           onViewTracking={handleViewTrackingFromCheckout}
         />
 
@@ -650,7 +650,7 @@ export default function MultitiendaHub() {
           </div>
         </section>
 
-        {/* Tiendas Recomendadas CON LA SECUENCIA EXACTA DE 4 LÍNEAS */}
+        {/* Tiendas Recomendadas */}
         <section className="space-y-3.5 pt-1">
           <div className="flex justify-between items-center">
             <h3 className="text-sm md:text-base font-black text-slate-900 flex items-center gap-2">
@@ -677,24 +677,19 @@ export default function MultitiendaHub() {
               return (
                 <div key={merchant.id} onClick={() => setActiveMerchantId(merchant.id)} className="bg-white rounded-2xl border border-slate-200/90 hover:border-[#fe6712]/50 p-3.5 flex items-center gap-3.5 shadow-2xs hover:shadow-md transition cursor-pointer group">
                   
-                  {/* LOGO INTACTO A LA IZQUIERDA (BLINDADO CON MEDIDAS EXACTAS PARA MÓVIL) */}
                   <div className="w-[80px] h-[80px] min-w-[80px] sm:w-[96px] sm:h-[96px] sm:min-w-[96px] flex-shrink-0 bg-slate-100 rounded-2xl overflow-hidden border border-slate-200/80 shadow-xs relative">
                     <img src={merchant.image} alt={merchant.name} className="w-full h-full object-cover group-hover:scale-105 transition-transform duration-300" />
                   </div>
 
-                  {/* COLUMNA DERECHA: SECUENCIA ESTRICTA DE 4 LÍNEAS */}
                   <div className="flex-1 min-w-0 flex flex-col justify-center space-y-1 overflow-hidden">
                     
-                    {/* LÍNEA 1: Nombre del Comercio + Rating */}
                     <div className="flex items-start justify-between gap-1">
                       <h4 className="text-sm font-black text-slate-900 group-hover:text-[#fe6712] transition-colors truncate">{merchant.name}</h4>
                       <span className="flex-shrink-0 bg-amber-50 text-amber-700 px-1.5 py-0.5 rounded-md text-[10px] font-black border border-amber-200 shadow-2xs">⭐ {merchant.rating}</span>
                     </div>
 
-                    {/* LÍNEA 2: Categoría */}
                     <p className="text-[11px] font-bold text-slate-400 truncate">{merchant.category}</p>
 
-                    {/* LÍNEA 3: Reloj Horario + Abierto + Calcular Envío Juntitos */}
                     <div className="flex items-center gap-1.5 text-[10px] font-bold">
                       <button type="button" onClick={(e) => { e.stopPropagation(); setScheduleModalMerchant(merchant); }} className="text-slate-500 hover:text-[#fe6712] bg-slate-100 hover:bg-orange-50 p-1 rounded-md border border-slate-200/80 transition cursor-pointer shadow-2xs flex items-center justify-center shrink-0" title="Ver Horarios">
                         <Clock className="w-3 h-3 text-[#fe6712]" />
@@ -714,7 +709,6 @@ export default function MultitiendaHub() {
                       )}
                     </div>
 
-                    {/* LÍNEA 4: Local Cabimas y Nacional */}
                     <div className="flex flex-wrap gap-1 items-center pt-0.5">
                       <span className="inline-flex items-center gap-0.5 text-[9px] text-emerald-700 bg-emerald-50 border border-emerald-200 px-1.5 py-0.2 rounded-md font-black shrink-0">
                         <Bike className="w-2.5 h-2.5 text-emerald-600 shrink-0" /> Local (Cabimas)
@@ -753,7 +747,6 @@ export default function MultitiendaHub() {
         </button>
       </nav>
 
-      {/* Modales de Horarios y Sectores */}
       {scheduleModalMerchant && (
         <div className="fixed inset-0 z-50 bg-black/60 backdrop-blur-xs flex items-center justify-center p-4" onClick={() => setScheduleModalMerchant(null)}>
           <div className="bg-white rounded-3xl max-w-sm w-full p-6 shadow-2xl space-y-5 border border-slate-100" onClick={(e) => e.stopPropagation()}>

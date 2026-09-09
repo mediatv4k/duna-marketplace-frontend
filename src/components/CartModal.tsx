@@ -1,3 +1,13 @@
+/**
+ * ==============================================================================
+ * BITÁCORA DE ACTUALIZACIÓN - CARRITO D'UNA
+ * ==============================================================================
+ * Fecha: Miércoles, 09 de Septiembre de 2026
+ * Arquitectura: Single-Line Layout (Cero scroll en productos) + Título Fase 1
+ * Archivo: src/components/CartModal.tsx
+ * ==============================================================================
+ */
+
 'use client';
 
 import React, { useState } from 'react';
@@ -78,7 +88,7 @@ export default function CartModal({
           {/* Header Fijo */}
           <div className="bg-[#fe6712] w-full px-5 py-3 flex justify-between items-center text-white shrink-0">
             <div>
-              <h3 className="font-black text-[17px] leading-tight mb-0.5">Tu Pedido y Entrega</h3>
+              <h3 className="font-black text-[17px] leading-tight mb-0.5">Fase 1: Tu Pedido y Entrega</h3>
               <p className="text-[10px] font-medium text-white/90">Revisa tus productos y configura tu destino</p>
             </div>
             <button 
@@ -134,41 +144,52 @@ export default function CartModal({
             </h4>
           </div>
 
-          {/* Scroll Exclusivo de Productos con Autocierre si queda en 0 */}
-          <div className="flex-1 overflow-y-auto px-4 py-1 space-y-1.5 pr-2 [&::-webkit-scrollbar]:w-1.5 [&::-webkit-scrollbar-thumb]:bg-slate-200 [&::-webkit-scrollbar-thumb]:rounded-full hover:[&::-webkit-scrollbar-thumb]:bg-slate-300 [&::-webkit-scrollbar-track]:bg-transparent">
-            <div className="space-y-1.5 pb-2">
+          {/* Scroll Exclusivo de Productos (DISEÑO PLANO DE 1 SOLA LÍNEA) */}
+          <div className="flex-1 overflow-y-auto px-4 py-1 space-y-1 pr-2 [&::-webkit-scrollbar]:w-1.5 [&::-webkit-scrollbar-thumb]:bg-slate-200 [&::-webkit-scrollbar-thumb]:rounded-full hover:[&::-webkit-scrollbar-thumb]:bg-slate-300 [&::-webkit-scrollbar-track]:bg-transparent">
+            <div className="space-y-1 pb-2">
               {cartItems && cartItems.length > 0 ? (
                 cartItems.map((item, idx) => (
-                  <div key={item.code || idx} className="bg-white border border-slate-100 rounded-[12px] p-2.5 shadow-sm flex justify-between items-center">
-                    <div className="min-w-0 flex-1 pr-2">
-                      <h5 className="text-[13px] font-black text-slate-900 leading-tight truncate">{item.name || 'Producto'}</h5>
+                  <div key={item.code || idx} className="bg-white border border-slate-100 rounded-xl px-2.5 py-2 shadow-sm flex items-center gap-2">
+                    <div className="flex-1 min-w-0 flex flex-col justify-center">
+                      {/* Fila principal en 1 sola línea */}
+                      <div className="flex items-center justify-between gap-2 w-full">
+                        <h5 className="text-[12px] font-black text-slate-900 truncate flex-1" title={item.name || 'Producto'}>
+                          {item.name || 'Producto'}
+                        </h5>
+                        <div className="flex items-center gap-2 shrink-0">
+                          <span className="text-[9.5px] text-slate-500 font-bold bg-slate-50 px-1.5 py-0.5 rounded-md border border-slate-100">
+                            Cant: {item.qty || 1}
+                          </span>
+                          <span className="text-[12px] font-black text-[#fe6712] w-14 text-right">
+                            ${((item.price || 0) * (item.qty || 1)).toFixed(2)}
+                          </span>
+                        </div>
+                      </div>
                       
+                      {/* Opcional: Sub-ingredientes (super compactos si existen) */}
                       {item.breakdown && item.breakdown.length > 0 && (
-                        <div className="my-1 space-y-0.5">
+                        <div className="flex flex-wrap gap-x-2 mt-0.5">
                           {item.breakdown.map((b, bIdx) => (
-                            <p key={bIdx} className="text-[9px] font-semibold text-slate-500 flex items-start gap-1 leading-tight">
-                              <span className="text-[#fe6712] shrink-0">•</span> 
-                              <span className="truncate">{b}</span>
+                            <p key={bIdx} className="text-[8.5px] font-semibold text-slate-400 flex items-center gap-0.5 leading-none">
+                              <span className="text-[#fe6712]">•</span> 
+                              <span className="truncate max-w-[120px]">{b}</span>
                             </p>
                           ))}
                         </div>
                       )}
-
-                      <p className="text-[10px] text-slate-400 font-medium my-0.5">Cant: {item.qty || 1}</p>
-                      <p className="text-[13px] font-black text-[#fe6712]">${((item.price || 0) * (item.qty || 1)).toFixed(2)} USD</p>
                     </div>
+
                     <button 
                       type="button"
-                      onClick={() => {
-                        // Si es la última unidad del último ítem, cerramos el modal de inmediato
+                      onClick={() => { 
                         if (totalItems <= 1) {
                           onClose();
                         }
                         onUpdateQty(item.code, -(item.qty || 1));
                       }} 
-                      className="w-7 h-7 rounded-lg border border-slate-100 bg-slate-50 flex items-center justify-center text-slate-400 hover:text-red-500 hover:bg-red-50 transition cursor-pointer shrink-0"
+                      className="w-6 h-6 rounded-md border border-slate-100 bg-slate-50 flex items-center justify-center text-slate-400 hover:text-red-500 hover:bg-red-50 transition cursor-pointer shrink-0"
                     >
-                      <Trash2 className="h-3.5 w-3.5" />
+                      <Trash2 className="h-3 w-3" />
                     </button>
                   </div>
                 ))

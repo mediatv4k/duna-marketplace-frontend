@@ -1,3 +1,13 @@
+/**
+ * ==============================================================================
+ * BITÁCORA DE ACTUALIZACIÓN - MOTOR MAESTRO D'UNA MARKETPLACE
+ * ==============================================================================
+ * Fecha: Miércoles, 09 de Septiembre de 2026
+ * Arquitectura: Puente "onForceOpenCart" restaurado para retroceso fluido
+ * Archivo: src/components/MerchantStoreView.tsx
+ * ==============================================================================
+ */
+
 'use client';
 
 import React, { useState, useEffect } from 'react';
@@ -8,7 +18,7 @@ import {
 import { getBCVRate } from '@/lib/bcvRate';
 import CartModal, { CartItem } from './CartModal';
 import VariantModal, { VariantSelectionPayload } from './VariantModal';
-import MasterProductModal from './MasterProductModal'; // <-- Añadimos el puente de Mostaza
+import MasterProductModal from './MasterProductModal';
 
 interface Product {
   code: string;
@@ -37,13 +47,16 @@ interface MerchantStoreViewProps {
   products: Product[];
   onBack: () => void;
   onOpenCheckout: (summary: any) => void;
+  // NUEVO: Propiedad para que el padre pueda decirle a la tienda que abra su carrito
+  forceOpenCartTrigger?: number; 
 }
 
 export default function MerchantStoreView({ 
   merchant, 
   products, 
   onBack,
-  onOpenCheckout
+  onOpenCheckout,
+  forceOpenCartTrigger = 0
 }: MerchantStoreViewProps) {
   const [selectedCategory, setSelectedCategory] = useState('ALL');
   const [searchQuery, setSearchQuery] = useState('');
@@ -70,6 +83,13 @@ export default function MerchantStoreView({
     getBCVRate().then(rate => setBcvRate(rate));
   }, []);
 
+  // EFECTO MÁGICO: Escucha cuando el padre (page.tsx) ordena abrir el carrito
+  useEffect(() => {
+    if (forceOpenCartTrigger > 0) {
+      setIsCartOpen(true);
+    }
+  }, [forceOpenCartTrigger]);
+
   const categories = ['ALL', ...Array.from(new Set(products.map(p => p.category)))];
 
   const filteredProducts = products.filter(p => {
@@ -85,30 +105,23 @@ export default function MerchantStoreView({
     return 0;
   });
 
-  // ==========================================
-  // ENRUTADOR DE CLICS (LA MAGIA SUCEDE AQUÍ)
-  // ==========================================
   const handleProductClick = (product: Product) => {
     setActiveProductForVariant(product);
 
-    // 1. Si es Mostaza Food Truck -> Abre MasterModal (Modo Familia)
     if (product.code.startsWith('MF')) {
       setIsMasterModalOpen(true);
       return;
     }
-    // 2. Si es Papa Helado -> Abre VariantModal (El original)
     if (product.code === 'H001-004') {
       setIsVariantModalOpen(true);
       return;
     }
-    // 3. Si es el Monitor de Grupo Bitmar -> Abre Simulador Logístico
     if (product.code === 'BM001-016') {
       setFleetQty(1);
       setIsFleetModalOpen(true);
       return;
     }
 
-    // 4. Cualquier otro producto -> Va directo al carrito
     addToCartDirect(product, product.price, product.name, product.code, 1);
   };
 
@@ -189,7 +202,6 @@ export default function MerchantStoreView({
     else onBack();
   };
 
-  // Lógica dinámica del vehículo (Simulador)
   const getFleetDetails = (qty: number) => {
     if (qty === 1) return { type: 'Moto (Bolso Térmico)', icon: Bike, color: 'text-emerald-500', bg: 'bg-emerald-50', limit: 'Máx. 1 unidad' };
     if (qty >= 2 && qty <= 9) return { type: 'Vehículo Sedán', icon: Car, color: 'text-blue-500', bg: 'bg-blue-50', limit: '2 a 9 unidades' };
@@ -272,7 +284,6 @@ export default function MerchantStoreView({
             const isSoldOut = product.status === 'INACTIVE';
             const priceBs = product.price ? (product.price * bcvRate).toFixed(2) : '9.30'; 
             
-            // Botón Especial para Mostaza, Papa Helado o Bitmar
             let btnText = "Agregar";
             if (product.code.startsWith('MF') || product.code === 'H001-004') btnText = "Armar";
             if (product.code === 'BM001-016') btnText = "Evaluar Envío";
@@ -342,7 +353,6 @@ export default function MerchantStoreView({
         </div>
       )}
 
-      {/* 1. Modal de Mostaza (Familia) */}
       {isMasterModalOpen && activeProductForVariant && (
         <MasterProductModal
           isOpen={isMasterModalOpen}
@@ -354,17 +364,15 @@ export default function MerchantStoreView({
         />
       )}
 
-      {/* 2. Modal de Papa Helado (Antiguo) */}
       <VariantModal
         isOpen={isVariantModalOpen}
         onClose={() => { setIsVariantModalOpen(false); setActiveProductForVariant(null); }}
-        onAddToCart={(payload) => { /* Lógica de papa helado intacta */
+        onAddToCart={(payload) => { 
           const compositeKey = `${payload.productCode}-${Date.now()}`;
           addToCartDirect(activeProductForVariant!, payload.totalPrice, `${payload.productName} (${payload.summaryText})`, compositeKey, 1);
         }}
       />
 
-      {/* 3. SIMULADOR DE DESPACHO (GRUPO BITMAR) */}
       {isFleetModalOpen && activeProductForVariant && (
         <div className="fixed inset-0 z-[100] flex items-center justify-center bg-black/60 p-4 backdrop-blur-sm">
           <div className="bg-white rounded-[24px] max-w-sm w-full p-6 shadow-2xl animate-in zoom-in-95 duration-200">
@@ -378,14 +386,12 @@ export default function MerchantStoreView({
 
             <p className="text-xs text-slate-600 font-medium text-center mb-4">Selecciona cuántos <strong className="text-slate-900">{activeProductForVariant.name}</strong> deseas y mira cómo cambia nuestra flota asignada.</p>
             
-            {/* Control de Cantidad */}
             <div className="flex items-center justify-center gap-4 mb-6">
               <button onClick={() => setFleetQty(Math.max(1, fleetQty - 1))} className="h-10 w-10 rounded-full border border-slate-200 text-slate-600 font-black text-lg hover:bg-slate-50 active:scale-95 cursor-pointer">-</button>
               <span className="text-3xl font-black text-slate-900 w-12 text-center">{fleetQty}</span>
               <button onClick={() => setFleetQty(fleetQty + 1)} className="h-10 w-10 rounded-full bg-[#fe6712] text-white font-black text-lg shadow-md hover:bg-[#e0580d] active:scale-95 cursor-pointer">+</button>
             </div>
 
-            {/* Resultado del Vehículo */}
             <div className={`p-4 rounded-2xl flex items-center gap-4 mb-6 border border-slate-200 ${fleetInfo.bg} transition-colors duration-300`}>
               <div className={`p-3 bg-white rounded-xl shadow-sm ${fleetInfo.color}`}>
                 <FleetIcon className="w-8 h-8" />
