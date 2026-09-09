@@ -11,8 +11,8 @@
 'use client';
 
 import React, { useState, useEffect } from 'react';
-import { 
-  ArrowLeft, Search, Star, Clock, 
+import {
+  ArrowLeft, Search, Star, Clock,
   ShoppingBag, Plus, ArrowRight, Truck, Car, Bike, PackageOpen
 } from 'lucide-react';
 import { getBCVRate } from '@/lib/bcvRate';
@@ -48,19 +48,19 @@ interface MerchantStoreViewProps {
   onBack: () => void;
   onOpenCheckout: (summary: any) => void;
   // NUEVO: Propiedad para que el padre pueda decirle a la tienda que abra su carrito
-  forceOpenCartTrigger?: number; 
+  forceOpenCartTrigger?: number;
 }
 
-export default function MerchantStoreView({ 
-  merchant, 
-  products, 
+export default function MerchantStoreView({
+  merchant,
+  products,
   onBack,
   onOpenCheckout,
   forceOpenCartTrigger = 0
 }: MerchantStoreViewProps) {
   const [selectedCategory, setSelectedCategory] = useState('ALL');
   const [searchQuery, setSearchQuery] = useState('');
-  
+
   const [cart, setCart] = useState<Record<string, CartItem>>({});
   const [isCartOpen, setIsCartOpen] = useState(false);
   const [showLeaveAlert, setShowLeaveAlert] = useState(false);
@@ -69,7 +69,7 @@ export default function MerchantStoreView({
   const [activeProductForVariant, setActiveProductForVariant] = useState<Product | null>(null);
   const [isVariantModalOpen, setIsVariantModalOpen] = useState(false);
   const [isMasterModalOpen, setIsMasterModalOpen] = useState(false);
-  
+
   // Modal de Simulación Logística (Grupo Bitmar)
   const [isFleetModalOpen, setIsFleetModalOpen] = useState(false);
   const [fleetQty, setFleetQty] = useState(1);
@@ -94,7 +94,7 @@ export default function MerchantStoreView({
 
   const filteredProducts = products.filter(p => {
     const matchCat = selectedCategory === 'ALL' || p.category === selectedCategory;
-    const matchSearch = p.name.toLowerCase().includes(searchQuery.toLowerCase()) || 
+    const matchSearch = p.name.toLowerCase().includes(searchQuery.toLowerCase()) ||
                         (p.desc && p.desc.toLowerCase().includes(searchQuery.toLowerCase()));
     return matchCat && matchSearch;
   });
@@ -135,22 +135,28 @@ export default function MerchantStoreView({
       if (existing) {
         return { ...prev, [uniqueKey]: { ...existing, qty: existing.qty + quantity } };
       }
-      return { 
-        ...prev, 
-        [uniqueKey]: { ...product, code: uniqueKey, name: nameToUse, price: priceToUse, qty: quantity } 
+      return {
+        ...prev,
+        [uniqueKey]: { ...product, code: uniqueKey, name: nameToUse, price: priceToUse, qty: quantity }
       };
     });
   };
 
   const handleAddMasterVariantToCart = (payload: any) => {
     if (!activeProductForVariant) return;
+
+    // Normalización retrocompatible: acepta qty/quantity y totalPrice/totalUSD
+    const quantity = payload?.qty ?? payload?.quantity ?? 1;
+    const totalUSD = payload?.totalUSD ?? payload?.totalPrice ?? (activeProductForVariant.price * quantity);
+    const summary = payload?.summaryText ? ` (${payload.summaryText})` : '';
     const compositeKey = `${activeProductForVariant.code}-${Date.now()}`;
+
     addToCartDirect(
       activeProductForVariant,
-      payload.totalUSD,
-      `${activeProductForVariant.name} (${payload.summaryText})`,
+      totalUSD,
+      `${activeProductForVariant.name}${summary}`,
       compositeKey,
-      payload.quantity
+      quantity
     );
     setIsMasterModalOpen(false);
   };
@@ -193,7 +199,7 @@ export default function MerchantStoreView({
   const progresoEnvio = Math.min(100, (subtotalUSD / metaEnvioGratis) * 100);
   const esEnvioGratis = subtotalUSD > 0 && faltaParaEnvioGratis === 0;
 
-  const discountDelivery = 2.23; 
+  const discountDelivery = 2.23;
   const deliveryCost = subtotalUSD > 0 && deliveryMode === 'delivery' ? (esEnvioGratis ? 0 : discountDelivery) : 0;
   const totalUSD = subtotalUSD + deliveryCost;
 
@@ -213,7 +219,7 @@ export default function MerchantStoreView({
 
   return (
     <div className="min-h-screen flex flex-col bg-slate-50 text-slate-900 font-sans selection:bg-[#fe6712] selection:text-white relative">
-      
+
       <div className="bg-[#090d16] text-white text-xs py-2 px-4 md:px-8 border-b border-white/10">
         <div className="max-w-7xl mx-auto flex justify-between items-center">
           <button onClick={handleNavigationBack} className="flex items-center gap-1.5 text-slate-300 hover:text-white transition cursor-pointer font-bold">
@@ -231,7 +237,7 @@ export default function MerchantStoreView({
         <div className="h-48 md:h-64 w-full relative overflow-hidden bg-slate-900">
           <img src={merchant.image} alt={merchant.name} className="w-full h-full object-cover opacity-60" />
           <div className="absolute inset-0 bg-gradient-to-t from-slate-950 via-slate-950/40 to-transparent"></div>
-          
+
           <button
             type="button"
             onClick={handleNavigationBack}
@@ -282,8 +288,8 @@ export default function MerchantStoreView({
         <div className="grid grid-cols-1 sm:grid-cols-2 md:grid-cols-3 xl:grid-cols-4 gap-5">
           {filteredProducts.map(product => {
             const isSoldOut = product.status === 'INACTIVE';
-            const priceBs = product.price ? (product.price * bcvRate).toFixed(2) : '9.30'; 
-            
+            const priceBs = product.price ? (product.price * bcvRate).toFixed(2) : '9.30';
+
             let btnText = "Agregar";
             if (product.code.startsWith('MF') || product.code === 'H001-004') btnText = "Armar";
             if (product.code === 'BM001-016') btnText = "Evaluar Envío";
@@ -305,9 +311,9 @@ export default function MerchantStoreView({
                     <span className="text-base font-black text-slate-900">${product.price.toFixed(2)}</span>
                     <span className="text-[9px] text-slate-400 font-bold block">~ Bs. {priceBs}</span>
                   </div>
-                  <button 
-                    disabled={isSoldOut} 
-                    onClick={() => handleProductClick(product)} 
+                  <button
+                    disabled={isSoldOut}
+                    onClick={() => handleProductClick(product)}
                     className={`px-3 py-2 rounded-xl text-xs font-black transition flex items-center gap-1 shadow-sm ${
                       isSoldOut ? 'bg-slate-200 text-slate-400 cursor-not-allowed' : 'bg-[#0f172a] hover:bg-[#fe6712] text-white cursor-pointer active:scale-95'
                     }`}
@@ -367,7 +373,7 @@ export default function MerchantStoreView({
       <VariantModal
         isOpen={isVariantModalOpen}
         onClose={() => { setIsVariantModalOpen(false); setActiveProductForVariant(null); }}
-        onAddToCart={(payload) => { 
+        onAddToCart={(payload) => {
           const compositeKey = `${payload.productCode}-${Date.now()}`;
           addToCartDirect(activeProductForVariant!, payload.totalPrice, `${payload.productName} (${payload.summaryText})`, compositeKey, 1);
         }}
@@ -385,7 +391,7 @@ export default function MerchantStoreView({
             </div>
 
             <p className="text-xs text-slate-600 font-medium text-center mb-4">Selecciona cuántos <strong className="text-slate-900">{activeProductForVariant.name}</strong> deseas y mira cómo cambia nuestra flota asignada.</p>
-            
+
             <div className="flex items-center justify-center gap-4 mb-6">
               <button onClick={() => setFleetQty(Math.max(1, fleetQty - 1))} className="h-10 w-10 rounded-full border border-slate-200 text-slate-600 font-black text-lg hover:bg-slate-50 active:scale-95 cursor-pointer">-</button>
               <span className="text-3xl font-black text-slate-900 w-12 text-center">{fleetQty}</span>
@@ -405,11 +411,11 @@ export default function MerchantStoreView({
 
             <div className="flex gap-2">
               <button onClick={() => setIsFleetModalOpen(false)} className="w-1/3 bg-slate-100 hover:bg-slate-200 text-slate-700 font-black py-3 rounded-xl transition text-xs cursor-pointer">Cancelar</button>
-              <button 
+              <button
                 onClick={() => {
                   addToCartDirect(activeProductForVariant, activeProductForVariant.price, activeProductForVariant.name, activeProductForVariant.code, fleetQty);
                   setIsFleetModalOpen(false);
-                }} 
+                }}
                 className="w-2/3 bg-[#0f172a] hover:bg-[#fe6712] text-white font-black py-3 rounded-xl transition shadow-md text-xs active:scale-95 cursor-pointer"
               >
                 Confirmar Despacho
