@@ -1,8 +1,4 @@
 {
-<<<<<<< HEAD
-  "/_not-found/page": "app/_not-found/page.js",
-=======
->>>>>>> ed658e6 (feat: optimización de pasarela de pago, cofre d'una opt-in y simetría de fases)
-  "/page": "app/page.js",
-  "/api/bcv/route": "app/api/bcv/route.js"
+  "/api/bcv/route": "app/api/bcv/route.js",
+  "/page": "app/page.js"
 }

@@ -10,14 +10,6 @@
       "static/chunks/main-app.js",
       "static/css/app/layout.css",
       "static/chunks/app/layout.js"
-<<<<<<< HEAD
-    ],
-    "/_not-found/page": [
-      "static/chunks/webpack.js",
-      "static/chunks/main-app.js",
-      "static/chunks/app/_not-found/page.js"
-=======
->>>>>>> ed658e6 (feat: optimización de pasarela de pago, cofre d'una opt-in y simetría de fases)
     ]
   }
 }

@@ -14,18 +14,18 @@ import React, { useState, useRef, useEffect } from 'react';
 import MerchantStoreView from '@/components/MerchantStoreView';
 import CheckoutModal from '@/components/CheckoutModal';
 import OrderTrackingModal from '@/components/OrderTrackingModal';
-import { 
-  Clock, 
-  ChevronLeft, 
-  ChevronRight, 
-  Sparkles, 
-  MapPin, 
-  X, 
-  Navigation, 
-  Loader2, 
-  Store, 
-  Home, 
-  Compass, 
+import {
+  Clock,
+  ChevronLeft,
+  ChevronRight,
+  Sparkles,
+  MapPin,
+  X,
+  Navigation,
+  Loader2,
+  Store,
+  Home,
+  Compass,
   ShoppingBag,
   Coins,
   Truck,
@@ -489,34 +489,39 @@ export default function MultitiendaHub() {
 
     return (
       <>
-        <MerchantStoreView 
+        <MerchantStoreView
           key={activeMerchantId}
           merchant={merchantInfo}
           products={merchantProducts}
           onBack={() => setActiveMerchantId(null)}
           onOpenCheckout={(summary) => {
-            setOrderSummaryData({ 
-              ...summary, 
-              esEnvioNacional: merchantInfo.isNationalShippingEnabled || false, 
-              agenciaNacional: merchantInfo.preferredNationalCouriers?.[0] || 'MRW', 
-              costoEnvioNacional: 4.50 
+            setOrderSummaryData({
+              ...summary,
+              items: summary.items || [],
+              merchantName: merchantInfo.name,
+              esEnvioNacional: merchantInfo.isNationalShippingEnabled || false,
+              agenciaNacional: merchantInfo.preferredNationalCouriers?.[0] || 'MRW',
+              costoEnvioNacional: 4.50
             });
             setIsCheckoutOpen(true);
           }}
           forceOpenCartTrigger={forceCartOpenCount}
         />
 
-        <CheckoutModal 
+        <CheckoutModal
           isOpen={isCheckoutOpen}
           onClose={handleCloseCheckout}
           orderSummary={orderSummaryData}
           tasaBcv={TASA_BCV_ACTUAL}
           merchantName={merchantInfo.name}
-          onFinalizeOrder={(orderData) => { 
+          onFinalizeOrder={(orderData) => {
             setHasCompletedOrder(true);
-            const idGen = orderData?.id || '788';
+            const idGen = orderData?.id || `${Math.floor(100000 + Math.random() * 900000)}`;
             setActiveOrderId(idGen);
-            if (typeof window !== 'undefined') localStorage.setItem('last_active_order_id', idGen);
+            if (typeof window !== 'undefined') {
+              localStorage.setItem('last_active_order_id', idGen);
+              localStorage.setItem('last_active_order', JSON.stringify(orderData));
+            }
           }}
           onBackToCart={() => {
             setIsCheckoutOpen(false);
@@ -525,7 +530,12 @@ export default function MultitiendaHub() {
           onViewTracking={handleViewTrackingFromCheckout}
         />
 
-        <OrderTrackingModal isOpen={isTrackingOpen} onClose={() => setIsTrackingOpen(false)} orderId={activeOrderId} />
+        <OrderTrackingModal
+          isOpen={isTrackingOpen}
+          onClose={() => setIsTrackingOpen(false)}
+          orderId={activeOrderId}
+          orderSummary={orderSummaryData}
+        />
       </>
     );
   }
@@ -534,7 +544,7 @@ export default function MultitiendaHub() {
 
   return (
     <div suppressHydrationWarning className="min-h-screen flex flex-col bg-slate-50 text-slate-900 font-sans pb-16 md:pb-0">
-      
+
       {/* Topbar Bimonetario */}
       <div className="bg-[#090d16] text-white text-xs py-2 px-4 md:px-8 border-b border-white/10">
         <div className="max-w-7xl mx-auto flex flex-col sm:flex-row justify-between items-center gap-2">
@@ -604,7 +614,7 @@ export default function MultitiendaHub() {
 
       {/* Main */}
       <main className="max-w-7xl mx-auto w-full px-4 md:px-8 py-4 flex-1 space-y-6">
-        
+
         {/* Promos */}
         <section className="space-y-2">
           <div className="flex justify-between items-center">
@@ -676,13 +686,13 @@ export default function MultitiendaHub() {
 
               return (
                 <div key={merchant.id} onClick={() => setActiveMerchantId(merchant.id)} className="bg-white rounded-2xl border border-slate-200/90 hover:border-[#fe6712]/50 p-3.5 flex items-center gap-3.5 shadow-2xs hover:shadow-md transition cursor-pointer group">
-                  
+
                   <div className="w-[80px] h-[80px] min-w-[80px] sm:w-[96px] sm:h-[96px] sm:min-w-[96px] flex-shrink-0 bg-slate-100 rounded-2xl overflow-hidden border border-slate-200/80 shadow-xs relative">
                     <img src={merchant.image} alt={merchant.name} className="w-full h-full object-cover group-hover:scale-105 transition-transform duration-300" />
                   </div>
 
                   <div className="flex-1 min-w-0 flex flex-col justify-center space-y-1 overflow-hidden">
-                    
+
                     <div className="flex items-start justify-between gap-1">
                       <h4 className="text-sm font-black text-slate-900 group-hover:text-[#fe6712] transition-colors truncate">{merchant.name}</h4>
                       <span className="flex-shrink-0 bg-amber-50 text-amber-700 px-1.5 py-0.5 rounded-md text-[10px] font-black border border-amber-200 shadow-2xs">⭐ {merchant.rating}</span>
@@ -785,7 +795,12 @@ export default function MultitiendaHub() {
         </div>
       )}
 
-      <OrderTrackingModal isOpen={isTrackingOpen} onClose={() => setIsTrackingOpen(false)} orderId={activeOrderId} />
+      <OrderTrackingModal
+        isOpen={isTrackingOpen}
+        onClose={() => setIsTrackingOpen(false)}
+        orderId={activeOrderId}
+        orderSummary={orderSummaryData}
+      />
 
     </div>
   );

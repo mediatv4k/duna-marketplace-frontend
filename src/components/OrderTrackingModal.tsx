@@ -1,9 +1,9 @@
 'use client';
 
 import React, { useState, useEffect } from 'react';
-import { 
-  X, Clock, MapPin, ShieldCheck, RefreshCw, ChefHat, 
-  Bike, PackageCheck, Receipt, Printer, DollarSign, FileText 
+import {
+  X, Clock, MapPin, ShieldCheck, RefreshCw, ChefHat,
+  Bike, PackageCheck, Receipt, Printer, DollarSign, FileText
 } from 'lucide-react';
 import { initializeApp, getApps, getApp } from 'firebase/app';
 import { getFirestore, collection, query, orderBy, limit, getDocs } from 'firebase/firestore';
@@ -42,32 +42,45 @@ export default function OrderTrackingModal({ isOpen, onClose, orderId, orderSumm
       try {
         const ordersRef = collection(db, 'orders');
         const q = query(ordersRef, orderBy('createdAt', 'desc'), limit(1));
-        
+
         const fetchPromise = getDocs(q);
         const timeoutPromise = new Promise((_, reject) => setTimeout(() => reject(new Error('timeout')), 2000));
-        
+
         const querySnapshot = await Promise.race([fetchPromise, timeoutPromise]) as any;
 
         if (isMounted && querySnapshot && !querySnapshot.empty) {
           const docData = querySnapshot.docs[0].data();
           setOrderData({
             id: querySnapshot.docs[0].id.slice(-6).toUpperCase(),
-            ...docData
+            ...docData,
+            items: (docData.items && docData.items.length > 0) ? docData.items : (orderSummary?.items || [])
           });
         } else {
           throw new Error("Empty query");
         }
       } catch (err: any) {
         if (isMounted) {
+          const savedOrderStr = typeof window !== 'undefined' ? localStorage.getItem('last_active_order') : null;
+          let savedOrder: any = null;
+          try {
+            if (savedOrderStr) savedOrder = JSON.parse(savedOrderStr);
+          } catch (e) {}
+
+          const resolvedId = orderId || savedOrder?.id || (typeof window !== 'undefined' ? localStorage.getItem('last_active_order_id') : null) || '1986';
+
           setOrderData({
-            id: orderId || '1986',
-            nombre: 'OSMER BENITO',
-            documento: '18634536',
-            direccion: orderSummary?.direccion || 'Cabimas, Estado Zulia',
-            totalUSD: orderSummary?.totalUSD || 14.30,
-            tasa: 48.50,
-            status: 'pendiente',
-            metodoPago: 'pago_movil',
+            id: resolvedId,
+            nombre: savedOrder?.nombre || 'OSMER BENITO',
+            documento: savedOrder?.cedula || '18634536',
+            direccion: orderSummary?.direccion || savedOrder?.direccion || 'Cabimas, Estado Zulia',
+            totalUSD: orderSummary?.totalUSD || savedOrder?.totalUSD || 14.30,
+            tasa: savedOrder?.tasaBcv || 48.50,
+            status: savedOrder?.status || 'pendiente',
+            metodoPago: savedOrder?.metodoPago || 'pago_movil',
+            merchantName: orderSummary?.merchantName || savedOrder?.merchantName || 'Mostaza Food Truck',
+            costoEnvio: orderSummary?.costoEnvio ?? savedOrder?.costoEnvio ?? 1.50,
+            propina: orderSummary?.propina ?? savedOrder?.propina ?? 0.50,
+            items: (orderSummary?.items && orderSummary.items.length > 0) ? orderSummary.items : (savedOrder?.items || []),
             createdAt: new Date()
           });
         }
@@ -77,16 +90,30 @@ export default function OrderTrackingModal({ isOpen, onClose, orderId, orderSumm
     }
 
     fetchLatestOrder();
-    
+
     return () => { isMounted = false; };
   }, [isOpen, orderId, orderSummary]);
 
   if (!isOpen) return null;
 
+  const currentItems: any[] = (orderData?.items && orderData.items.length > 0)
+    ? orderData.items
+    : (orderSummary?.items || []);
+
+  const displayMerchant = orderData?.merchantName || orderSummary?.merchantName || 'Mostaza Food Truck';
+  const displayId = orderData?.id || orderId || '1986';
+  const displayClient = orderData?.nombre || 'Cliente D\'una';
+  const displayAddress = orderData?.direccion || orderSummary?.direccion || 'Cabimas, Estado Zulia';
+  const costoEnvio = orderData?.costoEnvio ?? orderSummary?.costoEnvio ?? 1.50;
+  const propinaVal = orderData?.propina ?? orderSummary?.propina ?? 0.50;
+  const displayTotal = orderData?.totalUSD ?? (orderSummary?.totalUSD ? (orderSummary.totalUSD + propinaVal) : 14.30);
+  const totalItemsCount = currentItems.reduce((acc: number, it: any) => acc + (it.qty || it.quantity || 1), 0);
+  const subtotalNeto = currentItems.reduce((acc: number, it: any) => acc + ((it.price || 0) * (it.qty || it.quantity || 1)), 0);
+
   return (
     <div className="fixed inset-0 z-[160] flex items-center justify-center bg-black/75 p-3 backdrop-blur-sm animate-in fade-in duration-150">
       <div className="w-full max-w-[420px] max-h-[90vh] overflow-hidden rounded-[28px] bg-white shadow-2xl border border-slate-100 flex flex-col justify-between">
-        
+
         {/* Cabecera */}
         <div className="bg-[#fe6712] px-5 py-3 text-white flex items-center justify-between shrink-0">
           <div className="flex items-center gap-2">
@@ -135,15 +162,15 @@ export default function OrderTrackingModal({ isOpen, onClose, orderId, orderSumm
 
                   <div className="bg-white p-5 shadow-sm border border-slate-300 font-mono text-[10px] sm:text-[11px] text-slate-900 mx-auto w-full max-w-[320px] relative">
                     <div className="absolute top-0 left-0 right-0 h-1.5 bg-[url('data:image/svg+xml;base64,PHN2ZyB4bWxucz0iaHR0cDovL3d3dy53My5vcmcvMjAwMC9zdmciIHdpZHRoPSI4IiBoZWlnaHQ9IjgiPjxwb2x5Z29uIHBvaW50cz0iMCwwIDQsOCA4LDAiIGZpbGw9IiNmMThmMWZhIi8+PC9zdmc+')] bg-repeat-x rotate-180"></div>
-                    
+
                     <div className="text-center mb-4 mt-2">
-                      <h3 className="font-black text-sm uppercase">MOSTAZA FOOD TRUCK</h3>
-                      <p>ORDEN DE COMPRA No. {orderData.id}</p>
+                      <h3 className="font-black text-sm uppercase">{displayMerchant}</h3>
+                      <p>ORDEN DE COMPRA No. {displayId}</p>
                       <p>{new Date().toLocaleDateString('es-VE')} {new Date().toLocaleTimeString('es-VE', { hour: '2-digit', minute: '2-digit', second: '2-digit' })}</p>
                     </div>
 
                     <div className="mb-3">
-                      <p>Cliente: {orderData.nombre.toLowerCase()}</p>
+                      <p>Cliente: {displayClient.toLowerCase()}</p>
                     </div>
 
                     <table className="w-full text-left mb-3 border-collapse">
@@ -156,41 +183,66 @@ export default function OrderTrackingModal({ isOpen, onClose, orderId, orderSumm
                         </tr>
                       </thead>
                       <tbody>
+                        {currentItems.length > 0 ? (
+                          currentItems.map((item: any, idx: number) => {
+                            const qty = item.qty || item.quantity || 1;
+                            const price = item.price || 0;
+                            const total = price * qty;
+                            const lines: string[] = item.breakdown || (item.summaryText ? [item.summaryText] : []);
+
+                            return (
+                              <tr key={item.code || idx}>
+                                <td className="py-2 align-top font-bold">{qty}</td>
+                                <td className="py-2 align-top">
+                                  <span className="uppercase block font-bold">{item.name}</span>
+                                  {lines.map((line: string, lIdx: number) => {
+                                    const isExclusion = /sin\s/i.test(line);
+                                    return (
+                                      <span
+                                        key={lIdx}
+                                        className={`pl-1 block text-[9.5px] ${isExclusion ? 'text-red-600 font-bold' : 'text-slate-600 mt-0.5'}`}
+                                      >
+                                        {line.startsWith('🍔') || line.startsWith('Combo:') ? line : `- ${line}`}
+                                      </span>
+                                    );
+                                  })}
+                                </td>
+                                <td className="py-2 align-top text-right">${price.toFixed(2)}</td>
+                                <td className="py-2 align-top text-right font-bold">${total.toFixed(2)}</td>
+                              </tr>
+                            );
+                          })
+                        ) : (
+                          <tr>
+                            <td colSpan={4} className="py-3 text-center text-slate-400 italic">
+                              No hay productos registrados en esta orden.
+                            </td>
+                          </tr>
+                        )}
                         <tr>
-                          <td className="py-2 align-top">1</td>
-                          <td className="py-2 align-top">
-                            <span className="uppercase block font-bold">COMBO 5 P. SIFRINOS</span>
-                            <span className="pl-1 block mt-1">- [1] OMAR: Sin Queso</span>
-                            <span className="pl-1 block text-red-600 font-bold">* [2] OSVALDO: Sin Salchicha</span>
-                            <span className="pl-1 block">- [3] ESPOSA: Sin Salsas, Sin Papitas</span>
-                            <span className="pl-1 block uppercase">- [4] HIJA: Con Todo</span>
-                            <span className="pl-1 block uppercase">- [5] INVITADO: Con Todo</span>
-                          </td>
-                          <td className="py-2 align-top text-right">$12.30</td>
-                          <td className="py-2 align-top text-right font-bold">$12.30</td>
+                          <td></td>
+                          <td className="py-1">{orderData?.metodoEntrega === 'pickup' ? 'Retiro en Tienda' : 'Domicilio'}</td>
+                          <td></td>
+                          <td className="py-1 text-right">${costoEnvio.toFixed(2)}</td>
                         </tr>
-                        <tr>
-                          <td></td>
-                          <td className="py-1">Domicilio</td>
-                          <td></td>
-                          <td className="py-1 text-right">${orderSummary?.costoEnvio?.toFixed(2) || '1.50'}</td>
-                        </tr>
-                        <tr>
-                          <td></td>
-                          <td className="py-1">Propina</td>
-                          <td></td>
-                          <td className="py-1 text-right">$0.50</td>
-                        </tr>
+                        {propinaVal > 0 && (
+                          <tr>
+                            <td></td>
+                            <td className="py-1">Propina</td>
+                            <td></td>
+                            <td className="py-1 text-right">${propinaVal.toFixed(2)}</td>
+                          </tr>
+                        )}
                       </tbody>
                     </table>
 
                     <div className="border-t border-slate-800 border-dashed pt-2 flex justify-between font-black text-sm uppercase">
                       <span>Total:</span>
-                      <span>${orderSummary?.totalUSD ? (orderSummary.totalUSD + 0.50).toFixed(2) : orderData.totalUSD.toFixed(2)}</span>
+                      <span>${displayTotal.toFixed(2)}</span>
                     </div>
 
                     <div className="mt-4 text-center font-bold">
-                      <p>REF. Bs. {((orderSummary?.totalUSD ? orderSummary.totalUSD + 0.50 : orderData.totalUSD) * orderData.tasa).toFixed(2)}</p>
+                      <p>REF. Bs. {(displayTotal * (orderData?.tasa || 48.50)).toFixed(2)}</p>
                     </div>
 
                     <div className="mt-4 text-center">
@@ -198,8 +250,8 @@ export default function OrderTrackingModal({ isOpen, onClose, orderId, orderSumm
                     </div>
 
                     <div className="mt-4 flex justify-between uppercase">
-                      <p>ITEMS 1</p>
-                      <p>Doc: {orderData.documento || '18634536'}</p>
+                      <p>ITEMS {totalItemsCount > 0 ? totalItemsCount : 1}</p>
+                      <p>Doc: {orderData?.documento || orderData?.cedula || '18634536'}</p>
                     </div>
 
                     <div className="absolute bottom-0 left-0 right-0 h-1.5 bg-[url('data:image/svg+xml;base64,PHN2ZyB4bWxucz0iaHR0cDovL3d3dy53My5vcmcvMjAwMC9zdmciIHdpZHRoPSI4IiBoZWlnaHQ9IjgiPjxwb2x5Z29uIHBvaW50cz0iMCwwIDQsOCA4LDAiIGZpbGw9IiNmMThmMWZhIi8+PC9zdmc+')] bg-repeat-x"></div>
@@ -227,7 +279,7 @@ export default function OrderTrackingModal({ isOpen, onClose, orderId, orderSumm
                   <div className="space-y-3 bg-white p-4 rounded-2xl border border-slate-100 shadow-sm">
                     <h4 className="text-xs font-black text-slate-800 uppercase tracking-wide mb-4">Estatus del pedido</h4>
                     <div className="space-y-4 relative before:absolute before:inset-y-2 before:left-3 before:w-0.5 before:bg-slate-200">
-                      
+
                       <div className="flex items-start gap-3 relative">
                         <div className="w-6 h-6 rounded-full bg-emerald-500 text-white flex items-center justify-center z-10 shrink-0 text-xs shadow-xs">✓</div>
                         <div>
@@ -266,22 +318,22 @@ export default function OrderTrackingModal({ isOpen, onClose, orderId, orderSumm
                     <div className="flex justify-between items-start pb-3 border-b border-slate-100">
                       <div>
                         <h4 className="text-[10px] font-bold text-slate-400 uppercase tracking-wider">Comercio</h4>
-                        <p className="font-black text-slate-900 text-sm">Mostaza Food Truck</p>
+                        <p className="font-black text-slate-900 text-sm">{displayMerchant}</p>
                       </div>
                       <div className="text-right">
                         <h4 className="text-[10px] font-bold text-slate-400 uppercase tracking-wider">Orden</h4>
-                        <p className="font-black text-[#fe6712] text-sm">#{orderData.id}</p>
+                        <p className="font-black text-[#fe6712] text-sm">#{displayId}</p>
                       </div>
                     </div>
 
                     <div className="flex items-center gap-2 text-xs text-slate-600">
                       <MapPin className="w-4 h-4 text-slate-400 shrink-0" />
-                      <p className="truncate"><strong>Entrega:</strong> {orderData.direccion}</p>
+                      <p className="truncate"><strong>Entrega:</strong> {displayAddress}</p>
                     </div>
 
                     <div className="flex items-center gap-2 text-xs text-emerald-700 bg-emerald-50 p-2.5 rounded-xl border border-emerald-100">
                       <DollarSign className="w-4 h-4 shrink-0 text-emerald-600" />
-                      <p><strong>Pago verificado:</strong> Pago Móvil</p>
+                      <p><strong>Pago verificado:</strong> {orderData?.metodoPago === 'efectivo' ? 'Efectivo en Entrega' : 'Pago Móvil'}</p>
                     </div>
                   </div>
 
@@ -289,34 +341,51 @@ export default function OrderTrackingModal({ isOpen, onClose, orderId, orderSumm
                     <h4 className="font-black text-slate-900 flex items-center gap-2 mb-3 text-sm">
                       <FileText className="w-4 h-4 text-[#fe6712]" /> Resumen de Compra
                     </h4>
-                    
+
                     <div className="space-y-2 mb-3">
-                      <div className="flex justify-between text-xs">
-                        <span className="text-slate-600 font-medium">1x Combo 5 Perros Sifrinos</span>
-                        <span className="font-bold text-slate-900">$12.30</span>
-                      </div>
+                      {currentItems.length > 0 ? (
+                        currentItems.map((item: any, idx: number) => {
+                          const qty = item.qty || item.quantity || 1;
+                          const price = item.price || 0;
+                          return (
+                            <div key={item.code || idx} className="flex justify-between text-xs">
+                              <span className="text-slate-600 font-medium">
+                                {qty}x {item.name}
+                              </span>
+                              <span className="font-bold text-slate-900">${(price * qty).toFixed(2)}</span>
+                            </div>
+                          );
+                        })
+                      ) : (
+                        <div className="flex justify-between text-xs">
+                          <span className="text-slate-600 font-medium">1x Orden General</span>
+                          <span className="font-bold text-slate-900">${(subtotalNeto || 12.30).toFixed(2)}</span>
+                        </div>
+                      )}
                     </div>
 
                     <div className="border-t border-slate-100 pt-3 space-y-2">
                       <div className="flex justify-between text-xs">
                         <span className="text-slate-500">Subtotal</span>
-                        <span className="font-bold text-slate-700">$12.30</span>
+                        <span className="font-bold text-slate-700">${(subtotalNeto || orderData?.subtotalUSD || 12.30).toFixed(2)}</span>
                       </div>
                       <div className="flex justify-between text-xs">
                         <span className="text-slate-500">Delivery D'una</span>
-                        <span className="font-bold text-slate-700">${orderSummary?.costoEnvio?.toFixed(2) || '1.50'}</span>
+                        <span className="font-bold text-slate-700">${costoEnvio.toFixed(2)}</span>
                       </div>
-                      <div className="flex justify-between text-xs">
-                        <span className="text-slate-500">Propina</span>
-                        <span className="font-bold text-slate-700">$0.50</span>
-                      </div>
+                      {propinaVal > 0 && (
+                        <div className="flex justify-between text-xs">
+                          <span className="text-slate-500">Propina</span>
+                          <span className="font-bold text-slate-700">${propinaVal.toFixed(2)}</span>
+                        </div>
+                      )}
                     </div>
 
                     <div className="border-t border-slate-200 pt-3 mt-3 flex justify-between items-end">
                       <div>
                         <span className="text-[10px] font-bold text-slate-400 uppercase">Total</span>
                       </div>
-                      <span className="text-xl font-black text-slate-900">${orderSummary?.totalUSD ? (orderSummary.totalUSD + 0.50).toFixed(2) : orderData.totalUSD.toFixed(2)}</span>
+                      <span className="text-xl font-black text-slate-900">${displayTotal.toFixed(2)}</span>
                     </div>
                   </div>
                 </div>

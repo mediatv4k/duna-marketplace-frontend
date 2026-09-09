@@ -11,9 +11,9 @@
 'use client';
 
 import React, { useState } from 'react';
-import { 
-  X, Bike, Store, Navigation, MapPin, 
-  Trash2, ArrowRight, Gift, Truck 
+import {
+  X, Bike, Store, Navigation, MapPin,
+  Trash2, ArrowRight, Gift, Truck
 } from 'lucide-react';
 
 export interface CartItem {
@@ -70,9 +70,9 @@ export default function CartModal({
   onOpenCheckout,
   isNationalShippingEnabled = true,
 }: CartModalProps) {
-  
+
   const [selectedAgency, setSelectedAgency] = useState<'MRW' | 'ZOOM' | 'TEALCA'>('MRW');
-  const costoNacionalFijo = 4.50; 
+  const costoNacionalFijo = 4.50;
 
   if (!isOpen) return null;
 
@@ -82,18 +82,18 @@ export default function CartModal({
   return (
     <div className="fixed inset-0 z-[140] flex items-center justify-center bg-black/75 p-4 backdrop-blur-sm animate-in fade-in duration-150">
       <div className="w-full max-w-[420px] h-[590px] bg-white rounded-[28px] shadow-2xl flex flex-col overflow-hidden animate-in zoom-in-95 duration-200">
-        
+
         <div className="h-[325px] flex flex-col border-b border-slate-100 bg-white shrink-0">
-          
+
           {/* Header Fijo */}
           <div className="bg-[#fe6712] w-full px-5 py-3 flex justify-between items-center text-white shrink-0">
             <div>
               <h3 className="font-black text-[17px] leading-tight mb-0.5">Fase 1: Tu Pedido y Entrega</h3>
               <p className="text-[10px] font-medium text-white/90">Revisa tus productos y configura tu destino</p>
             </div>
-            <button 
+            <button
               type="button"
-              onClick={onClose} 
+              onClick={onClose}
               className="w-6 h-6 rounded-full bg-white/20 flex items-center justify-center text-white hover:bg-white/30 transition cursor-pointer shrink-0"
             >
               <X className="h-3.5 w-3.5" />
@@ -107,9 +107,9 @@ export default function CartModal({
                 <div className="flex items-center gap-1.5">
                   <Gift className="h-3.5 w-3.5 text-[#fe6712]" />
                   <span className="text-[10px] font-black text-slate-800">Recompensa D&apos;una</span>
-                  
-                  <button 
-                    type="button" 
+
+                  <button
+                    type="button"
                     onClick={() => setRewardMode(prev => prev === 'DYNAMIC' ? 'FIXED' : 'DYNAMIC')}
                     title="Toca para alternar modelo"
                     className="text-[7px] font-black px-1.5 py-0.2 rounded bg-orange-200/70 text-[#fe6712] uppercase tracking-wider ml-1 hover:bg-orange-300 transition cursor-pointer"
@@ -165,13 +165,13 @@ export default function CartModal({
                           </span>
                         </div>
                       </div>
-                      
+
                       {/* Opcional: Sub-ingredientes (super compactos si existen) */}
                       {item.breakdown && item.breakdown.length > 0 && (
                         <div className="flex flex-wrap gap-x-2 mt-0.5">
                           {item.breakdown.map((b, bIdx) => (
                             <p key={bIdx} className="text-[8.5px] font-semibold text-slate-400 flex items-center gap-0.5 leading-none">
-                              <span className="text-[#fe6712]">•</span> 
+                              <span className="text-[#fe6712]">•</span>
                               <span className="truncate max-w-[120px]">{b}</span>
                             </p>
                           ))}
@@ -179,14 +179,14 @@ export default function CartModal({
                       )}
                     </div>
 
-                    <button 
+                    <button
                       type="button"
-                      onClick={() => { 
+                      onClick={() => {
                         if (totalItems <= 1) {
                           onClose();
                         }
                         onUpdateQty(item.code, -(item.qty || 1));
-                      }} 
+                      }}
                       className="w-6 h-6 rounded-md border border-slate-100 bg-slate-50 flex items-center justify-center text-slate-400 hover:text-red-500 hover:bg-red-50 transition cursor-pointer shrink-0"
                     >
                       <Trash2 className="h-3 w-3" />
@@ -204,27 +204,27 @@ export default function CartModal({
         </div>
 
         <div className="h-[265px] shrink-0 px-4 pt-2 pb-2.5 bg-white flex flex-col justify-between">
-          
+
           <div className="space-y-1">
             <div className={`grid gap-1.5 ${isNationalShippingEnabled ? 'grid-cols-3' : 'grid-cols-2'}`}>
-              <button 
+              <button
                 type="button"
-                onClick={() => setDeliveryMode('delivery')} 
+                onClick={() => setDeliveryMode('delivery')}
                 className={`py-1 rounded-full text-[11px] font-black flex items-center justify-center gap-1 transition-all ${deliveryMode === 'delivery' ? 'bg-[#fe6712] text-white shadow-md' : 'bg-white border border-slate-200 text-slate-500 hover:bg-slate-50'}`}
               >
                 <Bike className="w-3 h-3" /> Delivery
               </button>
-              <button 
+              <button
                 type="button"
-                onClick={() => setDeliveryMode('pickup')} 
+                onClick={() => setDeliveryMode('pickup')}
                 className={`py-1 rounded-full text-[11px] font-black flex items-center justify-center gap-1 transition-all ${deliveryMode === 'pickup' ? 'bg-[#fe6712] text-white shadow-md' : 'bg-white border border-slate-200 text-slate-500 hover:bg-slate-50'}`}
               >
                 <Store className="w-3 h-3" /> Pickup
               </button>
               {isNationalShippingEnabled && (
-                <button 
+                <button
                   type="button"
-                  onClick={() => setDeliveryMode('national')} 
+                  onClick={() => setDeliveryMode('national')}
                   className={`py-1 rounded-full text-[11px] font-black flex items-center justify-center gap-1 transition-all ${deliveryMode === 'national' ? 'bg-sky-600 text-white shadow-md' : 'bg-white border border-sky-200 text-sky-700 hover:bg-sky-50'}`}
                 >
                   <Truck className="w-3 h-3" /> Nacional
@@ -250,20 +250,20 @@ export default function CartModal({
             ) : (
               <>
                 <div className="flex gap-1.5">
-                  <button 
+                  <button
                     type="button"
                     className="flex-1 border border-orange-200 text-[#fe6712] py-1 rounded-full text-[12px] font-black flex items-center justify-center gap-1 hover:bg-orange-50 transition cursor-pointer"
                   >
                     <Navigation className="w-3.5 h-3.5" /> Mi Ubicación
                   </button>
-                  <button 
+                  <button
                     type="button"
                     className="w-7 h-7 border border-orange-200 text-[#fe6712] rounded-full flex items-center justify-center hover:bg-orange-50 transition cursor-pointer shrink-0"
                   >
                     <MapPin className="w-3.5 h-3.5" />
                   </button>
                 </div>
-                
+
                 <div className="bg-slate-50 rounded-full py-1 px-3 text-center border border-slate-200 flex items-center justify-center gap-1">
                   <span>📍</span>
                   <span className="text-[10px] font-bold text-slate-700 truncate">Cabimas Centro (Sector Av. Intercomunal)</span>
@@ -307,7 +307,7 @@ export default function CartModal({
               <span className="text-[12px]">Subtotal:</span>
               <span className="font-black text-slate-800 text-[12px]">${subtotalUSD.toFixed(2)} USD</span>
             </div>
-            
+
             {deliveryMode === 'delivery' && (
               <div className="flex justify-between items-center text-slate-500 font-medium">
                 <span className="flex items-center gap-1 text-[12px]">
@@ -338,21 +338,22 @@ export default function CartModal({
               <span className="text-[18px] font-black text-[#fe6712] leading-none">${totalCalculadoFinal.toFixed(2)} USD</span>
             </div>
 
-            <button 
+            <button
               type="button"
-              onClick={() => { 
-                onClose(); 
-                onOpenCheckout({ 
-                  metodoEntrega: deliveryMode, 
-                  direccion: deliveryMode === 'national' ? `Agencia ${selectedAgency} (Cabimas)` : 'Cabimas Centro (Sector Av. Intercomunal)', 
-                  costoEnvio: deliveryMode === 'national' ? 0 : deliveryCost, 
-                  subtotalUSD: subtotalUSD, 
+              onClick={() => {
+                onClose();
+                onOpenCheckout({
+                  metodoEntrega: deliveryMode,
+                  direccion: deliveryMode === 'national' ? `Agencia ${selectedAgency} (Cabimas)` : 'Cabimas Centro (Sector Av. Intercomunal)',
+                  costoEnvio: deliveryMode === 'national' ? 0 : deliveryCost,
+                  subtotalUSD: subtotalUSD,
                   totalUSD: totalCalculadoFinal,
                   esEnvioNacional: deliveryMode === 'national',
                   agenciaNacional: deliveryMode === 'national' ? selectedAgency : null,
-                  costoEnvioNacional: deliveryMode === 'national' ? costoNacionalFijo : 0
-                }); 
-              }} 
+                  costoEnvioNacional: deliveryMode === 'national' ? costoNacionalFijo : 0,
+                  items: cartItems
+                });
+              }}
               className={`w-full text-white font-black py-1.5 mt-1 rounded-full transition shadow-md text-[12px] flex items-center justify-center gap-1.5 cursor-pointer active:scale-95 ${deliveryMode === 'national' ? 'bg-sky-600 hover:bg-sky-700' : 'bg-[#fe6712] hover:bg-[#e0580d]'}`}
             >
               <span>PROCEDER AL PAGO</span>

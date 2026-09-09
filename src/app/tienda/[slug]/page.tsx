@@ -3,8 +3,8 @@
 import React, { useState, useEffect, useRef } from 'react';
 import Link from 'next/link';
 import { useParams } from 'next/navigation';
-import { 
-  MapPin, Search, ChevronRight, ChevronLeft, 
+import {
+  MapPin, Search, ChevronRight, ChevronLeft,
   X, ShoppingCart, Star, ArrowLeft, Sparkles, SlidersHorizontal, Plus, Truck, Bike, Store, Zap, Flame, ShieldCheck
 } from 'lucide-react';
 import { getBCVRate } from '@/lib/bcvRate';
@@ -41,9 +41,9 @@ const STORES_DATA: Record<string, any> = {
       { id: 2, name: "LÍNEA ECONÓMICA", price: 19.25, originalPrice: 24.00, badge: "⭐ TOP VENTAS", img: "/images/promo-2.png" }
     ],
     catalogo: [
-      { 
-        code: "H001-004", category: "LÍNEA ML", name: "Papa Cono 12 Und Mínimo", 
-        desc: "12 Unidades. Sabores con selección libre por unidad.", 
+      {
+        code: "H001-004", category: "LÍNEA ML", name: "Papa Cono 12 Und Mínimo",
+        desc: "12 Unidades. Sabores con selección libre por unidad.",
         price: 9.30, originalPrice: 12.00, cat: "linea-ml", status: 'ACTIVE',
         stock: 2,
         badge: "🔥 85 pedidos hoy",
@@ -62,9 +62,9 @@ const STORES_DATA: Record<string, any> = {
           }
         ]
       },
-      { 
-        code: "H007-001", category: "PAPA CHICHA", name: "Chicha para llevar 32 Oz Especial", 
-        desc: "Rica chicha tradicional con canela y leche condensada.", 
+      {
+        code: "H007-001", category: "PAPA CHICHA", name: "Chicha para llevar 32 Oz Especial",
+        desc: "Rica chicha tradicional con canela y leche condensada.",
         price: 8.00, originalPrice: 10.00, cat: "chicha", status: 'ACTIVE',
         stock: 15,
         badge: "🤤 MÁS VENDIDO",
@@ -107,9 +107,9 @@ const STORES_DATA: Record<string, any> = {
     ],
     promociones: [],
     catalogo: [
-      { 
-        code: "PR001-001", category: "LICORES", name: "OLD PARR 12 AÑOS 0,75L", 
-        desc: "Whisky escocés blend 12 años 0.75L con estuche.", 
+      {
+        code: "PR001-001", category: "LICORES", name: "OLD PARR 12 AÑOS 0,75L",
+        desc: "Whisky escocés blend 12 años 0.75L con estuche.",
         price: 38.00, originalPrice: 45.00, cat: "licores", status: 'ACTIVE',
         stock: 3,
         badge: "👑 FAVORITO VIP",
@@ -149,13 +149,13 @@ export default function DynamicStoreView() {
   const [isCheckoutOpen, setIsCheckoutOpen] = useState(false);
   const [isMasterModalOpen, setIsMasterModalOpen] = useState(false);
   const [activeProductForMaster, setActiveProductForMaster] = useState<any | null>(null);
-  
+
   const [isTrackingOpen, setIsTrackingOpen] = useState(false);
   const [activeOrderId, setActiveOrderId] = useState("788");
-  
+
   const [deliveryMode, setDeliveryMode] = useState<'delivery' | 'pickup' | 'national'>('delivery');
   const [rewardMode, setRewardMode] = useState<'DYNAMIC' | 'FIXED'>('DYNAMIC');
-  
+
   const [orderSummaryData, setOrderSummaryData] = useState({
     metodoEntrega: 'delivery' as const,
     direccion: 'Cabimas Centro (Sector Av. Intercomunal)',
@@ -174,6 +174,15 @@ export default function DynamicStoreView() {
 
   const storeNiche = detectStoreNiche(merchant);
 
+  const generateConfigHash = (str: string): string => {
+    let hash = 0;
+    for (let i = 0; i < str.length; i++) {
+      hash = (hash << 5) - hash + str.charCodeAt(i);
+      hash |= 0;
+    }
+    return Math.abs(hash).toString(36);
+  };
+
   const addToCartDirect = (product: any, customPrice?: number, customName?: string, customKey?: string, breakdown?: string[]) => {
     const priceToUse = customPrice !== undefined ? customPrice : product.price;
     const nameToUse = customName || product.name;
@@ -184,9 +193,9 @@ export default function DynamicStoreView() {
       if (existing) {
         return { ...prev, [uniqueKey]: { ...existing, qty: existing.qty + 1 } };
       }
-      return { 
-        ...prev, 
-        [uniqueKey]: { 
+      return {
+        ...prev,
+        [uniqueKey]: {
           code: uniqueKey,
           category: product.category || product.cat,
           name: nameToUse,
@@ -196,7 +205,7 @@ export default function DynamicStoreView() {
           status: product.status || 'ACTIVE',
           qty: 1,
           breakdown: breakdown || []
-        } 
+        }
       };
     });
   };
@@ -208,7 +217,11 @@ export default function DynamicStoreView() {
 
   const handleAddToCartFromMaster = (payload: VariantSelectionPayload) => {
     if (!activeProductForMaster) return;
-    const compositeKey = `${payload.productCode}-${Date.now()}`;
+    const configSignature = (payload?.breakdown && payload.breakdown.length > 0)
+      ? payload.breakdown.join('__')
+      : (payload?.summaryText || '');
+    const configHash = configSignature ? generateConfigHash(configSignature) : 'std';
+    const compositeKey = `${payload.productCode}-${configHash}`;
     addToCartDirect(
       activeProductForMaster,
       payload.totalPrice / payload.qty,
@@ -254,7 +267,7 @@ export default function DynamicStoreView() {
 
   return (
     <div className="min-h-screen bg-[#f8fafc] font-sans text-slate-900 pb-28">
-      
+
       {/* 1. TOPBAR GLOBAL */}
       <div className="bg-[#0f172a] text-white text-[11px] py-2 px-4 md:px-8 border-b border-white/10 sticky top-0 z-50">
         <div className="max-w-7xl mx-auto flex justify-between items-center">
@@ -278,10 +291,10 @@ export default function DynamicStoreView() {
       <div className="relative">
         <div className="w-full max-w-[1440px] mx-auto px-2 sm:px-4 md:px-6 pt-2">
           <div className="relative w-full h-36 sm:h-44 md:h-52 rounded-2xl md:rounded-3xl overflow-hidden shadow-xs border border-slate-200/80 bg-[#2fa8f9]">
-            
-            <img 
-              src={merchant.bannerImg} 
-              alt={merchant.name} 
+
+            <img
+              src={merchant.bannerImg}
+              alt={merchant.name}
               className="w-full h-full object-contain sm:object-cover object-center"
               onError={(e: any) => {
                 e.target.onerror = null;
@@ -289,15 +302,15 @@ export default function DynamicStoreView() {
               }}
             />
 
-            <Link 
-              href="/" 
+            <Link
+              href="/"
               title="Volver a D'una Marketplace"
               className="absolute top-3 right-3 sm:top-4 sm:right-4 z-30 bg-white/90 hover:bg-white text-[#fe6712] p-2.5 sm:px-3.5 sm:py-2 rounded-2xl shadow-lg border border-white/40 flex items-center gap-2 hover:scale-105 transition backdrop-blur-md group"
             >
-              <img 
-                src="/images/isotipo-duna.png" 
-                alt="D'una" 
-                className="w-6 h-6 object-contain" 
+              <img
+                src="/images/isotipo-duna.png"
+                alt="D'una"
+                className="w-6 h-6 object-contain"
                 onError={(e: any) => { e.target.style.display = 'none'; }}
               />
               <span className="hidden sm:inline text-xs font-black text-slate-800">D'una</span>
@@ -305,9 +318,9 @@ export default function DynamicStoreView() {
 
             <div className="absolute bottom-10 left-3 sm:bottom-11 sm:left-6 z-20 flex items-center gap-3">
               <div className="w-12 h-12 sm:w-16 sm:h-16 rounded-2xl bg-white p-1.5 shadow-lg border border-white/60 flex items-center justify-center shrink-0">
-                <img 
-                  src={merchant.image} 
-                  alt={merchant.name} 
+                <img
+                  src={merchant.image}
+                  alt={merchant.name}
                   className="w-full h-full object-contain"
                 />
               </div>
@@ -331,8 +344,8 @@ export default function DynamicStoreView() {
         <div className="max-w-2xl mx-auto px-6 -mt-5 sm:-mt-6 relative z-20">
           <div className="bg-white/95 backdrop-blur-md rounded-2xl border border-slate-200 shadow-md px-4 py-2 flex items-center gap-3">
             <Search className="w-4 h-4 text-slate-400 shrink-0" />
-            <input 
-              type="text" 
+            <input
+              type="text"
               value={searchQuery}
               onChange={(e) => setSearchQuery(e.target.value)}
               placeholder="¿Qué se te antoja hoy en esta tienda?"
@@ -361,8 +374,8 @@ export default function DynamicStoreView() {
               {storeData.promociones.map((promo: any) => {
                 const ahorro = promo.originalPrice ? (promo.originalPrice - promo.price).toFixed(2) : null;
                 return (
-                  <div 
-                    key={promo.id} 
+                  <div
+                    key={promo.id}
                     onClick={() => addToCartDirect({ code: `PROMO-${promo.id}`, name: promo.name, desc: "Promoción oficial activa.", price: promo.price, image: promo.img, status: 'ACTIVE' })}
                     className="w-[140px] sm:w-[160px] bg-white rounded-2xl overflow-hidden shadow-xs hover:shadow-md transition-all cursor-pointer shrink-0 border border-slate-200/80 group flex flex-col justify-between p-2.5"
                   >
@@ -404,8 +417,8 @@ export default function DynamicStoreView() {
                 key={cat.id}
                 onClick={() => setSelectedCat(cat.id)}
                 className={`px-4 py-1.5 rounded-full text-[11px] font-black uppercase tracking-wider transition whitespace-nowrap cursor-pointer ${
-                  active 
-                    ? 'bg-[#fe6712] text-white shadow-xs' 
+                  active
+                    ? 'bg-[#fe6712] text-white shadow-xs'
                     : 'bg-white text-slate-600 border border-slate-200 hover:border-slate-300 hover:text-slate-900'
                 }`}
               >
@@ -433,14 +446,14 @@ export default function DynamicStoreView() {
               const esEscarcéz = p.stock !== undefined && p.stock <= 3;
 
               return (
-                <div 
-                  key={p.code} 
+                <div
+                  key={p.code}
                   onClick={() => handleOpenMasterModal(p)}
                   className="bg-white rounded-2xl p-3 md:p-3.5 border border-slate-200/80 shadow-xs hover:shadow-lg hover:-translate-y-1 transition-all cursor-pointer flex flex-col justify-between group relative"
                 >
                   <div className="w-full aspect-square bg-slate-50 rounded-xl flex items-center justify-center p-3 mb-3 overflow-hidden border border-slate-100 relative">
                     <img src={p.image} alt={p.name} className="w-full h-full object-contain group-hover:scale-105 transition-transform duration-300" />
-                    
+
                     {p.badge && (
                       <span className="absolute top-2 left-2 bg-slate-900/90 backdrop-blur-xs text-amber-300 text-[8.5px] font-black px-2 py-0.5 rounded shadow-sm flex items-center gap-1">
                         <Zap className="w-2.5 h-2.5 text-amber-400 fill-amber-400" />
@@ -542,6 +555,8 @@ export default function DynamicStoreView() {
           setIsCartOpen(false);
           setOrderSummaryData({
             ...summary,
+            items: summary.items || [],
+            merchantName: merchant.name,
             esEnvioNacional: merchant.isNationalShippingEnabled || false,
             agenciaNacional: merchant.preferredNationalCouriers?.[0] || 'MRW',
             costoEnvioNacional: 4.50
@@ -559,8 +574,12 @@ export default function DynamicStoreView() {
         tasaBcv={bcvRate}
         merchantName={merchant.name}
         onFinalizeOrder={(orderData) => {
-          const idGen = orderData?.id || '788';
+          const idGen = orderData?.id || `${Math.floor(100000 + Math.random() * 900000)}`;
           setActiveOrderId(idGen);
+          if (typeof window !== 'undefined') {
+            localStorage.setItem('last_active_order_id', idGen);
+            localStorage.setItem('last_active_order', JSON.stringify(orderData));
+          }
           setCart({});
         }}
         onBackToCart={() => {
@@ -574,10 +593,11 @@ export default function DynamicStoreView() {
       />
 
       {/* MODAL DE TRACKING */}
-      <OrderTrackingModal 
-        isOpen={isTrackingOpen} 
-        onClose={() => setIsTrackingOpen(false)} 
-        orderId={activeOrderId} 
+      <OrderTrackingModal
+        isOpen={isTrackingOpen}
+        onClose={() => setIsTrackingOpen(false)}
+        orderId={activeOrderId}
+        orderSummary={orderSummaryData}
       />
 
     </div>

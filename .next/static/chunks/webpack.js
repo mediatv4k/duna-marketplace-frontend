@@ -192,11 +192,7 @@
 /******/ 	
 /******/ 	/* webpack/runtime/getFullHash */
 /******/ 	!function() {
-<<<<<<< HEAD
-/******/ 		__webpack_require__.h = function() { return "c5329ebc8d5653c2"; }
-=======
-/******/ 		__webpack_require__.h = function() { return "7818d5ee015d8649"; }
->>>>>>> ed658e6 (feat: optimización de pasarela de pago, cofre d'una opt-in y simetría de fases)
+/******/ 		__webpack_require__.h = function() { return "10e8ef958d63ccf8"; }
 /******/ 	}();
 /******/ 	
 /******/ 	/* webpack/runtime/global */

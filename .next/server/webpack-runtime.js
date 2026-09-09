@@ -130,11 +130,7 @@
 /******/ 	
 /******/ 	/* webpack/runtime/getFullHash */
 /******/ 	(() => {
-<<<<<<< HEAD
-/******/ 		__webpack_require__.h = () => ("c3bc88996bbd55d5")
-=======
-/******/ 		__webpack_require__.h = () => ("f8a58e0c53eeec27")
->>>>>>> ed658e6 (feat: optimización de pasarela de pago, cofre d'una opt-in y simetría de fases)
+/******/ 		__webpack_require__.h = () => ("691ba8e01db58a47")
 /******/ 	})();
 /******/ 	
 /******/ 	/* webpack/runtime/hasOwnProperty shorthand */

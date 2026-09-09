@@ -11,8 +11,8 @@
 'use client';
 
 import React, { useState } from 'react';
-import { 
-  ArrowRight, ArrowLeft, X, HeartHandshake, Check, Copy, Upload, 
+import {
+  ArrowRight, ArrowLeft, X, HeartHandshake, Check, Copy, Upload,
   CheckCircle2, Info, Clock, MessageCircle, FileText, CreditCard, Gift, Sparkles, Truck, Bookmark
 } from 'lucide-react';
 import { initializeApp, getApps, getApp } from 'firebase/app';
@@ -56,15 +56,17 @@ const COUNTRY_CODES = [ { code: '+58', label: '🇻🇪 +58' }, { code: '+1', la
 interface CheckoutModalProps {
   isOpen: boolean;
   onClose: () => void;
-  orderSummary: { 
-    metodoEntrega: 'delivery' | 'pickup' | 'national'; 
-    direccion: string; 
-    costoEnvio: number; 
+  orderSummary: {
+    metodoEntrega: 'delivery' | 'pickup' | 'national';
+    direccion: string;
+    costoEnvio: number;
     subtotalUSD: number;
-    totalUSD: number; 
+    totalUSD: number;
     esEnvioNacional?: boolean;
     agenciaNacional?: 'MRW' | 'ZOOM' | 'TEALCA' | 'LIBERTY';
-    costoEnvioNacional?: number; 
+    costoEnvioNacional?: number;
+    items?: any[];
+    merchantName?: string;
   };
   tasaBcv: number;
   merchantName?: string;
@@ -85,11 +87,11 @@ export default function CheckoutModal({
   onViewTracking = () => console.log("Rastrear"),
   onViewReceipt = () => alert("Mostrando recibo digital corporativo..."),
 }: CheckoutModalProps) {
-  
+
   const [pasoVista, setPasoVista] = useState<'formulario' | 'instrucciones' | 'exito'>('formulario');
   const [pagoConfirmado, setPagoConfirmado] = useState<boolean>(true);
 
-  const [orderCount, setOrderCount] = useState<number>(3); 
+  const [orderCount, setOrderCount] = useState<number>(3);
   const [usarRecompensa, setUsarRecompensa] = useState<boolean>(false);
 
   const [nombre, setNombre] = useState('OSMER BENITO');
@@ -100,7 +102,7 @@ export default function CheckoutModal({
 
   const [propina, setPropina] = useState<number>(0.50);
   const [selectedBankId, setSelectedBankId] = useState<string>('bnc');
-  
+
   const [modalidadNacional, setModalidadNacional] = useState<'PREPAID' | 'COD'>('COD');
 
   const [referenciaPago, setReferenciaPago] = useState('');
@@ -111,14 +113,14 @@ export default function CheckoutModal({
 
   const subtotalNeto = orderSummary.subtotalUSD || 0;
   const esMetodoNacional = orderSummary.metodoEntrega === 'national';
-  
-  const costoNacionalAplicado = (esMetodoNacional && modalidadNacional === 'PREPAID') 
-    ? (orderSummary.costoEnvioNacional || 0) 
+
+  const costoNacionalAplicado = (esMetodoNacional && modalidadNacional === 'PREPAID')
+    ? (orderSummary.costoEnvioNacional || 0)
     : 0;
 
   const esElegibleParaCofre = orderCount >= 3 && orderSummary.metodoEntrega === 'delivery';
   const aplicaDescuentoDelivery = esElegibleParaCofre && usarRecompensa;
-  
+
   const descuentoUSD = aplicaDescuentoDelivery ? (orderSummary.costoEnvio * 0.25) : 0;
 
   const totalSinDescuentoUSD = subtotalNeto + orderSummary.costoEnvio + costoNacionalAplicado + propina;
@@ -130,13 +132,13 @@ export default function CheckoutModal({
   const totalSinDescuentoBs = totalSinDescuentoUSD * tasaBcv;
 
   const handleToggleTip = (monto: number) => setPropina((prev) => (prev === monto ? 0 : monto));
-  
-  const handleCopyText = (texto: string, campo: string) => { 
-    navigator.clipboard.writeText(texto); 
-    setCopiadoTexto(campo); 
-    setTimeout(() => setCopiadoTexto(null), 2000); 
+
+  const handleCopyText = (texto: string, campo: string) => {
+    navigator.clipboard.writeText(texto);
+    setCopiadoTexto(campo);
+    setTimeout(() => setCopiadoTexto(null), 2000);
   };
-  
+
   const handleCopyAll = () => {
     let info = '';
     if (currentBank.type === 'pago_movil') {
@@ -148,19 +150,19 @@ export default function CheckoutModal({
     } else {
       info = `Efectivo al Repartidor\nMonto: $${totalFinalUSD.toFixed(2)} USD`;
     }
-    navigator.clipboard.writeText(info); 
-    setCopiadoTexto('todo'); 
+    navigator.clipboard.writeText(info);
+    setCopiadoTexto('todo');
     setTimeout(() => setCopiadoTexto(null), 2000);
   };
 
-  const handleFileChange = (e: React.ChangeEvent<HTMLInputElement>) => { 
-    if (e.target.files && e.target.files[0]) setNombreArchivo(e.target.files[0].name); 
+  const handleFileChange = (e: React.ChangeEvent<HTMLInputElement>) => {
+    if (e.target.files && e.target.files[0]) setNombreArchivo(e.target.files[0].name);
   };
-  
+
   const handleProceedToInstructions = () => {
-    if (!nombre.trim() || !cedula.trim() || !telefono.trim()) { 
-      alert('Por favor completa tus datos de contacto.'); 
-      return; 
+    if (!nombre.trim() || !cedula.trim() || !telefono.trim()) {
+      alert('Por favor completa tus datos de contacto.');
+      return;
     }
     setPasoVista('instrucciones');
   };
@@ -168,20 +170,24 @@ export default function CheckoutModal({
   const handleCompleteFinalOrder = () => {
     const tieneReferencia = referenciaPago.trim() !== '';
     const tieneArchivo = nombreArchivo !== null;
-    
+
     setPagoConfirmado(currentBank.type === 'efectivo' || tieneReferencia || tieneArchivo);
 
     const numeroLimpio = telefono.replace(/\D/g, '').replace(/^0+/, '');
     const telefonoCompleto = `${codigoPais}${numeroLimpio}`;
+    const generatedOrderId = `${Math.floor(100000 + Math.random() * 900000)}`;
 
     const orderData = {
-      nombre, 
-      cedula: `${tipoDocumento}${cedula}`, 
+      id: generatedOrderId,
+      nombre,
+      cedula: `${tipoDocumento}${cedula}`,
       telefono: telefonoCompleto,
-      metodoEntrega: orderSummary.metodoEntrega, 
-      direccion: orderSummary.direccion, 
+      metodoEntrega: orderSummary.metodoEntrega,
+      direccion: orderSummary.direccion,
       costoEnvio: orderSummary.costoEnvio,
-      
+      items: orderSummary.items || [],
+      merchantName: merchantName,
+
       esEnvioNacional: esMetodoNacional,
       agenciaNacional: esMetodoNacional ? orderSummary.agenciaNacional : null,
       modalidadNacional: esMetodoNacional ? modalidadNacional : null,
@@ -190,13 +196,13 @@ export default function CheckoutModal({
       subtotalUSD: subtotalNeto,
       couponCode: aplicaDescuentoDelivery ? 'SORPRESA25' : null,
       discountAmount: descuentoUSD,
-      propina, 
-      metodoPago: currentBank.type, 
-      bancoSeleccionado: currentBank.name, 
+      propina,
+      metodoPago: currentBank.type,
+      bancoSeleccionado: currentBank.name,
       totalUSD: totalFinalUSD,
-      totalBolivares: currentBank.type === 'pago_movil' ? totalBolivares : null, 
+      totalBolivares: currentBank.type === 'pago_movil' ? totalBolivares : null,
       tasaBcv,
-      referencia: referenciaPago, 
+      referencia: referenciaPago,
       comprobante: nombreArchivo,
       createdAt: new Date(),
       status: 'pendiente'
@@ -213,7 +219,7 @@ export default function CheckoutModal({
   return (
     <div className="fixed inset-0 z-[140] flex items-center justify-center bg-black/75 p-3 backdrop-blur-sm animate-in fade-in duration-150">
       <div className="w-full max-w-[420px] h-[590px] overflow-hidden rounded-[28px] bg-white shadow-2xl border border-slate-100 flex flex-col justify-between">
-        
+
         {pasoVista !== 'exito' ? (
           <div className="bg-[#fe6712] px-5 py-3 text-white flex items-center justify-between shrink-0">
             <div>
@@ -224,9 +230,9 @@ export default function CheckoutModal({
                 {pasoVista === 'formulario' ? 'Completa tus datos de contacto y pago' : 'Verifica los datos e instruye tu transferencia'}
               </p>
             </div>
-            <button 
-              type="button" 
-              onClick={onClose} 
+            <button
+              type="button"
+              onClick={onClose}
               className="w-6 h-6 rounded-full bg-white/20 flex items-center justify-center text-white hover:bg-white/30 transition cursor-pointer shrink-0"
             >
               <X className="h-3.5 w-3.5" />
@@ -241,9 +247,9 @@ export default function CheckoutModal({
                 <p className="text-[10px] text-white/90 font-medium mt-0.5">Confirmación De Orden</p>
               </div>
             </div>
-            <button 
-              type="button" 
-              onClick={onClose} 
+            <button
+              type="button"
+              onClick={onClose}
               className="flex h-7 w-7 items-center justify-center rounded-full bg-white/20 hover:bg-white/30 transition cursor-pointer"
             >
               <X className="h-4 w-4 text-white" />
@@ -257,53 +263,53 @@ export default function CheckoutModal({
             <div className="bg-slate-50/70 p-2.5 rounded-2xl border border-slate-100 space-y-1.5 shrink-0">
               <div>
                 <label className="text-[8px] font-black text-slate-400 uppercase tracking-wider block mb-0.5">Nombre Completo</label>
-                <input 
-                  type="text" 
-                  value={nombre} 
-                  onChange={(e) => setNombre(e.target.value)} 
-                  className="w-full rounded-xl border border-slate-200 bg-white px-3 py-1 text-[11px] font-bold text-slate-800 focus:border-[#fe6712] focus:outline-none transition shadow-2xs" 
+                <input
+                  type="text"
+                  value={nombre}
+                  onChange={(e) => setNombre(e.target.value)}
+                  className="w-full rounded-xl border border-slate-200 bg-white px-3 py-1 text-[11px] font-bold text-slate-800 focus:border-[#fe6712] focus:outline-none transition shadow-2xs"
                 />
               </div>
               <div className="grid grid-cols-2 gap-2">
                 <div>
                   <label className="text-[8px] font-black text-slate-400 uppercase tracking-wider block mb-0.5">Cédula</label>
                   <div className="flex gap-1">
-                    <select 
-                      value={tipoDocumento} 
-                      onChange={(e) => setTipoDocumento(e.target.value)} 
+                    <select
+                      value={tipoDocumento}
+                      onChange={(e) => setTipoDocumento(e.target.value)}
                       className="rounded-xl border border-slate-200 bg-white px-1 py-1 text-[10px] font-bold text-slate-700 focus:border-[#fe6712] focus:outline-none cursor-pointer"
                     >
                       <option value="V-">V-</option>
                       <option value="E-">E-</option>
                       <option value="J-">J-</option>
                     </select>
-                    <input 
-                      type="text" 
-                      inputMode="numeric" 
-                      value={cedula} 
-                      onChange={(e) => setCedula(e.target.value)} 
-                      className="w-full rounded-xl border border-slate-200 bg-white px-2 py-1 text-[11px] font-bold text-slate-800 focus:border-[#fe6712] focus:outline-none transition shadow-2xs" 
+                    <input
+                      type="text"
+                      inputMode="numeric"
+                      value={cedula}
+                      onChange={(e) => setCedula(e.target.value)}
+                      className="w-full rounded-xl border border-slate-200 bg-white px-2 py-1 text-[11px] font-bold text-slate-800 focus:border-[#fe6712] focus:outline-none transition shadow-2xs"
                     />
                   </div>
                 </div>
                 <div>
                   <label className="text-[8px] font-black text-slate-400 uppercase tracking-wider block mb-0.5">WhatsApp</label>
                   <div className="flex gap-1">
-                    <select 
-                      value={codigoPais} 
-                      onChange={(e) => setCodigoPais(e.target.value)} 
+                    <select
+                      value={codigoPais}
+                      onChange={(e) => setCodigoPais(e.target.value)}
                       className="rounded-xl border border-slate-200 bg-white px-1 py-1 text-[10px] font-bold text-slate-700 focus:border-[#fe6712] focus:outline-none cursor-pointer shrink-0"
                     >
                       {COUNTRY_CODES.map((item) => (
                         <option key={item.code} value={item.code}>{item.label}</option>
                       ))}
                     </select>
-                    <input 
-                      type="tel" 
-                      inputMode="numeric" 
-                      value={telefono} 
-                      onChange={(e) => setTelefono(e.target.value)} 
-                      className="w-full rounded-xl border border-slate-200 bg-white px-2 py-1 text-[11px] font-bold text-slate-800 focus:border-[#fe6712] focus:outline-none transition shadow-2xs" 
+                    <input
+                      type="tel"
+                      inputMode="numeric"
+                      value={telefono}
+                      onChange={(e) => setTelefono(e.target.value)}
+                      className="w-full rounded-xl border border-slate-200 bg-white px-2 py-1 text-[11px] font-bold text-slate-800 focus:border-[#fe6712] focus:outline-none transition shadow-2xs"
                     />
                   </div>
                 </div>
@@ -316,10 +322,10 @@ export default function CheckoutModal({
               </span>
               <div className="grid grid-cols-4 gap-1 flex-1">
                 {[0.50, 1.00, 1.50, 2.00].map((monto) => (
-                  <button 
-                    type="button" 
-                    key={monto} 
-                    onClick={() => handleToggleTip(monto)} 
+                  <button
+                    type="button"
+                    key={monto}
+                    onClick={() => handleToggleTip(monto)}
                     className={`py-1 rounded-lg text-[10px] font-black transition cursor-pointer ${propina === monto ? 'bg-[#fe6712] text-white shadow-xs' : 'border border-slate-200 bg-white text-slate-600 hover:bg-slate-50'}`}
                   >
                     ${monto.toFixed(2)}
@@ -334,16 +340,16 @@ export default function CheckoutModal({
                   <Truck className="h-3.5 w-3.5 text-sky-600" /> {orderSummary.agenciaNacional}:
                 </span>
                 <div className="flex gap-1">
-                  <button 
+                  <button
                     type="button"
-                    onClick={() => setModalidadNacional('COD')} 
+                    onClick={() => setModalidadNacional('COD')}
                     className={`px-2.5 py-0.5 rounded-lg text-[9px] font-black transition cursor-pointer ${modalidadNacional === 'COD' ? 'bg-sky-600 text-white shadow-xs' : 'bg-white border border-sky-200 text-sky-700'}`}
                   >
                     Cobro Destino
                   </button>
-                  <button 
+                  <button
                     type="button"
-                    onClick={() => setModalidadNacional('PREPAID')} 
+                    onClick={() => setModalidadNacional('PREPAID')}
                     className={`px-2.5 py-0.5 rounded-lg text-[9px] font-black transition cursor-pointer ${modalidadNacional === 'PREPAID' ? 'bg-sky-600 text-white shadow-xs' : 'bg-white border border-sky-200 text-sky-700'}`}
                   >
                     Prepagado (+${(orderSummary.costoEnvioNacional || 0).toFixed(2)})
@@ -355,12 +361,12 @@ export default function CheckoutModal({
             <div className="shrink-0 flex-1">
               <label className="text-[9px] font-bold text-slate-700 block mb-1">Selecciona El Método de Pago</label>
               <div className="grid grid-cols-2 gap-1.5">
-                {BANK_CATALOG.map((banco) => { 
-                  const isSelected = selectedBankId === banco.id; 
+                {BANK_CATALOG.map((banco) => {
+                  const isSelected = selectedBankId === banco.id;
                   return (
-                    <div 
-                      key={banco.id} 
-                      onClick={() => setSelectedBankId(banco.id)} 
+                    <div
+                      key={banco.id}
+                      onClick={() => setSelectedBankId(banco.id)}
                       className={`flex items-center gap-2 p-1.5 rounded-xl border transition cursor-pointer ${banco.bgHover} ${isSelected ? `${banco.borderActive} shadow-xs ring-1 ring-[#fe6712]/30` : 'border-slate-200 bg-white'}`}
                     >
                       {banco.renderLogo()}
@@ -384,7 +390,7 @@ export default function CheckoutModal({
         {/* FASE 3: INSTRUCCIONES DE PAGO */}
         {pasoVista === 'instrucciones' && (
           <div className="px-5 py-2 space-y-1.5 flex-1 overflow-hidden flex flex-col justify-between">
-            
+
             {orderSummary.metodoEntrega === 'delivery' && (
               <div className="bg-orange-50/70 border border-orange-200/60 px-3 py-1.5 rounded-xl shrink-0 space-y-1">
                 <div className="flex items-center justify-between">
@@ -392,8 +398,8 @@ export default function CheckoutModal({
                     <Gift className="h-3.5 w-3.5 text-[#fe6712]" />
                     Cofre Recompensa D&apos;una
                   </span>
-                  <button 
-                    type="button" 
+                  <button
+                    type="button"
                     onClick={() => setOrderCount(prev => prev === 2 ? 3 : 2)}
                     title="Simular 3 compras"
                     className="text-[8px] font-black text-[#fe6712] bg-orange-100 px-1.5 py-0.5 rounded-md hover:bg-orange-200 transition cursor-pointer"
@@ -414,7 +420,7 @@ export default function CheckoutModal({
                       <p className="text-[8px] text-slate-600 font-medium leading-tight w-2/3">
                         Tienes un cupón del <strong>25% OFF en Flete</strong> disponible. ¿Lo usas hoy o lo guardas para después?
                       </p>
-                      <button 
+                      <button
                         type="button"
                         onClick={() => setUsarRecompensa(true)}
                         className="bg-emerald-500 text-white text-[8px] font-black px-2 py-1 rounded shadow-sm hover:bg-emerald-600 transition cursor-pointer"
@@ -427,7 +433,7 @@ export default function CheckoutModal({
                       <span className="text-[8.5px] font-black text-emerald-700 flex items-center gap-1">
                         <CheckCircle2 className="w-3 h-3" /> ¡Descuento Aplicado!
                       </span>
-                      <button 
+                      <button
                         type="button"
                         onClick={() => setUsarRecompensa(false)}
                         className="text-[8px] text-slate-500 underline flex items-center gap-0.5 hover:text-slate-800 transition cursor-pointer"
@@ -486,10 +492,10 @@ export default function CheckoutModal({
               <div className="text-center shrink-0 py-0.5 bg-slate-50 p-2 rounded-xl border border-slate-100">
                 <span className="text-[7.5px] font-black text-slate-400 uppercase tracking-widest block">Total A Transferir</span>
                 <span className="text-xl font-black text-[#fe6712] block leading-tight mt-0.5">
-                  {currentBank.type === 'pago_movil' 
-                    ? `Bs.S ${totalBolivares.toLocaleString('es-VE', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}` 
-                    : currentBank.type === 'binance' 
-                      ? `$${totalFinalUSD.toFixed(2)} USDT` 
+                  {currentBank.type === 'pago_movil'
+                    ? `Bs.S ${totalBolivares.toLocaleString('es-VE', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`
+                    : currentBank.type === 'binance'
+                      ? `$${totalFinalUSD.toFixed(2)} USDT`
                       : `$${totalFinalUSD.toFixed(2)} USD`}
                 </span>
                 <span className="inline-block mt-1 text-[8px] font-black bg-orange-50 text-[#fe6712] px-2 py-0.5 rounded-full border border-orange-200/50">
@@ -606,7 +612,7 @@ export default function CheckoutModal({
                       <p className="text-[10px] text-slate-500 font-medium leading-snug">Sube tu comprobante en el seguimiento de orden.</p>
                     </div>
                   </div>
-                  
+
                   <div className="w-full h-px bg-slate-200"></div>
 
                   <div className="flex gap-2.5 items-start">
@@ -651,18 +657,18 @@ export default function CheckoutModal({
             </>
           ) : pasoVista === 'instrucciones' ? (
             <div className="space-y-1.5">
-              <button 
-                type="button" 
-                onClick={handleCompleteFinalOrder} 
+              <button
+                type="button"
+                onClick={handleCompleteFinalOrder}
                 className="w-full flex items-center justify-center gap-2 rounded-full bg-[#fe6712] hover:bg-[#e0580d] py-2 text-xs font-black text-white shadow-md transition active:scale-[0.98] cursor-pointer"
               >
                 <span>Completar pedido</span>
                 <Check className="h-4 w-4 stroke-[3]" />
               </button>
               <div className="text-center">
-                <button 
-                  type="button" 
-                  onClick={() => setPasoVista('formulario')} 
+                <button
+                  type="button"
+                  onClick={() => setPasoVista('formulario')}
                   className="text-[10px] font-bold text-slate-500 hover:text-slate-800 underline transition cursor-pointer"
                 >
                   Volver para corregir datos o métodos
@@ -671,17 +677,17 @@ export default function CheckoutModal({
             </div>
           ) : (
             <div className="space-y-1.5">
-              <button 
-                type="button" 
-                onClick={onViewTracking} 
+              <button
+                type="button"
+                onClick={onViewTracking}
                 className="w-full flex items-center justify-center gap-2 rounded-full bg-[#fe6712] hover:bg-[#e0580d] py-2 text-xs font-black text-white shadow-md transition active:scale-[0.98] cursor-pointer"
               >
                 <Clock className="h-4 w-4" />
                 <span>Ver seguimiento de pedido</span>
               </button>
-              <button 
-                type="button" 
-                onClick={onClose} 
+              <button
+                type="button"
+                onClick={onClose}
                 className="w-full flex items-center justify-center rounded-full bg-white border border-slate-200 hover:bg-slate-50 py-2 text-xs font-bold text-slate-700 transition active:scale-[0.98] cursor-pointer"
               >
                 Continuar

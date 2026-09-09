@@ -105,10 +105,24 @@ export default function MerchantStoreView({
     return 0;
   });
 
+  const generateConfigHash = (str: string): string => {
+    let hash = 0;
+    for (let i = 0; i < str.length; i++) {
+      hash = (hash << 5) - hash + str.charCodeAt(i);
+      hash |= 0;
+    }
+    return Math.abs(hash).toString(36);
+  };
+
   const handleProductClick = (product: Product) => {
     setActiveProductForVariant(product);
 
-    if (product.code.startsWith('MF')) {
+    if (
+      product.code.startsWith('MF') ||
+      (product as any).isCombo ||
+      product.category === 'COMBOS' ||
+      /combo/i.test(product.name)
+    ) {
       setIsMasterModalOpen(true);
       return;
     }
@@ -125,7 +139,14 @@ export default function MerchantStoreView({
     addToCartDirect(product, product.price, product.name, product.code, 1);
   };
 
-  const addToCartDirect = (product: Product, customPrice?: number, customName?: string, customKey?: string, quantity: number = 1) => {
+  const addToCartDirect = (
+    product: Product,
+    customPrice?: number,
+    customName?: string,
+    customKey?: string,
+    quantity: number = 1,
+    breakdown?: string[]
+  ) => {
     const priceToUse = customPrice !== undefined ? customPrice : product.price;
     const nameToUse = customName || product.name;
     const uniqueKey = customKey || product.code;
@@ -133,11 +154,25 @@ export default function MerchantStoreView({
     setCart(prev => {
       const existing = prev[uniqueKey];
       if (existing) {
-        return { ...prev, [uniqueKey]: { ...existing, qty: existing.qty + quantity } };
+        return {
+          ...prev,
+          [uniqueKey]: {
+            ...existing,
+            qty: existing.qty + quantity,
+            breakdown: (breakdown && breakdown.length > 0) ? breakdown : existing.breakdown
+          }
+        };
       }
       return {
         ...prev,
-        [uniqueKey]: { ...product, code: uniqueKey, name: nameToUse, price: priceToUse, qty: quantity }
+        [uniqueKey]: {
+          ...product,
+          code: uniqueKey,
+          name: nameToUse,
+          price: priceToUse,
+          qty: quantity,
+          breakdown: breakdown || []
+        }
       };
     });
   };
@@ -147,16 +182,23 @@ export default function MerchantStoreView({
 
     // Normalización retrocompatible: acepta qty/quantity y totalPrice/totalUSD
     const quantity = payload?.qty ?? payload?.quantity ?? 1;
-    const totalUSD = payload?.totalUSD ?? payload?.totalPrice ?? (activeProductForVariant.price * quantity);
-    const summary = payload?.summaryText ? ` (${payload.summaryText})` : '';
-    const compositeKey = `${activeProductForVariant.code}-${Date.now()}`;
+    const rawTotal = payload?.totalUSD ?? payload?.totalPrice ?? (activeProductForVariant.price * quantity);
+    const unitPrice = quantity > 0 ? rawTotal / quantity : rawTotal;
+
+    // Hash determinístico único por configuración de ranuras
+    const configSignature = (payload?.breakdown && Array.isArray(payload.breakdown) && payload.breakdown.length > 0)
+      ? payload.breakdown.join('__')
+      : (payload?.summaryText || '');
+    const configHash = configSignature ? generateConfigHash(configSignature) : 'std';
+    const compositeKey = `${activeProductForVariant.code}-${configHash}`;
 
     addToCartDirect(
       activeProductForVariant,
-      totalUSD,
-      `${activeProductForVariant.name}${summary}`,
+      unitPrice,
+      activeProductForVariant.name,
       compositeKey,
-      quantity
+      quantity,
+      payload?.breakdown
     );
     setIsMasterModalOpen(false);
   };
@@ -374,8 +416,16 @@ export default function MerchantStoreView({
         isOpen={isVariantModalOpen}
         onClose={() => { setIsVariantModalOpen(false); setActiveProductForVariant(null); }}
         onAddToCart={(payload) => {
-          const compositeKey = `${payload.productCode}-${Date.now()}`;
-          addToCartDirect(activeProductForVariant!, payload.totalPrice, `${payload.productName} (${payload.summaryText})`, compositeKey, 1);
+          const configHash = payload.summaryText ? generateConfigHash(payload.summaryText) : 'std';
+          const compositeKey = `${payload.productCode}-${configHash}`;
+          addToCartDirect(
+            activeProductForVariant!,
+            payload.totalPrice,
+            payload.productName,
+            compositeKey,
+            1,
+            payload.summaryText ? [payload.summaryText] : []
+          );
         }}
       />
 
