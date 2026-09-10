@@ -1,4 +1,4 @@
-/**
+﻿/**
  * ==============================================================================
  * BITÁCORA DE ACTUALIZACIÓN - CARRITO D'UNA
  * ==============================================================================
@@ -151,7 +151,6 @@ export default function CartModal({
                 cartItems.map((item, idx) => (
                   <div key={item.code || idx} className="bg-white border border-slate-100 rounded-xl px-2.5 py-2 shadow-sm flex items-center gap-2">
                     <div className="flex-1 min-w-0 flex flex-col justify-center">
-                      {/* Fila principal en 1 sola línea */}
                       <div className="flex items-center justify-between gap-2 w-full">
                         <h5 className="text-[12px] font-black text-slate-900 truncate flex-1" title={item.name || 'Producto'}>
                           {item.name || 'Producto'}
@@ -166,7 +165,6 @@ export default function CartModal({
                         </div>
                       </div>
 
-                      {/* Opcional: Sub-ingredientes (super compactos si existen) */}
                       {item.breakdown && item.breakdown.length > 0 && (
                         <div className="flex flex-wrap gap-x-2 mt-0.5">
                           {item.breakdown.map((b, bIdx) => (

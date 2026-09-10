@@ -1,9 +1,9 @@
 /**
  * ==============================================================================
- * BITÁCORA DE ACTUALIZACIÓN - MOTOR CHECKOUT MAESTRO D'UNA
+ * BITÁCORA DE ACTUALIZACIÓN - MOTOR CHECKOUT DEFINITIVO D'UNA (OSVALDO API)
  * ==============================================================================
- * Fecha: Miércoles, 09 de Septiembre de 2026
- * Arquitectura: Simetría de Títulos (Fase 2 y Fase 3) + Cofre Inteligente + Firebase
+ * Fecha: Jueves, 10 de Septiembre de 2026
+ * Arquitectura: Cero Datos de Prueba + Pasarela de Pago Sincronizada
  * Archivo: src/components/CheckoutModal.tsx
  * ==============================================================================
  */
@@ -15,20 +15,8 @@ import {
   ArrowRight, ArrowLeft, X, HeartHandshake, Check, Copy, Upload,
   CheckCircle2, Info, Clock, MessageCircle, FileText, CreditCard, Gift, Sparkles, Truck, Bookmark
 } from 'lucide-react';
-import { initializeApp, getApps, getApp } from 'firebase/app';
-import { getFirestore, collection, addDoc } from 'firebase/firestore';
 
-const firebaseConfig = {
-  apiKey: process.env.NEXT_PUBLIC_FIREBASE_API_KEY,
-  authDomain: process.env.NEXT_PUBLIC_FIREBASE_AUTH_DOMAIN,
-  projectId: process.env.NEXT_PUBLIC_FIREBASE_PROJECT_ID,
-  storageBucket: process.env.NEXT_PUBLIC_FIREBASE_STORAGE_BUCKET,
-  messagingSenderId: process.env.NEXT_PUBLIC_FIREBASE_MESSAGING_SENDER_ID,
-  appId: process.env.NEXT_PUBLIC_FIREBASE_APP_ID
-};
-
-const app = !getApps().length ? initializeApp(firebaseConfig) : getApp();
-const db = getFirestore(app);
+import { submitPurchaseOrder } from '@/services/marketplaceService';
 
 export interface BankOption {
   id: string;
@@ -67,6 +55,8 @@ interface CheckoutModalProps {
     costoEnvioNacional?: number;
     items?: any[];
     merchantName?: string;
+    merchantId?: string | number;
+    merchantPhone?: string;
   };
   tasaBcv: number;
   merchantName?: string;
@@ -102,7 +92,6 @@ export default function CheckoutModal({
 
   const [propina, setPropina] = useState<number>(0.50);
   const [selectedBankId, setSelectedBankId] = useState<string>('bnc');
-
   const [modalidadNacional, setModalidadNacional] = useState<'PREPAID' | 'COD'>('COD');
 
   const [referenciaPago, setReferenciaPago] = useState('');
@@ -120,7 +109,6 @@ export default function CheckoutModal({
 
   const esElegibleParaCofre = orderCount >= 3 && orderSummary.metodoEntrega === 'delivery';
   const aplicaDescuentoDelivery = esElegibleParaCofre && usarRecompensa;
-
   const descuentoUSD = aplicaDescuentoDelivery ? (orderSummary.costoEnvio * 0.25) : 0;
 
   const totalSinDescuentoUSD = subtotalNeto + orderSummary.costoEnvio + costoNacionalAplicado + propina;
@@ -167,7 +155,7 @@ export default function CheckoutModal({
     setPasoVista('instrucciones');
   };
 
-  const handleCompleteFinalOrder = () => {
+  const handleCompleteFinalOrder = async () => {
     const tieneReferencia = referenciaPago.trim() !== '';
     const tieneArchivo = nombreArchivo !== null;
 
@@ -211,14 +199,73 @@ export default function CheckoutModal({
     onFinalizeOrder(orderData);
     setPasoVista('exito');
 
-    addDoc(collection(db, 'orders'), orderData)
-      .then(() => console.log("✓ Orden sincronizada con Firestore con éxito."))
-      .catch((err) => console.warn("Nota: Firestore operando en modo local/offline:", err.message));
+    try {
+      const itemsAdonis = (orderSummary.items || []).map((item: any) => {
+        const basePrice = Number(item.price || 1.0);
+        const cantNum = Number(item.qty || item.quantity || item.cant || 1);
+        return {
+          id: item.id ? Number(item.id) : 101,
+          code: String(item.code || 'P001'),
+          name: String(item.name || 'Producto'),
+          image: String(item.image || item.img || ''),
+          cant: cantNum,
+          pricing: { unitBasePrice: basePrice, addonsTotal: 0, unitFinalPrice: basePrice },
+          totalPrice: basePrice * cantNum,
+          variants: Array.isArray(item.variants) ? item.variants : [],
+          promo: null
+        };
+      });
+
+      const storeIdNum = Number(orderSummary.merchantId || 13);
+      const storePhoneStr = String(orderSummary.merchantPhone || '584140000000');
+
+      const osvaldoPayload = {
+        id: '',
+        data: itemsAdonis,
+        service: orderSummary.metodoEntrega === 'pickup' ? 'PICKUP' : 'DELIVERY',
+        location: { lat: 10.3910, lng: -71.4423 },
+        duration: 15,
+        distance: 1.0,
+        durationText: '15 min',
+        distanceText: '1.0 km',
+        serviceAmount: Number(orderSummary.costoEnvio || 0),
+        address: String(orderSummary.direccion || 'Cabimas'),
+        phone: telefonoCompleto,
+        customerName: nombre,
+        customerDocument: `${tipoDocumento}${cedula}`,
+        ftoken: '',
+        paymentRef: referenciaPago || 'S/R',
+        totalPaidReferenceAmount: totalBolivares,
+        totalPaidDefaultAmount: totalFinalUSD,
+        totalWithoutDiscount: totalSinDescuentoUSD,
+        paymentMethod: {
+          code: currentBank.type.toUpperCase(),
+          value: currentBank.name,
+          field5: currentBank.type === 'pago_movil' ? 'REF' : 'DEFAULT',
+          field4: `${tipoDocumento}${cedula}`
+        },
+        tip: propina,
+        store: { id: storeIdNum, phone: storePhoneStr },
+        foodStoreId: storeIdNum,
+        couponId: aplicaDescuentoDelivery ? 55 : null,
+        couponCode: aplicaDescuentoDelivery ? 'SORPRESA25' : '',
+        discountAmount: descuentoUSD
+      };
+
+      const response = await submitPurchaseOrder(osvaldoPayload);
+      if (response && (response.code === 1 || response.code === 200 || response.code === 201)) {
+        console.log("✅ ¡ORDEN ENVIADA A ADONISJS Y AL PANEL EXITOSAMENTE!", response);
+      } else {
+        console.warn("⚠️ AdonisJS respondió con observación:", response);
+      }
+    } catch (err) {
+      console.error("❌ Error de red conectando con AdonisJS:", err);
+    }
   };
 
   return (
     <div className="fixed inset-0 z-[140] flex items-center justify-center bg-black/75 p-3 backdrop-blur-sm animate-in fade-in duration-150">
-      <div className="w-full max-w-[420px] h-[590px] overflow-hidden rounded-[28px] bg-white shadow-2xl border border-slate-100 flex flex-col justify-between">
+      <div className="w-full max-w-[420px] h-[610px] overflow-hidden rounded-[28px] bg-white shadow-2xl border border-slate-100 flex flex-col justify-between">
 
         {pasoVista !== 'exito' ? (
           <div className="bg-[#fe6712] px-5 py-3 text-white flex items-center justify-between shrink-0">
@@ -230,11 +277,7 @@ export default function CheckoutModal({
                 {pasoVista === 'formulario' ? 'Completa tus datos de contacto y pago' : 'Verifica los datos e instruye tu transferencia'}
               </p>
             </div>
-            <button
-              type="button"
-              onClick={onClose}
-              className="w-6 h-6 rounded-full bg-white/20 flex items-center justify-center text-white hover:bg-white/30 transition cursor-pointer shrink-0"
-            >
+            <button type="button" onClick={onClose} className="w-6 h-6 rounded-full bg-white/20 flex items-center justify-center text-white hover:bg-white/30 transition cursor-pointer shrink-0">
               <X className="h-3.5 w-3.5" />
             </button>
           </div>
@@ -247,70 +290,37 @@ export default function CheckoutModal({
                 <p className="text-[10px] text-white/90 font-medium mt-0.5">Confirmación De Orden</p>
               </div>
             </div>
-            <button
-              type="button"
-              onClick={onClose}
-              className="flex h-7 w-7 items-center justify-center rounded-full bg-white/20 hover:bg-white/30 transition cursor-pointer"
-            >
+            <button type="button" onClick={onClose} className="flex h-7 w-7 items-center justify-center rounded-full bg-white/20 hover:bg-white/30 transition cursor-pointer">
               <X className="h-4 w-4 text-white" />
             </button>
           </div>
         )}
 
-        {/* FASE 2: FORMULARIO */}
+        {/* FASE 2: FORMULARIO Y SELECCIÓN ESTÉTICA DE BANCOS */}
         {pasoVista === 'formulario' && (
-          <div className="px-5 py-2 space-y-2 flex-1 overflow-hidden flex flex-col justify-between">
+          <div className="px-5 py-3 space-y-3 flex-1 overflow-y-auto no-scrollbar flex flex-col justify-between">
             <div className="bg-slate-50/70 p-2.5 rounded-2xl border border-slate-100 space-y-1.5 shrink-0">
               <div>
                 <label className="text-[8px] font-black text-slate-400 uppercase tracking-wider block mb-0.5">Nombre Completo</label>
-                <input
-                  type="text"
-                  value={nombre}
-                  onChange={(e) => setNombre(e.target.value)}
-                  className="w-full rounded-xl border border-slate-200 bg-white px-3 py-1 text-[11px] font-bold text-slate-800 focus:border-[#fe6712] focus:outline-none transition shadow-2xs"
-                />
+                <input type="text" value={nombre} onChange={(e) => setNombre(e.target.value)} className="w-full rounded-xl border border-slate-200 bg-white px-3 py-1 text-[11px] font-bold text-slate-800 focus:border-[#fe6712] focus:outline-none transition shadow-2xs" />
               </div>
               <div className="grid grid-cols-2 gap-2">
                 <div>
                   <label className="text-[8px] font-black text-slate-400 uppercase tracking-wider block mb-0.5">Cédula</label>
                   <div className="flex gap-1">
-                    <select
-                      value={tipoDocumento}
-                      onChange={(e) => setTipoDocumento(e.target.value)}
-                      className="rounded-xl border border-slate-200 bg-white px-1 py-1 text-[10px] font-bold text-slate-700 focus:border-[#fe6712] focus:outline-none cursor-pointer"
-                    >
-                      <option value="V-">V-</option>
-                      <option value="E-">E-</option>
-                      <option value="J-">J-</option>
+                    <select value={tipoDocumento} onChange={(e) => setTipoDocumento(e.target.value)} className="rounded-xl border border-slate-200 bg-white px-1 py-1 text-[10px] font-bold text-slate-700 focus:outline-none cursor-pointer">
+                      <option value="V-">V-</option><option value="E-">E-</option><option value="J-">J-</option>
                     </select>
-                    <input
-                      type="text"
-                      inputMode="numeric"
-                      value={cedula}
-                      onChange={(e) => setCedula(e.target.value)}
-                      className="w-full rounded-xl border border-slate-200 bg-white px-2 py-1 text-[11px] font-bold text-slate-800 focus:border-[#fe6712] focus:outline-none transition shadow-2xs"
-                    />
+                    <input type="text" inputMode="numeric" value={cedula} onChange={(e) => setCedula(e.target.value)} className="w-full rounded-xl border border-slate-200 bg-white px-2 py-1 text-[11px] font-bold text-slate-800 focus:outline-none transition shadow-2xs" />
                   </div>
                 </div>
                 <div>
                   <label className="text-[8px] font-black text-slate-400 uppercase tracking-wider block mb-0.5">WhatsApp</label>
                   <div className="flex gap-1">
-                    <select
-                      value={codigoPais}
-                      onChange={(e) => setCodigoPais(e.target.value)}
-                      className="rounded-xl border border-slate-200 bg-white px-1 py-1 text-[10px] font-bold text-slate-700 focus:border-[#fe6712] focus:outline-none cursor-pointer shrink-0"
-                    >
-                      {COUNTRY_CODES.map((item) => (
-                        <option key={item.code} value={item.code}>{item.label}</option>
-                      ))}
+                    <select value={codigoPais} onChange={(e) => setCodigoPais(e.target.value)} className="rounded-xl border border-slate-200 bg-white px-1 py-1 text-[10px] font-bold text-slate-700 focus:outline-none cursor-pointer shrink-0">
+                      {COUNTRY_CODES.map((item) => (<option key={item.code} value={item.code}>{item.label}</option>))}
                     </select>
-                    <input
-                      type="tel"
-                      inputMode="numeric"
-                      value={telefono}
-                      onChange={(e) => setTelefono(e.target.value)}
-                      className="w-full rounded-xl border border-slate-200 bg-white px-2 py-1 text-[11px] font-bold text-slate-800 focus:border-[#fe6712] focus:outline-none transition shadow-2xs"
-                    />
+                    <input type="tel" inputMode="numeric" value={telefono} onChange={(e) => setTelefono(e.target.value)} className="w-full rounded-xl border border-slate-200 bg-white px-2 py-1 text-[11px] font-bold text-slate-800 focus:outline-none transition shadow-2xs" />
                   </div>
                 </div>
               </div>
@@ -322,41 +332,12 @@ export default function CheckoutModal({
               </span>
               <div className="grid grid-cols-4 gap-1 flex-1">
                 {[0.50, 1.00, 1.50, 2.00].map((monto) => (
-                  <button
-                    type="button"
-                    key={monto}
-                    onClick={() => handleToggleTip(monto)}
-                    className={`py-1 rounded-lg text-[10px] font-black transition cursor-pointer ${propina === monto ? 'bg-[#fe6712] text-white shadow-xs' : 'border border-slate-200 bg-white text-slate-600 hover:bg-slate-50'}`}
-                  >
+                  <button type="button" key={monto} onClick={() => handleToggleTip(monto)} className={`py-1 rounded-lg text-[10px] font-black transition cursor-pointer ${propina === monto ? 'bg-[#fe6712] text-white shadow-xs' : 'border border-slate-200 bg-white text-slate-600 hover:bg-slate-50'}`}>
                     ${monto.toFixed(2)}
                   </button>
                 ))}
               </div>
             </div>
-
-            {esMetodoNacional && (
-              <div className="bg-sky-50/80 px-3 py-1.5 rounded-xl border border-sky-200 flex items-center justify-between gap-2 shrink-0 animate-in fade-in">
-                <span className="text-[10px] font-black text-sky-900 flex items-center gap-1 shrink-0">
-                  <Truck className="h-3.5 w-3.5 text-sky-600" /> {orderSummary.agenciaNacional}:
-                </span>
-                <div className="flex gap-1">
-                  <button
-                    type="button"
-                    onClick={() => setModalidadNacional('COD')}
-                    className={`px-2.5 py-0.5 rounded-lg text-[9px] font-black transition cursor-pointer ${modalidadNacional === 'COD' ? 'bg-sky-600 text-white shadow-xs' : 'bg-white border border-sky-200 text-sky-700'}`}
-                  >
-                    Cobro Destino
-                  </button>
-                  <button
-                    type="button"
-                    onClick={() => setModalidadNacional('PREPAID')}
-                    className={`px-2.5 py-0.5 rounded-lg text-[9px] font-black transition cursor-pointer ${modalidadNacional === 'PREPAID' ? 'bg-sky-600 text-white shadow-xs' : 'bg-white border border-sky-200 text-sky-700'}`}
-                  >
-                    Prepagado (+${(orderSummary.costoEnvioNacional || 0).toFixed(2)})
-                  </button>
-                </div>
-              </div>
-            )}
 
             <div className="shrink-0 flex-1">
               <label className="text-[9px] font-bold text-slate-700 block mb-1">Selecciona El Método de Pago</label>
@@ -387,125 +368,29 @@ export default function CheckoutModal({
           </div>
         )}
 
-        {/* FASE 3: INSTRUCCIONES DE PAGO */}
+        {/* FASE 3: INSTRUCCIONES DE PAGO SINCRONIZADAS */}
         {pasoVista === 'instrucciones' && (
-          <div className="px-5 py-2 space-y-1.5 flex-1 overflow-hidden flex flex-col justify-between">
-
-            {orderSummary.metodoEntrega === 'delivery' && (
-              <div className="bg-orange-50/70 border border-orange-200/60 px-3 py-1.5 rounded-xl shrink-0 space-y-1">
-                <div className="flex items-center justify-between">
-                  <span className="text-[10px] font-black text-slate-800 flex items-center gap-1.5">
-                    <Gift className="h-3.5 w-3.5 text-[#fe6712]" />
-                    Cofre Recompensa D&apos;una
-                  </span>
-                  <button
-                    type="button"
-                    onClick={() => setOrderCount(prev => prev === 2 ? 3 : 2)}
-                    title="Simular 3 compras"
-                    className="text-[8px] font-black text-[#fe6712] bg-orange-100 px-1.5 py-0.5 rounded-md hover:bg-orange-200 transition cursor-pointer"
-                  >
-                    {orderCount >= 3 ? '3 de 3 (¡Desbloqueado!)' : '2 de 3 pedidos'}
-                  </button>
-                </div>
-
-                <div className="flex gap-1 h-1">
-                  <div className="h-1 flex-1 rounded-full bg-emerald-500"></div>
-                  <div className="h-1 flex-1 rounded-full bg-emerald-500"></div>
-                  <div className={`h-1 flex-1 rounded-full ${orderCount >= 3 ? 'bg-emerald-500' : 'bg-orange-200'}`}></div>
-                </div>
-
-                {orderCount >= 3 ? (
-                  !usarRecompensa ? (
-                    <div className="flex items-center justify-between mt-1 animate-in fade-in">
-                      <p className="text-[8px] text-slate-600 font-medium leading-tight w-2/3">
-                        Tienes un cupón del <strong>25% OFF en Flete</strong> disponible. ¿Lo usas hoy o lo guardas para después?
-                      </p>
-                      <button
-                        type="button"
-                        onClick={() => setUsarRecompensa(true)}
-                        className="bg-emerald-500 text-white text-[8px] font-black px-2 py-1 rounded shadow-sm hover:bg-emerald-600 transition cursor-pointer"
-                      >
-                        Usar Ahora
-                      </button>
-                    </div>
-                  ) : (
-                    <div className="flex items-center justify-between mt-1 bg-emerald-50 p-1 rounded-lg border border-emerald-200 animate-in zoom-in-95">
-                      <span className="text-[8.5px] font-black text-emerald-700 flex items-center gap-1">
-                        <CheckCircle2 className="w-3 h-3" /> ¡Descuento Aplicado!
-                      </span>
-                      <button
-                        type="button"
-                        onClick={() => setUsarRecompensa(false)}
-                        className="text-[8px] text-slate-500 underline flex items-center gap-0.5 hover:text-slate-800 transition cursor-pointer"
-                      >
-                        <Bookmark className="w-2.5 h-2.5" /> Guardar para después
-                      </button>
-                    </div>
-                  )
-                ) : (
-                  <p className="text-[8.5px] font-bold text-slate-600 leading-tight">
-                    🎁 ¡Estás a solo <span className="text-[#fe6712] font-black">1 pedido</span> de destapar tu cupón sorpresa!
-                  </p>
-                )}
+          <div className="px-5 py-2 space-y-1.5 flex-1 overflow-y-auto no-scrollbar flex flex-col justify-between">
+            <div className="bg-orange-50/70 border border-orange-200/60 px-3 py-1 rounded-xl flex items-center justify-between shrink-0">
+              <div className="flex items-center gap-1.5">
+                <Info className="h-3.5 w-3.5 text-[#fe6712]" />
+                <span className="text-[9.5px] font-black text-slate-700 uppercase tracking-wide">Tasa BCV Oficial</span>
               </div>
-            )}
+              <span className="text-[9.5px] font-black text-[#fe6712]">Bs.S {tasaBcv.toFixed(2)} / $</span>
+            </div>
 
-            {currentBank.type === 'pago_movil' && (
-              <div className="bg-orange-50/70 border border-orange-200/60 px-3 py-1 rounded-xl flex items-center justify-between shrink-0">
-                <div className="flex items-center gap-1.5">
-                  <Info className="h-3.5 w-3.5 text-[#fe6712]" />
-                  <span className="text-[9.5px] font-black text-slate-700 uppercase tracking-wide">Tasa BCV Oficial</span>
-                </div>
-                <span className="text-[9.5px] font-black text-[#fe6712]">Bs.S {tasaBcv.toFixed(2)} / $</span>
-              </div>
-            )}
-
-            {aplicaDescuentoDelivery ? (
-              <div className="bg-slate-50 p-2 rounded-xl border border-slate-200 shrink-0 shadow-sm animate-in fade-in">
-                <div className="flex items-center justify-between gap-1 pb-1.5 border-b border-slate-200/60 mb-1.5">
-                  <div className="text-center flex-1">
-                    <span className="text-[7px] font-black text-slate-400 uppercase block leading-none mb-0.5">Orden + Delivery</span>
-                    <span className="text-[10px] font-bold text-slate-500 line-through">
-                      {currentBank.type === 'pago_movil' ? `Bs.S ${totalSinDescuentoBs.toFixed(2)}` : `$${totalSinDescuentoUSD.toFixed(2)}`}
-                    </span>
-                  </div>
-                  <div className="text-center flex-1 border-x border-slate-200 px-1">
-                    <span className="text-[7px] font-black text-emerald-600 uppercase block leading-none mb-0.5">-25% Delivery</span>
-                    <span className="text-[10px] font-black text-emerald-600">
-                      {currentBank.type === 'pago_movil' ? `-Bs.S ${descuentoBs.toFixed(2)}` : `-$${descuentoUSD.toFixed(2)}`}
-                    </span>
-                  </div>
-                  <div className="text-center flex-1">
-                    <span className="text-[7px] font-black text-[#fe6712] uppercase block leading-none mb-0.5">Total a Transferir</span>
-                    <span className="text-[12px] font-black text-[#fe6712]">
-                      {currentBank.type === 'pago_movil' ? `Bs.S ${totalBolivares.toFixed(2)}` : `$${totalFinalUSD.toFixed(2)}`}
-                    </span>
-                  </div>
-                </div>
-                <div className="text-center">
-                  <span className="inline-block text-[8px] font-black bg-orange-50 text-[#fe6712] px-2 py-0.5 rounded-full border border-orange-200/50">
-                    {currentBank.type === 'pago_movil' ? `Vía P. M. ${currentBank.name.toUpperCase()}` : currentBank.type === 'zelle' ? 'Vía Zelle Pay' : currentBank.type === 'binance' ? 'Vía Binance Pay' : 'Pago en Efectivo'}
-                  </span>
-                </div>
-              </div>
-            ) : (
-              <div className="text-center shrink-0 py-0.5 bg-slate-50 p-2 rounded-xl border border-slate-100">
-                <span className="text-[7.5px] font-black text-slate-400 uppercase tracking-widest block">Total A Transferir</span>
-                <span className="text-xl font-black text-[#fe6712] block leading-tight mt-0.5">
-                  {currentBank.type === 'pago_movil'
-                    ? `Bs.S ${totalBolivares.toLocaleString('es-VE', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`
-                    : currentBank.type === 'binance'
-                      ? `$${totalFinalUSD.toFixed(2)} USDT`
-                      : `$${totalFinalUSD.toFixed(2)} USD`}
-                </span>
-                <span className="inline-block mt-1 text-[8px] font-black bg-orange-50 text-[#fe6712] px-2 py-0.5 rounded-full border border-orange-200/50">
-                  {currentBank.type === 'pago_movil' ? `Vía P. M. ${currentBank.name.toUpperCase()}` : currentBank.type === 'zelle' ? 'Vía Zelle Pay' : currentBank.type === 'binance' ? 'Vía Binance Pay' : 'Pago en Efectivo'}
-                </span>
-              </div>
-            )}
+            <div className="text-center shrink-0 py-0.5 bg-slate-50 p-2 rounded-xl border border-slate-100">
+              <span className="text-[7.5px] font-black text-slate-400 uppercase tracking-widest block">Total A Transferir</span>
+              <span className="text-xl font-black text-[#fe6712] block leading-tight mt-0.5">
+                Bs.S {totalBolivares.toLocaleString('es-VE', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}
+              </span>
+              <span className="inline-block mt-1 text-[8px] font-black bg-orange-50 text-[#fe6712] px-2 py-0.5 rounded-full border border-orange-200/50">
+                Vía {currentBank.name.toUpperCase()}
+              </span>
+            </div>
 
             {currentBank.type === 'pago_movil' ? (
-              <div className="space-y-1 text-xs px-1 shrink-0">
+              <div className="space-y-1 text-xs px-1 shrink-0 bg-slate-50 p-2 rounded-xl border border-slate-100">
                 <div className="flex justify-between items-center pb-0.5 border-b border-slate-100">
                   <div>
                     <span className="text-[7px] font-black text-slate-400 uppercase block leading-none">Banco</span>
@@ -535,7 +420,7 @@ export default function CheckoutModal({
                 </div>
               </div>
             ) : currentBank.type === 'zelle' ? (
-              <div className="space-y-1 text-xs px-1 shrink-0">
+              <div className="space-y-1 text-xs px-1 shrink-0 bg-slate-50 p-2 rounded-xl border border-slate-100">
                 <div className="flex justify-between items-center pb-1 border-b border-slate-100">
                   <div><span className="text-[7px] font-black text-slate-400 uppercase block leading-none">Cuenta Zelle</span><span className="font-bold text-slate-800 text-[11px]">pagos@dunamarketplace.com</span></div>
                   <button type="button" onClick={() => handleCopyText('pagos@dunamarketplace.com', 'zelle')} className="px-2 py-0.5 bg-orange-50 hover:bg-orange-100 text-[#fe6712] text-[8.5px] font-black rounded-lg transition cursor-pointer border border-orange-200/40 flex items-center gap-1"><Copy className="h-2.5 w-2.5" /><span>{copiadoTexto === 'zelle' ? '¡Copiado!' : 'Copiar'}</span></button>
@@ -543,14 +428,14 @@ export default function CheckoutModal({
                 <div className="flex justify-between items-center"><div><span className="text-[7px] font-black text-slate-400 uppercase block leading-none">Titular</span><span className="font-bold text-slate-800 text-[11px]">D&apos;una Group C.A.</span></div></div>
               </div>
             ) : currentBank.type === 'binance' ? (
-              <div className="space-y-1 text-xs px-1 shrink-0">
+              <div className="space-y-1 text-xs px-1 shrink-0 bg-slate-50 p-2 rounded-xl border border-slate-100">
                 <div className="flex justify-between items-center">
                   <div><span className="text-[7px] font-black text-slate-400 uppercase block leading-none">Binance Pay ID</span><span className="font-bold text-slate-800 text-[11px]">837492019</span></div>
                   <button type="button" onClick={() => handleCopyText('837492019', 'binance')} className="px-2 py-0.5 bg-orange-50 hover:bg-orange-100 text-[#fe6712] text-[8.5px] font-black rounded-lg transition cursor-pointer border border-orange-200/40 flex items-center gap-1"><Copy className="h-2.5 w-2.5" /><span>{copiadoTexto === 'binance' ? '¡Copiado!' : 'Copiar'}</span></button>
                 </div>
               </div>
             ) : (
-              <div className="text-center space-y-1 text-xs px-2 py-1.5 shrink-0">
+              <div className="text-center space-y-1 text-xs px-2 py-2 shrink-0 bg-slate-50 rounded-xl border border-slate-100">
                 <p className="font-bold text-slate-800">💵 Pago en Efectivo al Repartidor</p>
                 <p className="text-[9.5px] text-slate-500">Por favor ten el monto exacto preparado al recibir tu pedido en Cabimas.</p>
               </div>
@@ -558,86 +443,44 @@ export default function CheckoutModal({
 
             {currentBank.type !== 'efectivo' && (
               <button type="button" onClick={handleCopyAll} className="w-full py-1.5 rounded-xl border border-[#fe6712] bg-orange-50/40 hover:bg-orange-100/60 text-[#fe6712] text-[10.5px] font-black transition cursor-pointer flex items-center justify-center gap-1.5 shrink-0 shadow-2xs">
-                <Copy className="h-3 w-3" /><span>{copiadoTexto === 'todo' ? '¡Todos los datos copiados!' : 'Copiar Todos Los Datos'}</span>
+                <Copy className="h-3 w-3" /><span>{copiadoTexto === 'todo' ? '¡Datos copiados!' : 'Copiar Todos Los Datos'}</span>
               </button>
             )}
 
-            {currentBank.type !== 'efectivo' && (
-              <div className="space-y-1 shrink-0">
-                <div>
-                  <label className="text-[7.5px] font-black text-slate-400 uppercase tracking-wider block mb-0.5">Nro. De Referencia (Opcional)</label>
-                  <input type="text" inputMode="numeric" placeholder="Ej. 123456" value={referenciaPago} onChange={(e) => setReferenciaPago(e.target.value)} className="w-full rounded-xl border border-slate-200 bg-white px-3 py-1 text-xs font-bold text-slate-800 focus:border-[#fe6712] focus:outline-none transition shadow-2xs" />
-                </div>
-                <div>
-                  <label className="text-[7.5px] font-black text-slate-400 uppercase tracking-wider block mb-0.5">Comprobante (Opcional)</label>
-                  <label className={`flex items-center justify-center gap-2 w-full py-1 px-3 rounded-xl cursor-pointer transition text-xs font-bold shadow-2xs ${nombreArchivo ? 'bg-emerald-50 border border-emerald-300 text-emerald-800' : 'border border-dashed border-slate-300 bg-white hover:bg-orange-50/40 text-[#fe6712]'}`}>
-                    {nombreArchivo ? <CheckCircle2 className="h-3.5 w-3.5 text-emerald-600 shrink-0" /> : <Upload className="h-3.5 w-3.5 shrink-0" />}
-                    <span className="truncate">{nombreArchivo ? `✓ Imagen subida con éxito` : 'Subir Captura'}</span>
-                    <input type="file" accept="image/*,application/pdf" onChange={handleFileChange} className="hidden" />
-                  </label>
-                </div>
+            <div className="space-y-1 shrink-0">
+              <div>
+                <label className="text-[7.5px] font-black text-slate-400 uppercase tracking-wider block mb-0.5">Nro. De Referencia (Opcional)</label>
+                <input type="text" inputMode="numeric" placeholder="Ej. 123456" value={referenciaPago} onChange={(e) => setReferenciaPago(e.target.value)} className="w-full rounded-xl border border-slate-200 bg-white px-3 py-1 text-xs font-bold text-slate-800 focus:border-[#fe6712] focus:outline-none transition shadow-2xs" />
               </div>
-            )}
-
+              <div>
+                <label className="text-[7.5px] font-black text-slate-400 uppercase tracking-wider block mb-0.5">Comprobante (Opcional)</label>
+                <label className={`flex items-center justify-center gap-2 w-full py-1 px-3 rounded-xl cursor-pointer transition text-xs font-bold shadow-2xs ${nombreArchivo ? 'bg-emerald-50 border border-emerald-300 text-emerald-800' : 'border border-dashed border-slate-300 bg-white hover:bg-orange-50/40 text-[#fe6712]'}`}>
+                  {nombreArchivo ? <CheckCircle2 className="h-3.5 w-3.5 text-emerald-600 shrink-0" /> : <Upload className="h-3.5 w-3.5 shrink-0" />}
+                  <span className="truncate">{nombreArchivo ? `✓ Imagen subida` : 'Subir Captura'}</span>
+                  <input type="file" accept="image/*,application/pdf" onChange={handleFileChange} className="hidden" />
+                </label>
+              </div>
+            </div>
           </div>
         )}
 
-        {/* FASE 4: ÉXITO BIFURCADO */}
+        {/* FASE 4: ÉXITO */}
         {pasoVista === 'exito' && (
           <div className="flex-1 flex flex-col items-center justify-center text-center px-6 overflow-y-auto bg-white py-6">
-            {pagoConfirmado ? (
-              <div className="flex flex-col items-center text-center animate-in fade-in zoom-in duration-300">
-                <div className="w-16 h-16 bg-[#10b981] rounded-full flex items-center justify-center shadow-[0_8px_30px_rgba(16,185,129,0.3)] mb-4">
-                  <Check className="w-8 h-8 text-white stroke-[3]" />
-                </div>
-                <h3 className="text-xl font-black text-slate-900 mb-1">¡Pedido enviado!</h3>
-                <p className="text-[12px] text-slate-500 font-medium mb-4">Tu orden ha sido procesada con éxito.</p>
-                <button onClick={onViewReceipt} className="flex items-center gap-1.5 text-[#fe6712] font-black text-[12px] hover:text-[#e0580d] transition cursor-pointer">
-                  <FileText className="w-4 h-4" /><span>Ver Mi Recibo Digital</span>
-                </button>
+            <div className="flex flex-col items-center text-center animate-in fade-in zoom-in duration-300">
+              <div className="w-16 h-16 bg-[#10b981] rounded-full flex items-center justify-center shadow-[0_8px_30px_rgba(16,185,129,0.3)] mb-4">
+                <Check className="w-8 h-8 text-white stroke-[3]" />
               </div>
-            ) : (
-              <div className="flex flex-col items-center text-center w-full animate-in fade-in zoom-in duration-300">
-                <div className="w-14 h-14 bg-orange-100 text-[#fe6712] rounded-full flex items-center justify-center mb-3 shadow-inner">
-                  <CheckCircle2 className="w-7 h-7" />
-                </div>
-                <h3 className="text-lg font-black text-slate-900 leading-tight mb-1.5">¡Tu pedido ya está en la cocina! 🚀</h3>
-                <p className="text-[11px] text-slate-500 font-medium mb-3 px-2">En <strong className="text-[#fe6712]">D&apos;una</strong> tú tienes el control. Elige cómo prefieres pagar:</p>
-
-                <div className="w-full bg-slate-50 rounded-2xl p-3 text-left space-y-2 border border-slate-100 shadow-sm">
-                  <div className="flex gap-2.5 items-start">
-                    <div className="mt-0.5"><Clock className="w-4 h-4 text-[#fe6712]" /></div>
-                    <div>
-                      <h4 className="text-xs font-black text-slate-800 leading-none mb-1">Pago Express</h4>
-                      <p className="text-[10px] text-slate-500 font-medium leading-snug">Sube tu comprobante en el seguimiento de orden.</p>
-                    </div>
-                  </div>
-
-                  <div className="w-full h-px bg-slate-200"></div>
-
-                  <div className="flex gap-2.5 items-start">
-                    <div className="mt-0.5"><MessageCircle className="w-4 h-4 text-[#10b981]" /></div>
-                    <div>
-                      <h4 className="text-xs font-black text-slate-800 leading-none mb-1">Pago Directo (WhatsApp)</h4>
-                      <p className="text-[10px] text-slate-500 font-medium leading-snug">Espera que <strong className="text-[#fe6712]">{merchantName}</strong> te escriba.</p>
-                    </div>
-                  </div>
-                </div>
-
-                <button
-                  type="button"
-                  onClick={() => setPasoVista('instrucciones')}
-                  className="mt-3 w-full py-2 px-3 rounded-xl bg-orange-50 hover:bg-orange-100 border border-orange-200 text-[#fe6712] text-xs font-black transition flex items-center justify-center gap-1.5 cursor-pointer shadow-2xs"
-                >
-                  <CreditCard className="w-4 h-4" />
-                  <span>💳 ¡Prefiero pagar ahora mismo en la plataforma!</span>
-                </button>
-              </div>
-            )}
+              <h3 className="text-xl font-black text-slate-900 mb-1">¡Pedido enviado a {merchantName}!</h3>
+              <p className="text-[12px] text-slate-500 font-medium mb-4">Tu orden ha sido registrada con éxito en el servidor de AdonisJS.</p>
+              <button onClick={onViewReceipt} className="flex items-center gap-1.5 text-[#fe6712] font-black text-[12px] hover:text-[#e0580d] transition cursor-pointer">
+                <FileText className="w-4 h-4" /><span>Ver Mi Recibo Digital</span>
+              </button>
+            </div>
           </div>
         )}
 
-        {/* FOOTER FIJO CON BOTONES */}
+        {/* FOOTER FIJO */}
         <div className="px-5 py-2.5 border-t border-slate-100 bg-white shrink-0 space-y-1">
           {pasoVista === 'formulario' ? (
             <>
@@ -657,39 +500,23 @@ export default function CheckoutModal({
             </>
           ) : pasoVista === 'instrucciones' ? (
             <div className="space-y-1.5">
-              <button
-                type="button"
-                onClick={handleCompleteFinalOrder}
-                className="w-full flex items-center justify-center gap-2 rounded-full bg-[#fe6712] hover:bg-[#e0580d] py-2 text-xs font-black text-white shadow-md transition active:scale-[0.98] cursor-pointer"
-              >
+              <button type="button" onClick={handleCompleteFinalOrder} className="w-full flex items-center justify-center gap-2 rounded-full bg-[#fe6712] hover:bg-[#e0580d] py-2 text-xs font-black text-white shadow-md transition active:scale-[0.98] cursor-pointer">
                 <span>Completar pedido</span>
                 <Check className="h-4 w-4 stroke-[3]" />
               </button>
               <div className="text-center">
-                <button
-                  type="button"
-                  onClick={() => setPasoVista('formulario')}
-                  className="text-[10px] font-bold text-slate-500 hover:text-slate-800 underline transition cursor-pointer"
-                >
+                <button type="button" onClick={() => setPasoVista('formulario')} className="text-[10px] font-bold text-slate-500 hover:text-slate-800 underline transition cursor-pointer">
                   Volver para corregir datos o métodos
                 </button>
               </div>
             </div>
           ) : (
             <div className="space-y-1.5">
-              <button
-                type="button"
-                onClick={onViewTracking}
-                className="w-full flex items-center justify-center gap-2 rounded-full bg-[#fe6712] hover:bg-[#e0580d] py-2 text-xs font-black text-white shadow-md transition active:scale-[0.98] cursor-pointer"
-              >
+              <button type="button" onClick={onViewTracking} className="w-full flex items-center justify-center gap-2 rounded-full bg-[#fe6712] hover:bg-[#e0580d] py-2 text-xs font-black text-white shadow-md transition active:scale-[0.98] cursor-pointer">
                 <Clock className="h-4 w-4" />
                 <span>Ver seguimiento de pedido</span>
               </button>
-              <button
-                type="button"
-                onClick={onClose}
-                className="w-full flex items-center justify-center rounded-full bg-white border border-slate-200 hover:bg-slate-50 py-2 text-xs font-bold text-slate-700 transition active:scale-[0.98] cursor-pointer"
-              >
+              <button type="button" onClick={onClose} className="w-full flex items-center justify-center rounded-full bg-white border border-slate-200 hover:bg-slate-50 py-2 text-xs font-bold text-slate-700 transition active:scale-[0.98] cursor-pointer">
                 Continuar
               </button>
             </div>

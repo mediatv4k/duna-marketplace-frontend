@@ -73,7 +73,7 @@ export default function MasterProductModal({
     return false;
   }, [product]);
 
-  // Grupos disponibles para variantes en ranura (soporta grupos del producto o fallback Food Fast)
+  // Grupos disponibles para variantes en ranura
   const availableGroups = useMemo(() => {
     if (product?.groups && Array.isArray(product.groups) && product.groups.length > 0) {
       return product.groups;
@@ -84,9 +84,9 @@ export default function MasterProductModal({
     if (nicheEngine === 'FOOD_FAST' || isCombo) {
       return [
         {
-          title: "Topping / Variante",
-          subtitle: "Personaliza el sabor o ingrediente extra de esta pieza",
-          type: "SIZE_RADIO",
+          title: "Sabores / Variantes",
+          subtitle: "Selecciona las cantidades para cada opción",
+          type: "QUANTITY_GRID",
           options: [
             { code: "VAR-STD", name: "Estándar / Clásico", price: 0 },
             { code: "VAR-BACON", name: "Tocineta Crocante", price: 1.50 },
@@ -98,7 +98,7 @@ export default function MasterProductModal({
     return [];
   }, [product, nicheEngine, isCombo]);
 
-  // Cantidad base de ranuras si es combo (ej: Combo 5 -> 5 ranuras)
+  // Cantidad base de ranuras si es combo
   const baseSlotCount = useMemo(() => {
     if (!product) return 1;
     if (typeof product.slotsCount === 'number') return product.slotsCount;
@@ -110,7 +110,7 @@ export default function MasterProductModal({
       const n = parseInt(nameMatch[1], 10);
       if (!isNaN(n) && n > 0 && n <= 50) return n;
     }
-    const descMatch = (product.desc || product.description)?.match(/(\d+)\s*(perros|hamburguesas|piezas|unidades|items|und|personas)/i);
+    const descMatch = (product.desc || product.description)?.match(/(\d+)\s*(perros|hamburguesas|piezas|unidades|items|und|personas|helados)/i);
     if (descMatch && descMatch[1]) {
       const n = parseInt(descMatch[1], 10);
       if (!isNaN(n) && n > 0 && n <= 50) return n;
@@ -118,17 +118,14 @@ export default function MasterProductModal({
     return isCombo ? 5 : 1;
   }, [product, isCombo]);
 
-  // Modo Selector de Ranuras activado
   const [isSlotCustomizationActive, setIsSlotCustomizationActive] = useState<boolean>(false);
   const isSlotMode = isCombo || (qty > 1 && isSlotCustomizationActive);
 
-  // Total de ranuras a gestionar
   const targetSlotCount = useMemo(() => {
     if (isCombo) return baseSlotCount * qty;
     return qty;
   }, [isCombo, baseSlotCount, qty]);
 
-  // Estado del arreglo de ranuras independientes
   const [slots, setSlots] = useState<ComboSlot[]>([]);
   const [activeSlotIndex, setActiveSlotIndex] = useState<number>(0);
 
@@ -136,7 +133,11 @@ export default function MasterProductModal({
     const initialVars: Record<string | number, any> = {};
     availableGroups.forEach((g: any, gIndex: number) => {
       if (g.options && g.options.length > 0) {
-        initialVars[gIndex] = g.options[0];
+        // Inicializamos con soporte de cantidades o selección por defecto
+        initialVars[gIndex] = g.options.map((opt: any, oIdx: number) => ({
+          ...opt,
+          count: oIdx === 0 ? 1 : 0
+        }));
       }
     });
 
@@ -161,7 +162,10 @@ export default function MasterProductModal({
       if (availableGroups.length > 0) {
         availableGroups.forEach((group: any, idx: number) => {
           if (group.options?.length > 0) {
-            initialVars[idx] = group.options[0];
+            initialVars[idx] = group.options.map((opt: any, oIdx: number) => ({
+              ...opt,
+              count: oIdx === 0 ? 1 : 0
+            }));
           }
         });
       }
@@ -182,7 +186,6 @@ export default function MasterProductModal({
     return () => { document.body.style.overflow = 'unset'; };
   }, [isOpen]);
 
-  // Sincronizar arreglo de ranuras dinámicamente con targetSlotCount
   useEffect(() => {
     if (!isOpen) return;
     setSlots(prev => {
@@ -202,16 +205,36 @@ export default function MasterProductModal({
     }
   }, [targetSlotCount, isOpen]);
 
-  // Modificaciones en ranura activa
-  const handleSlotVariantChange = (groupIdx: number | string, option: any) => {
+  // Modificador de cantidad para opciones con contadores (+ / -) en ranura activa
+  const handleSlotOptionQuantityChange = (groupIdx: number | string, optionCode: string, delta: number) => {
     setSlots(prev => {
       const copy = [...prev];
       if (!copy[activeSlotIndex]) return prev;
+
+      const currentGroupSelection = copy[activeSlotIndex].selectedVariants[groupIdx];
+      let updatedList = Array.isArray(currentGroupSelection) ? [...currentGroupSelection] : [];
+
+      // Si la lista está vacía, la poblamos desde availableGroups
+      if (updatedList.length === 0) {
+        const grp = availableGroups[Number(groupIdx)];
+        if (grp && grp.options) {
+          updatedList = grp.options.map((o: any) => ({ ...o, count: o.code === optionCode ? Math.max(0, delta) : 0 }));
+        }
+      } else {
+        updatedList = updatedList.map(item => {
+          if (item.code === optionCode || item.id === optionCode) {
+            const newCount = Math.max(0, (item.count || 0) + delta);
+            return { ...item, count: newCount };
+          }
+          return item;
+        });
+      }
+
       copy[activeSlotIndex] = {
         ...copy[activeSlotIndex],
         selectedVariants: {
           ...copy[activeSlotIndex].selectedVariants,
-          [groupIdx]: option
+          [groupIdx]: updatedList
         }
       };
       return copy;
@@ -271,15 +294,35 @@ export default function MasterProductModal({
     });
   };
 
-  // Exclusiones estándar globales
   const toggleExclusion = (exc: string) => {
     setSelectedExclusions(prev =>
       prev.includes(exc) ? prev.filter(i => i !== exc) : [...prev, exc]
     );
   };
 
-  const handleRadioChange = (groupIdx: number, option: any) => {
-    setSelectedVariants(prev => ({ ...prev, [groupIdx]: option }));
+  // Manejador de cantidad para el modo estándar global
+  const handleGlobalOptionQuantityChange = (groupIdx: number, optionCode: string, delta: number) => {
+    setSelectedVariants(prev => {
+      const currentGroup = prev[groupIdx];
+      let updatedList = Array.isArray(currentGroup) ? [...currentGroup] : [];
+
+      if (updatedList.length === 0) {
+        const grp = availableGroups[groupIdx];
+        if (grp && grp.options) {
+          updatedList = grp.options.map((o: any) => ({ ...o, count: o.code === optionCode ? Math.max(0, delta) : 0 }));
+        }
+      } else {
+        updatedList = updatedList.map(item => {
+          if (item.code === optionCode || item.id === optionCode) {
+            const newCount = Math.max(0, (item.count || 0) + delta);
+            return { ...item, count: newCount };
+          }
+          return item;
+        });
+      }
+
+      return { ...prev, [groupIdx]: updatedList };
+    });
   };
 
   const toggleUpsell = (upsellItem: any) => {
@@ -291,7 +334,7 @@ export default function MasterProductModal({
     });
   };
 
-  // Cálculo de Precios reactivo (estándar y por ranuras)
+  // Cálculo de Precios reactivo con soporte para conteos
   const { unitPrice, totalVariantsPrice, totalSlotVariantsPrice, totalUpsells } = useMemo(() => {
     let base = product?.price || 0;
     let standardVariantsExtra = 0;
@@ -304,16 +347,12 @@ export default function MasterProductModal({
         if (!selection) return;
         if (Array.isArray(selection)) {
           selection.forEach(item => {
-            if (item.count > 0 && item.price > 0 && item.affects !== 'CAMBIA') {
+            if ((item.count || 0) > 0 && (item.price || 0) > 0 && item.affects !== 'CAMBIA') {
               standardVariantsExtra += (item.price * item.count);
             }
           });
-        } else {
-          if (selection.affects === 'CAMBIA' || selection.effect === 'BASE') {
-            base = selection.price;
-          } else if (selection.price > 0) {
-            standardVariantsExtra += selection.price;
-          }
+        } else if (selection.price > 0) {
+          standardVariantsExtra += selection.price;
         }
       });
     } else {
@@ -322,14 +361,12 @@ export default function MasterProductModal({
           if (!selection) return;
           if (Array.isArray(selection)) {
             selection.forEach(item => {
-              if (item.count > 0 && item.price > 0 && item.affects !== 'CAMBIA') {
+              if ((item.count || 0) > 0 && (item.price || 0) > 0 && item.affects !== 'CAMBIA') {
                 slotVariantsExtra += (item.price * item.count);
               }
             });
-          } else {
-            if (selection.price > 0 && selection.affects !== 'CAMBIA') {
-              slotVariantsExtra += selection.price;
-            }
+          } else if (selection.price > 0 && selection.affects !== 'CAMBIA') {
+            slotVariantsExtra += selection.price;
           }
         });
       });
@@ -377,17 +414,23 @@ export default function MasterProductModal({
         const slotTitle = slot.name?.trim() ? slot.name.trim() : `Ranura #${idx + 1}`;
         const slotParts: string[] = [];
 
-        // Variantes seleccionadas de la ranura
         Object.values(slot.selectedVariants).forEach((sel: any) => {
           if (!sel) return;
-          if (sel.price && sel.price > 0) {
-            slotParts.push(`${sel.name} (+$${sel.price.toFixed(2)})`);
-          } else if (sel.name && !/estándar|clásico|normal/i.test(sel.name)) {
+          if (Array.isArray(sel)) {
+            sel.forEach(item => {
+              if ((item.count || 0) > 0) {
+                if (item.price && item.price > 0) {
+                  slotParts.push(`${item.count}x ${item.name} (+$${(item.price * item.count).toFixed(2)})`);
+                } else {
+                  slotParts.push(`${item.count}x ${item.name}`);
+                }
+              }
+            });
+          } else if (sel.name) {
             slotParts.push(sel.name);
           }
         });
 
-        // Exclusiones de la ranura
         if (slot.exclusions && slot.exclusions.length > 0) {
           slotParts.push(`Sin ${slot.exclusions.join(', ')}`);
         } else {
@@ -397,12 +440,13 @@ export default function MasterProductModal({
         breakdown.push(`🍔 [${slotTitle}]: ${slotParts.join(' + ')}`);
       });
     } else {
-      // Modo Estándar
       Object.keys(selectedVariants).forEach(key => {
         const sel = selectedVariants[key];
         if (Array.isArray(sel)) {
           sel.forEach(item => {
-            if (item.count > 0) breakdown.push(`${item.name} (${item.count})`);
+            if ((item.count || 0) > 0) {
+              breakdown.push(`${item.count}x ${item.name}`);
+            }
           });
         } else if (sel && sel.name) {
           breakdown.push(`Selección: ${sel.name}`);
@@ -517,28 +561,49 @@ export default function MasterProductModal({
                 </div>
               </div>
 
-              {/* Variantes Globales (solo cuando NO está en modo ranuras) */}
-              {!isSlotMode && product.groups && product.groups.map((group: any, gIdx: number) => (
+              {/* Variantes Globales con contadores (+ / -) */}
+              {!isSlotMode && availableGroups.map((group: any, gIdx: number) => (
                 <div key={gIdx} className="bg-white p-4 rounded-2xl border border-slate-200 shadow-sm space-y-3">
                   <div>
                     <h4 className="text-xs font-black text-slate-900 uppercase tracking-wider">{group.title}</h4>
-                    <p className="text-[10px] text-slate-500 font-bold">{group.subtitle || 'Selecciona una opción'}</p>
+                    <p className="text-[10px] text-slate-500 font-bold">{group.subtitle || 'Ajusta las cantidades por sabor u opción'}</p>
                   </div>
 
-                  {group.type === 'SIZE_RADIO' && (
-                    <div className="grid grid-cols-2 gap-2">
-                      {group.options.map((opt: any) => (
-                        <button
-                          key={opt.code}
-                          onClick={() => handleRadioChange(gIdx, opt)}
-                          className={`p-3 rounded-xl border text-left transition flex flex-col justify-between cursor-pointer ${selectedVariants[gIdx]?.code === opt.code ? 'border-[#fe6712] bg-[#fff5ed] shadow-sm' : 'border-slate-200 bg-white hover:border-slate-300'}`}
-                        >
-                          <span className={`text-xs ${selectedVariants[gIdx]?.code === opt.code ? 'text-[#fe6712] font-black' : 'text-slate-700 font-bold'}`}>{opt.name}</span>
-                          <span className="text-sm font-black text-slate-900 mt-1">${opt.price.toFixed(2)}</span>
-                        </button>
-                      ))}
-                    </div>
-                  )}
+                  <div className="grid grid-cols-1 sm:grid-cols-2 gap-2">
+                    {group.options.map((opt: any) => {
+                      const currentSelectionList = selectedVariants[gIdx];
+                      const matchedItem = Array.isArray(currentSelectionList)
+                        ? currentSelectionList.find((i: any) => i.code === opt.code || i.id === opt.code)
+                        : null;
+                      const currentCount = matchedItem ? (matchedItem.count || 0) : (opt.code === group.options[0]?.code ? 1 : 0);
+
+                      return (
+                        <div key={opt.code} className="p-3 rounded-xl border border-slate-200 bg-white flex items-center justify-between gap-3 shadow-2xs">
+                          <div>
+                            <span className="text-xs font-bold text-slate-800 block leading-tight">{opt.name}</span>
+                            <span className="text-[10px] font-black text-[#fe6712]">{opt.price > 0 ? `+$${opt.price.toFixed(2)}` : 'Incluido'}</span>
+                          </div>
+                          <div className="flex items-center gap-2 bg-slate-50 p-1 rounded-xl border border-slate-200 shrink-0">
+                            <button
+                              type="button"
+                              onClick={() => handleGlobalOptionQuantityChange(gIdx, opt.code, -1)}
+                              className="w-6 h-6 flex items-center justify-center text-slate-600 hover:bg-white rounded-lg transition cursor-pointer shadow-2xs"
+                            >
+                              <Minus className="w-3.5 h-3.5 stroke-[2.5]" />
+                            </button>
+                            <span className="font-black text-xs w-5 text-center text-slate-900">{currentCount}</span>
+                            <button
+                              type="button"
+                              onClick={() => handleGlobalOptionQuantityChange(gIdx, opt.code, 1)}
+                              className="w-6 h-6 flex items-center justify-center text-[#fe6712] hover:bg-white rounded-lg transition cursor-pointer shadow-2xs"
+                            >
+                              <Plus className="w-3.5 h-3.5 stroke-[2.5]" />
+                            </button>
+                          </div>
+                        </div>
+                      );
+                    })}
+                  </div>
                 </div>
               ))}
 
@@ -556,7 +621,7 @@ export default function MasterProductModal({
                         </h4>
                       </div>
                       <p className="text-[10px] text-slate-500 font-bold mt-0.5 ml-8">
-                        Configura las {slots.length} ranuras de forma independiente.
+                        Configura las {slots.length} ranuras con sus respectivas cantidades de sabores.
                       </p>
                     </div>
 
@@ -571,7 +636,7 @@ export default function MasterProductModal({
                     )}
                   </div>
 
-                  {/* Pestañas de Ranura (Ranura 1, Ranura 2...) */}
+                  {/* Pestañas de Ranura */}
                   <div className="flex gap-2 overflow-x-auto no-scrollbar pb-1 pt-1 border-t border-orange-200/60">
                     {slots.map((slot, idx) => {
                       const isActive = activeSlotIndex === idx;
@@ -605,10 +670,9 @@ export default function MasterProductModal({
                     })}
                   </div>
 
-                  {/* Tarjeta de Configuración de la Ranura Activa */}
+                  {/* Tarjeta de Configuración de la Ranura Activa con Contadores de Cantidad */}
                   {slots[activeSlotIndex] && (
                     <div className="p-4 bg-white rounded-2xl border border-orange-100 shadow-sm space-y-4">
-                      {/* Cabecera de la ranura activa */}
                       <div className="flex flex-col sm:flex-row justify-between items-start sm:items-center gap-2 pb-3 border-b border-slate-100">
                         <div className="flex-1 w-full sm:w-auto">
                           <label className="text-[9px] font-black text-slate-400 uppercase tracking-wider block mb-1">
@@ -636,36 +700,46 @@ export default function MasterProductModal({
                         )}
                       </div>
 
-                      {/* Variantes de la Ranura Activa */}
+                      {/* Grupos y Opciones con Contadores de Cantidad en la Ranura */}
                       {availableGroups.length > 0 && availableGroups.map((group: any, gIdx: number) => {
-                        const selectedOpt = slots[activeSlotIndex].selectedVariants[gIdx];
+                        const currentSlotVars = slots[activeSlotIndex].selectedVariants[gIdx];
                         return (
                           <div key={gIdx} className="space-y-2">
                             <div className="flex justify-between items-baseline">
                               <span className="text-[10px] font-black text-slate-900 uppercase tracking-wider">{group.title}</span>
-                              <span className="text-[9px] font-bold text-slate-400">{group.subtitle}</span>
+                              <span className="text-[9px] font-bold text-slate-400">{group.subtitle || 'Ajusta las cantidades'}</span>
                             </div>
-                            <div className="grid grid-cols-2 sm:grid-cols-3 gap-2">
+                            <div className="grid grid-cols-1 sm:grid-cols-2 gap-2">
                               {group.options.map((opt: any) => {
-                                const isSelected = selectedOpt?.code === opt.code;
+                                const matched = Array.isArray(currentSlotVars)
+                                  ? currentSlotVars.find((i: any) => i.code === opt.code || i.id === opt.code)
+                                  : null;
+                                const countVal = matched ? (matched.count || 0) : 0;
+
                                 return (
-                                  <button
-                                    key={opt.code}
-                                    type="button"
-                                    onClick={() => handleSlotVariantChange(gIdx, opt)}
-                                    className={`p-2.5 rounded-xl border text-left transition flex flex-col justify-between cursor-pointer ${
-                                      isSelected
-                                        ? 'border-[#fe6712] bg-[#fff5ed] shadow-xs ring-1 ring-[#fe6712]'
-                                        : 'border-slate-200 bg-white hover:border-slate-300'
-                                    }`}
-                                  >
-                                    <span className={`text-[11px] leading-tight ${isSelected ? 'text-[#fe6712] font-black' : 'text-slate-700 font-bold'}`}>
-                                      {opt.name}
-                                    </span>
-                                    <span className="text-[10px] font-black text-slate-900 mt-1">
-                                      {opt.price > 0 ? `+$${opt.price.toFixed(2)}` : 'Incluido'}
-                                    </span>
-                                  </button>
+                                  <div key={opt.code} className="p-2.5 rounded-xl border border-slate-200 bg-white flex items-center justify-between gap-2 shadow-2xs">
+                                    <div className="min-w-0 pr-1">
+                                      <span className="text-[11px] font-bold text-slate-800 block leading-tight truncate">{opt.name}</span>
+                                      <span className="text-[10px] font-black text-[#fe6712]">{opt.price > 0 ? `+$${opt.price.toFixed(2)}` : 'Incluido'}</span>
+                                    </div>
+                                    <div className="flex items-center gap-1.5 bg-slate-50 p-1 rounded-xl border border-slate-200 shrink-0">
+                                      <button
+                                        type="button"
+                                        onClick={() => handleSlotOptionQuantityChange(gIdx, opt.code, -1)}
+                                        className="w-6 h-6 flex items-center justify-center text-slate-600 hover:bg-white rounded-lg transition cursor-pointer shadow-2xs"
+                                      >
+                                        <Minus className="w-3.5 h-3.5 stroke-[2.5]" />
+                                      </button>
+                                      <span className="font-black text-xs w-5 text-center text-slate-900">{countVal}</span>
+                                      <button
+                                        type="button"
+                                        onClick={() => handleSlotOptionQuantityChange(gIdx, opt.code, 1)}
+                                        className="w-6 h-6 flex items-center justify-center text-[#fe6712] hover:bg-white rounded-lg transition cursor-pointer shadow-2xs"
+                                      >
+                                        <Plus className="w-3.5 h-3.5 stroke-[2.5]" />
+                                      </button>
+                                    </div>
+                                  </div>
                                 );
                               })}
                             </div>
@@ -751,7 +825,7 @@ export default function MasterProductModal({
                   )}
                 </div>
               ) : (
-                /* Modo Estándar (No Ranuras) */
+                /* Modo Estándar */
                 <div className="space-y-4">
                   {qty > 1 && !isCombo && (
                     <div className="bg-orange-50/60 p-3.5 rounded-2xl border border-orange-200 flex justify-between items-center gap-3">
