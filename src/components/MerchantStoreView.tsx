@@ -3,6 +3,7 @@
 import React, { useState } from 'react';
 import { ShoppingBag, ChevronRight, Search, Star, Clock, MapPin, Sparkles } from 'lucide-react';
 import CartModal from './CartModal';
+import LocationPickerModal from './LocationPickerModal';
 import MasterProductModal from './MasterProductModal';
 import PromotionsCarousel from './PromotionsCarousel';
 import { getProduct, getStorePromotions, getDeliveryRate, getStorePaymentInfo } from '@/services/marketplaceService';
@@ -13,7 +14,8 @@ import { getNicheIcon, getBadgeColorClasses } from '@/lib/nicheIcons';
 // Regla del contrato: el backend no presta servicio de delivery a más de 12 km
 const MAX_DELIVERY_KM = 12;
 
-type CustomerLocation = { lat: number; lng: number; label: string };
+// manual = pin alterno elegido en el mapa: vive solo en esta vista, nunca se persiste (la ubicación GPS en vivo es la predeterminada)
+type CustomerLocation = { lat: number; lng: number; label: string; manual?: boolean };
 type DeliveryQuote = {
   status: 'idle' | 'loading' | 'ok' | 'blocked';
   rate?: number;
@@ -94,6 +96,7 @@ export default function MerchantStoreView({
     }
   });
   const [isLocating, setIsLocating] = useState(false);
+  const [isPickerOpen, setIsPickerOpen] = useState(false);
   const [locationError, setLocationError] = useState<string | null>(null);
   const [quote, setQuote] = useState<DeliveryQuote>({ status: 'idle' });
 
@@ -123,7 +126,9 @@ export default function MerchantStoreView({
       setQuote({ status: 'idle' });
       return;
     }
-    try { sessionStorage.setItem('duna_customer_location', JSON.stringify(customerLocation)); } catch {}
+    if (!customerLocation.manual) {
+      try { sessionStorage.setItem('duna_customer_location', JSON.stringify(customerLocation)); } catch {}
+    }
 
     const storeCoords = merchant?.coords;
     if (!merchant?.id || !storeCoords || !Number.isFinite(Number(storeCoords.lat)) || !Number.isFinite(Number(storeCoords.lng))) {
@@ -641,6 +646,7 @@ export default function MerchantStoreView({
           isLocating={isLocating}
           locationError={locationError}
           onRequestLocation={handleRequestLocation}
+          onPickLocation={() => setIsPickerOpen(true)}
           onOpenCheckout={(summary) => {
             setIsCartOpen(false);
             const isDelivery = summary.metodoEntrega === 'delivery';
@@ -659,6 +665,19 @@ export default function MerchantStoreView({
           isNationalShippingEnabled={true}
         />
       )}
+
+      {/* Dirección de entrega alterna (mapa): al confirmar, el efecto de cotización recalcula distancia, bloqueo de 12 km y getDeliveryRate */}
+      <LocationPickerModal
+        isOpen={isPickerOpen}
+        onClose={() => setIsPickerOpen(false)}
+        initialCenter={customerLocation ? { lat: customerLocation.lat, lng: customerLocation.lng } : { lat: Number(merchant?.coords?.lat), lng: Number(merchant?.coords?.lng) }}
+        storeCoords={merchant?.coords ? { lat: Number(merchant.coords.lat), lng: Number(merchant.coords.lng) } : null}
+        onConfirm={(picked) => {
+          setLocationError(null);
+          setCustomerLocation({ lat: picked.lat, lng: picked.lng, label: picked.address, manual: true });
+          setIsPickerOpen(false);
+        }}
+      />
     </div>
   );
 }

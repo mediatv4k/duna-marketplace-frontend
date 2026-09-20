@@ -74,6 +74,47 @@ export async function getProduct(productId: number | string): Promise<ApiRespons
   return await apiFetch<any>(`/product/${productId}/web`);
 }
 
+// GET /store/{id}/schedule/open?apikey= — horario semanal del comercio. El contrato pide "apikey" en query y en header
+// (los headers no distinguen mayúsculas: apiKey/apikey). Verificado en DEV: data[] = { id, day (monday…sunday),
+// name, open_time "HH:mm", close_time "HH:mm", food_store_id, status "ACTIVE" }.
+export async function getStoreSchedule(storeId: number | string): Promise<ApiResponse<any>> {
+  return await apiFetch<any>(`/store/${storeId}/schedule/open?apikey=${encodeURIComponent(API_KEY)}`);
+}
+
+// PUT /delivery/request/{orderId}/payment/reference — adjunta comprobante (referenceImage) y/o referencia (referenceText)
+// a una orden YA creada, sin volver a llamar a purchase/web (evita órdenes duplicadas). multipart/form-data:
+// no se fija Content-Type a mano para que el navegador agregue el boundary. Ruta verificada en DEV (con un id inexistente
+// responde { code: 0, message: "E_ROW_NOT_FOUND" }); el caso de éxito no se probó para no alterar órdenes reales.
+export async function uploadPaymentReference(params: {
+  orderId: number | string;
+  file?: File | null;
+  referenceText?: string;
+}): Promise<ApiResponse<any>> {
+  const formData = new FormData();
+  if (params.file) formData.append('referenceImage', params.file);
+  const text = (params.referenceText || '').trim();
+  if (text) formData.append('referenceText', text);
+
+  try {
+    const res = await fetch(`${API_BASE}/delivery/request/${encodeURIComponent(String(params.orderId))}/payment/reference`, {
+      method: 'PUT',
+      headers: {
+        'apiKey': API_KEY,
+        'timeZone': TIMEZONE,
+      },
+      body: formData,
+    });
+    const raw = await res.text();
+    try {
+      return JSON.parse(raw);
+    } catch {
+      return { code: res.status || 500, data: null, message: raw || 'Error en el servidor' };
+    }
+  } catch (err: any) {
+    return { code: 500, data: null, message: err?.message || 'Fallo de red al enviar el comprobante' };
+  }
+}
+
 // GET /delivery/request/purchase/deliveryRate — cotización oficial del flete (verificado en DEV):
 //  · hasta 12 km  → { code: 1, data: { rate: number } }
 //  · más de 12 km → { code: 1, data: { message: "Servicio de entrega no disponible para tu ubicación" } }

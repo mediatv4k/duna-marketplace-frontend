@@ -58,6 +58,7 @@ interface CartModalProps {
   isLocating?: boolean;
   locationError?: string | null;
   onRequestLocation?: () => void;
+  onPickLocation?: () => void; // pin del mapa: elegir una dirección de entrega distinta al GPS
 }
 
 export default function CartModal({
@@ -87,6 +88,7 @@ export default function CartModal({
   isLocating = false,
   locationError,
   onRequestLocation,
+  onPickLocation,
 }: CartModalProps) {
 
   const [selectedAgency, setSelectedAgency] = useState<'MRW' | 'ZOOM' | 'TEALCA'>('MRW');
@@ -269,6 +271,9 @@ export default function CartModal({
                   </button>
                   <button
                     type="button"
+                    onClick={onPickLocation}
+                    title="Elegir otra dirección de entrega en el mapa"
+                    aria-label="Elegir otra dirección de entrega en el mapa"
                     className="w-7 h-7 border border-orange-200 text-[#fe6712] rounded-full flex items-center justify-center hover:bg-orange-50 transition cursor-pointer shrink-0"
                   >
                     <MapPin className="w-3.5 h-3.5" />

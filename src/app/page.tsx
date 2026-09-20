@@ -5,13 +5,15 @@ import MerchantStoreView from '@/components/MerchantStoreView';
 import CheckoutModal from '@/components/CheckoutModal';
 import OrderTrackingModal from '@/components/OrderTrackingModal';
 import PromotionsCarousel from '@/components/PromotionsCarousel';
+import StoreScheduleModal from '@/components/StoreScheduleModal';
 
-import { submitPurchaseOrder, getProductsByStore, getStorePromotions } from '@/services/marketplaceService';
+import { submitPurchaseOrder, getProductsByStore, getStorePromotions, getOrderPublic } from '@/services/marketplaceService';
+import { isFinalStatus } from '@/lib/orderTracking';
 import { getBCVRate } from '@/lib/bcvRate';
 
 import {
   Clock, ChevronLeft, ChevronRight, Sparkles, MapPin, X, Navigation,
-  Loader2, Home, Compass, ShoppingBag, Coins, Truck, Bike
+  Loader2, Home, Compass, ShoppingBag, Coins, Truck, Bike, ClipboardList
 } from 'lucide-react';
 
 const API_BASE = process.env.NEXT_PUBLIC_API_URL || 'https://dev.carjos-marketplace.cloud';
@@ -63,8 +65,45 @@ export default function MultitiendaHub() {
   const [userLocation, setUserLocation] = useState<{ lat: number; lng: number; label: string } | null>(null);
   const [isLocating, setIsLocating] = useState<boolean>(false);
   const [isFallbackModalOpen, setIsFallbackModalOpen] = useState<boolean>(false);
+  const [scheduleStore, setScheduleStore] = useState<{ id: number | string; name: string } | null>(null);
 
   const categoryRailRef = useRef<HTMLDivElement>(null);
+
+  // Pedido activo (FAB): id guardado por onFinalizeOrder; se oculta cuando el backend lo reporta en estado final
+  const [savedOrderId, setSavedOrderId] = useState<string>('');
+  const [savedOrderFinal, setSavedOrderFinal] = useState<boolean>(false);
+  useEffect(() => {
+    try {
+      let id = localStorage.getItem('last_active_order_id') || '';
+      if (!id) {
+        const saved = localStorage.getItem('last_active_order');
+        id = saved ? String(JSON.parse(saved)?.id || '') : '';
+      }
+      setSavedOrderId(id);
+    } catch {
+      setSavedOrderId('');
+    }
+  }, []);
+  useEffect(() => {
+    if (!savedOrderId) return;
+    let cancelled = false;
+    let timer: ReturnType<typeof setTimeout> | null = null;
+    setSavedOrderFinal(false);
+    const checkStatus = async () => {
+      const res = await getOrderPublic(savedOrderId);
+      if (cancelled) return;
+      if (res && res.code === 1 && res.data && isFinalStatus(res.data.status)) {
+        setSavedOrderFinal(true);
+        return;
+      }
+      timer = setTimeout(checkStatus, 30000);
+    };
+    checkStatus();
+    return () => {
+      cancelled = true;
+      if (timer) clearTimeout(timer);
+    };
+  }, [savedOrderId]);
 
   // Tasa BCV viva (GET /api/bcv). null = no disponible → el Home no muestra Bs. inventados
   const [bcvRate, setBcvRate] = useState<number | null>(null);
@@ -234,6 +273,7 @@ export default function MultitiendaHub() {
               localStorage.setItem('last_active_order', JSON.stringify(orderData));
               localStorage.setItem('last_active_order_id', String(orderData.id));
             }
+            setSavedOrderId(String(orderData.id));
             setHasCompletedOrder(true);
           }}
           onBackToCart={() => { setIsCheckoutOpen(false); setForceCartOpenCount(prev => prev + 1); }}
@@ -262,11 +302,16 @@ export default function MultitiendaHub() {
     }
   };
 
+  // Prioridad ESTRICTAMENTE por horario en tiempo real (scheduleStatus): 1° OPEN (despachando ahora), 2° OPENING (por abrir),
+  // 3° CLOSED / INACTIVE / sin horario activo. Array.sort es estable: dentro de cada grupo se conserva el orden del backend.
+  const storeOpenRank = (s: any): number =>
+    s.scheduleStatus === 'OPEN' ? 0 : (s.scheduleStatus === 'OPENING' ? 1 : 2);
+
   const filteredMerchants = realStores.filter(m =>
     (selectedCategory === 'ALL' || m.categories?.includes(selectedCategory)) &&
     (m.name.toLowerCase().includes(searchQuery.toLowerCase()) ||
     (m.categoriesName || '').toLowerCase().includes(searchQuery.toLowerCase()))
-  );
+  ).sort((a, b) => storeOpenRank(a) - storeOpenRank(b));
 
   // Regla de negocio: solo promos de tiendas actualmente abiertas. Cruce limpio por
   // storeCode contra realStores (que sí trae status crudo de GET /store/find).
@@ -403,10 +448,15 @@ export default function MultitiendaHub() {
                       <p className="text-[11px] font-bold text-slate-400 truncate">{merchant.categoriesName || 'Comercio'}</p>
 
                       <div className="flex items-center gap-1.5 text-[10px] font-bold">
-                        <span className={`flex items-center gap-1 px-1.5 py-0.5 rounded-md border text-[10px] font-bold shadow-2xs shrink-0 ${merchant.status === 'OPEN' ? 'text-emerald-700 bg-emerald-50 border-emerald-200/70' : 'text-slate-500 bg-slate-50 border-slate-200'}`}>
+                        <button
+                          type="button"
+                          onClick={(e) => { e.stopPropagation(); setScheduleStore({ id: merchant.id, name: merchant.name }); }}
+                          title="Ver horario semanal"
+                          className={`flex items-center gap-1 px-1.5 py-0.5 rounded-md border text-[10px] font-bold shadow-2xs shrink-0 cursor-pointer hover:brightness-95 ${merchant.status === 'OPEN' ? 'text-emerald-700 bg-emerald-50 border-emerald-200/70' : 'text-slate-500 bg-slate-50 border-slate-200'}`}
+                        >
                           {merchant.status === 'OPEN' && <span className="h-1.5 w-1.5 rounded-full bg-emerald-500 animate-pulse"></span>}
                           {merchant.scheduleInfo || (merchant.status === 'OPEN' ? 'Abierto' : 'Cerrado')}
-                        </span>
+                        </button>
 
                         {userLocation && calculatedFeeText ? (
                           <span className="px-2 py-0.5 rounded-md bg-orange-50 text-[#fe6712] border border-orange-200 font-black text-[10px] whitespace-nowrap ml-auto">
@@ -446,6 +496,27 @@ export default function MultitiendaHub() {
           </div>
         </div>
       )}
+
+      <StoreScheduleModal
+        isOpen={scheduleStore !== null}
+        onClose={() => setScheduleStore(null)}
+        storeId={scheduleStore?.id ?? null}
+        storeName={scheduleStore?.name}
+      />
+
+      {savedOrderId && !savedOrderFinal && (
+        <button
+          type="button"
+          onClick={() => setIsTrackingOpen(true)}
+          title="Seguir mi pedido"
+          aria-label="Ver mi pedido activo"
+          className="fixed bottom-20 right-4 md:bottom-6 md:right-6 z-40 h-14 w-14 rounded-full bg-[#fe6712] hover:bg-[#e0580d] text-white shadow-lg shadow-orange-500/40 flex items-center justify-center cursor-pointer active:scale-95 transition"
+        >
+          <ClipboardList className="w-6 h-6" />
+        </button>
+      )}
+
+      <OrderTrackingModal isOpen={isTrackingOpen} onClose={() => setIsTrackingOpen(false)} orderId={savedOrderId} />
     </div>
   );
 }

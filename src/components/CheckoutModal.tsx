@@ -3,10 +3,10 @@
 import React, { useState, useEffect } from 'react';
 import {
   ArrowRight, ArrowLeft, X, HeartHandshake, Check, Copy, Upload,
-  CheckCircle2, Info, Clock, FileText, Loader2, Gift, Bookmark
+  CheckCircle2, Info, Clock, FileText, Loader2, Gift, Bookmark, MessageCircle
 } from 'lucide-react';
 
-import { submitPurchaseOrder, getStorePaymentInfo } from '@/services/marketplaceService';
+import { submitPurchaseOrder, getStorePaymentInfo, uploadPaymentReference } from '@/services/marketplaceService';
 import { calculateLogistics, PhysicalItem } from '@/lib/logisticsEngine';
 
 export interface PaymentConfigItem {
@@ -102,6 +102,10 @@ export default function CheckoutModal({
   // Fase 4: orden creada sin comprobante ni referencia → pago pendiente (se reporta por WhatsApp)
   const [pagoPendiente, setPagoPendiente] = useState<boolean>(false);
   const [numeroOrden, setNumeroOrden] = useState<string>('');
+  const [ordenCreada, setOrdenCreada] = useState<boolean>(false);
+  const [ordenId, setOrdenId] = useState<string>(''); // id real de la orden creada (para PUT payment/reference)
+  const [uploading, setUploading] = useState<boolean>(false);
+  const [comprobanteEnviado, setComprobanteEnviado] = useState<boolean>(false);
 
   const [paymentMethods, setPaymentMethods] = useState<PaymentConfigItem[]>([]);
   const [selectedMethod, setSelectedMethod] = useState<PaymentConfigItem | null>(null);
@@ -153,6 +157,43 @@ export default function CheckoutModal({
       setLoadingPaymentInfo(false);
     });
   }, [isOpen, orderSummary.merchantId]);
+
+  // Pre-carga de datos del cliente (solo campos vacíos). Claves: customerName/customerDocument/customerPhone o name/document/phone
+  useEffect(() => {
+    if (!isOpen) return;
+    try {
+      const pick = (...keys: string[]) => keys.map((key) => localStorage.getItem(key)).find((v) => v && v.trim()) || '';
+      const savedName = pick('customerName', 'name').trim();
+      const savedDoc = pick('customerDocument', 'document').trim();
+      const savedPhone = pick('customerPhone', 'phone').trim();
+
+      if (savedName && !nombre) setNombre(savedName);
+
+      if (savedDoc && !cedula) {
+        const docMatch = savedDoc.match(/^([VEJ])\s*-?\s*(.+)$/i);
+        if (docMatch) {
+          setTipoDocumento(`${docMatch[1].toUpperCase()}-`);
+          setCedula(docMatch[2].trim());
+        } else {
+          setCedula(savedDoc);
+        }
+      }
+
+      if (savedPhone && !telefono) {
+        const digits = savedPhone.replace(/\D/g, '');
+        const code = ['58', '57', '1'].find((c) => (savedPhone.startsWith('+') || digits.length > 10) && digits.startsWith(c));
+        if (code) {
+          setCodigoPais(`+${code}`);
+          setTelefono(digits.slice(code.length));
+        } else {
+          setTelefono(digits.replace(/^0+/, ''));
+        }
+      }
+    } catch {
+      /* localStorage no disponible: se deja el formulario vacío */
+    }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [isOpen]);
 
   if (!isOpen) return null;
 
@@ -227,6 +268,9 @@ export default function CheckoutModal({
   };
 
   const handleCompleteFinalOrder = async () => {
+    // La orden ya fue registrada en el backend: el contrato solo tiene POST de creación, reenviar duplicaría el pedido
+    if (ordenCreada) return;
+
     // Sin datos reales no se envía el pedido: nunca se inventan comercio, teléfono, tasa, ubicación ni productos
     const storeIdNum = Number(orderSummary.merchantId);
     const storePhoneStr = String(orderSummary.merchantPhone || '').trim();
@@ -350,6 +394,16 @@ export default function CheckoutModal({
 
         const created = response.data as { id?: string | number; order_number?: string | number; orderNumber?: string | number } | undefined;
         setNumeroOrden(String(created?.order_number ?? created?.orderNumber ?? created?.id ?? ''));
+        setOrdenCreada(true);
+        setOrdenId(created?.id !== undefined && created?.id !== null ? String(created.id) : '');
+        // Datos del cliente para futuras compras (la ubicación NO se guarda: el GPS en vivo es la predeterminada)
+        try {
+          localStorage.setItem('customerName', nombre.trim());
+          localStorage.setItem('customerDocument', `${tipoDocumento}${cedula.trim()}`);
+          localStorage.setItem('customerPhone', telefonoCompleto);
+        } catch {
+          /* sin localStorage: no se persiste */
+        }
         setPagoPendiente(!archivoComprobante && !referenciaPago.trim());
         setPasoVista('exito');
       } else {
@@ -363,12 +417,35 @@ export default function CheckoutModal({
     }
   };
 
+  // Orden ya creada: se adjunta comprobante/referencia con PUT payment/reference (nunca se vuelve a llamar a purchase)
+  const handleUploadReference = async () => {
+    if (!ordenId) {
+      setSubmitError('No tenemos el identificador de tu orden para adjuntar el comprobante. Repórtalo por WhatsApp.');
+      return;
+    }
+    if (!archivoComprobante && !referenciaPago.trim()) {
+      setSubmitError('Adjunta tu comprobante o escribe el número de referencia.');
+      return;
+    }
+    setUploading(true);
+    setSubmitError(null);
+    const res = await uploadPaymentReference({ orderId: ordenId, file: archivoComprobante, referenceText: referenciaPago });
+    setUploading(false);
+    if (res && (res.code === 1 || res.code === 200 || res.code === 201)) {
+      setComprobanteEnviado(true);
+      setPagoPendiente(false);
+      setPasoVista('exito');
+    } else {
+      setSubmitError(res?.message || 'No se pudo enviar el comprobante. Intenta de nuevo.');
+    }
+  };
+
   // "Reportar Pago por WhatsApp": teléfono real del comercio (0 inicial = Venezuela +58), con número de orden y monto
   const buildWhatsAppReportUrl = () => {
     const digits = String(orderSummary.merchantPhone || '').replace(/\D/g, '');
     const phone = digits.startsWith('0') ? `58${digits.slice(1)}` : digits;
     const montoBs = tasaRef > 0 ? ` / Bs.S ${totalBolivares.toLocaleString('es-VE', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}` : '';
-    const texto = `Hola, quiero reportar el pago de mi orden${numeroOrden ? ` #${numeroOrden}` : ''} en ${merchantName}. Monto a pagar: $${totalFinalUSD.toFixed(2)} USD${montoBs}${selectedMethod ? ` (${selectedMethod.value})` : ''}. Te envío el comprobante por este medio.`;
+    const texto = `Hola, quiero reportar el pago de mi orden${numeroOrden ? ` #${numeroOrden}` : ''} en ${merchantName}. Monto a pagar: $${totalFinalUSD.toFixed(2)} USD${montoBs}${selectedMethod ? ` (${selectedMethod.value})` : ''}.${referenciaPago.trim() ? ` Referencia de pago: ${referenciaPago.trim()}.` : ''} Te envío el comprobante por este medio.`;
     return `https://wa.me/${phone}?text=${encodeURIComponent(texto)}`;
   };
 
@@ -376,19 +453,36 @@ export default function CheckoutModal({
     <div className="fixed inset-0 z-[140] flex items-center justify-center bg-black/75 p-3 backdrop-blur-sm">
       <div className="w-full max-w-[420px] h-[610px] overflow-hidden rounded-[28px] bg-white shadow-2xl border border-slate-100 flex flex-col justify-between">
 
-        <div className="bg-[#fe6712] px-5 py-3 text-white flex items-center justify-between shrink-0">
-          <div>
-            <h3 className="font-black text-[17px] leading-tight mb-0.5">
-              {pasoVista === 'formulario' ? 'Fase 2: Datos y Métodos' : pasoVista === 'instrucciones' ? 'Fase 3: Pago' : (pagoPendiente ? 'Fase 4: Pago Pendiente' : 'Confirmación')}
-            </h3>
-            <p className="text-[10px] font-medium text-white/90">
-              {pasoVista === 'formulario' ? 'Completa tus datos reales de contacto' : pasoVista === 'instrucciones' ? 'Transfiere a las cuentas oficiales del comercio' : (pagoPendiente ? 'Tu orden quedó reservada, falta reportar el pago' : 'Orden registrada')}
-            </p>
+        {pasoVista === 'exito' && pagoPendiente ? (
+          <div className="bg-[#fe6712] px-5 py-3 text-white flex items-center justify-between shrink-0">
+            <div className="flex items-center gap-2.5 min-w-0">
+              <div className="w-8 h-8 rounded-lg bg-[#10b981] flex items-center justify-center shrink-0">
+                <Check className="w-5 h-5 text-white stroke-[3]" />
+              </div>
+              <div className="min-w-0">
+                <h3 className="font-black text-[17px] leading-tight mb-0.5 truncate">{merchantName || 'Comercio'}</h3>
+                <p className="text-[10px] font-medium text-white/90">Confirmación De Orden</p>
+              </div>
+            </div>
+            <button type="button" onClick={onClose} className="w-6 h-6 rounded-full bg-white/20 flex items-center justify-center text-white hover:bg-white/30 shrink-0">
+              <X className="h-3.5 w-3.5" />
+            </button>
           </div>
-          <button type="button" onClick={onClose} className="w-6 h-6 rounded-full bg-white/20 flex items-center justify-center text-white hover:bg-white/30">
-            <X className="h-3.5 w-3.5" />
-          </button>
-        </div>
+        ) : (
+          <div className="bg-[#fe6712] px-5 py-3 text-white flex items-center justify-between shrink-0">
+            <div>
+              <h3 className="font-black text-[17px] leading-tight mb-0.5">
+                {pasoVista === 'formulario' ? 'Fase 2: Datos y Métodos' : pasoVista === 'instrucciones' ? 'Fase 3: Pago' : 'Confirmación'}
+              </h3>
+              <p className="text-[10px] font-medium text-white/90">
+                {pasoVista === 'formulario' ? 'Completa tus datos reales de contacto' : pasoVista === 'instrucciones' ? 'Transfiere a las cuentas oficiales del comercio' : 'Orden registrada'}
+              </p>
+            </div>
+            <button type="button" onClick={onClose} className="w-6 h-6 rounded-full bg-white/20 flex items-center justify-center text-white hover:bg-white/30">
+              <X className="h-3.5 w-3.5" />
+            </button>
+          </div>
+        )}
 
         {pasoVista === 'formulario' && (
           <div className="px-5 py-3 space-y-3 flex-1 overflow-y-auto no-scrollbar flex flex-col justify-between">
@@ -662,31 +756,44 @@ export default function CheckoutModal({
         )}
 
         {pasoVista === 'exito' && pagoPendiente && (
-          <div className="flex-1 flex flex-col items-center justify-center text-center px-6 bg-white py-4">
-            <div className="w-14 h-14 bg-amber-100 rounded-full flex items-center justify-center mb-3">
-              <Clock className="w-7 h-7 text-amber-600" />
+          <div className="flex-1 overflow-y-auto no-scrollbar flex flex-col items-center text-center px-5 bg-white py-4">
+            <div className="w-14 h-14 bg-orange-50 rounded-full flex items-center justify-center mb-2 shrink-0">
+              <Clock className="w-7 h-7 text-[#fe6712]" />
             </div>
-            <h3 className="text-lg font-black text-slate-900 leading-tight mb-1">
-              ¡Orden {numeroOrden ? `#${numeroOrden} ` : ''}registrada!
-            </h3>
+            <h3 className="text-lg font-black text-slate-900 leading-tight mb-1">¡Tu pedido ya está en la cocina! 🚀</h3>
             <p className="text-[12px] text-slate-500 font-medium mb-3">
-              Tu orden fue registrada en el sistema y está <strong className="text-slate-700">reservada</strong> en {merchantName}. Falta confirmar tu pago: transfiere el monto y repórtalo por WhatsApp.
+              En D&apos;una tú tienes el control. Elige cómo prefieres pagar:
             </p>
-            <div className="w-full bg-slate-50 border border-slate-100 rounded-2xl p-3 space-y-1">
-              <span className="text-[9px] font-black text-slate-400 uppercase tracking-widest block">Total a transferir</span>
-              <span className="text-2xl font-black text-[#fe6712] block leading-tight">${totalFinalUSD.toFixed(2)} USD</span>
-              {tasaRef > 0 && (
-                <span className="text-sm font-black text-slate-700 block">
-                  Bs.S {totalBolivares.toLocaleString('es-VE', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}
-                </span>
-              )}
-              {tasaRef > 0 && <span className="text-[9px] font-bold text-slate-400 block">Tasa oficial Bs.S {tasaRef.toFixed(2)} / $</span>}
-              {selectedMethod && (
-                <span className="inline-block mt-1 text-[8px] font-black bg-orange-50 text-[#fe6712] px-2 py-0.5 rounded-full border border-orange-200/50">
-                  {selectedMethod.value.toUpperCase()}
-                </span>
-              )}
+
+            <div className="w-full space-y-2">
+              <div className="flex items-start gap-3 text-left bg-orange-50/60 border border-orange-100 rounded-2xl p-3">
+                <div className="w-9 h-9 rounded-full bg-orange-100 flex items-center justify-center shrink-0">
+                  <Clock className="w-4 h-4 text-amber-700" />
+                </div>
+                <div>
+                  <h4 className="text-[12px] font-black text-slate-900 leading-tight">Pago Express</h4>
+                  <p className="text-[11px] text-slate-500 font-medium leading-snug">Sube tu comprobante en el seguimiento de orden.</p>
+                </div>
+              </div>
+
+              <div className="flex items-start gap-3 text-left bg-emerald-50/60 border border-emerald-100 rounded-2xl p-3">
+                <div className="w-9 h-9 rounded-full bg-emerald-100 flex items-center justify-center shrink-0">
+                  <MessageCircle className="w-4 h-4 text-emerald-600" />
+                </div>
+                <div>
+                  <h4 className="text-[12px] font-black text-slate-900 leading-tight">Pago Directo (WhatsApp)</h4>
+                  <p className="text-[11px] text-slate-500 font-medium leading-snug">Espera que {merchantName || 'el comercio'} te escriba.</p>
+                </div>
+              </div>
             </div>
+
+            <button
+              type="button"
+              onClick={() => { setSubmitError(null); setPasoVista('instrucciones'); }}
+              className="w-full mt-3 rounded-xl border border-slate-200 bg-slate-50 hover:bg-slate-100 py-2 px-3 text-[12px] font-black text-slate-700 transition cursor-pointer"
+            >
+              💳 ¡Prefiero pagar ahora mismo en la plataforma!
+            </button>
           </div>
         )}
 
@@ -699,6 +806,9 @@ export default function CheckoutModal({
             <p className="text-[12px] text-slate-500 font-medium mb-4">
               Tu orden ha sido registrada con éxito en el servidor de AdonisJS.
             </p>
+            {comprobanteEnviado && (
+              <p className="text-[12px] text-emerald-600 font-black mb-4">✓ Recibimos tu comprobante de pago.</p>
+            )}
             <button
               onClick={onViewReceipt}
               className="flex items-center gap-1.5 text-[#fe6712] font-black text-[12px] hover:text-[#e0580d] transition"
@@ -746,43 +856,54 @@ export default function CheckoutModal({
                   {submitError}
                 </div>
               )}
-              <button
-                type="button"
-                onClick={handleCompleteFinalOrder}
-                disabled={submitting}
-                className="w-full flex items-center justify-center gap-2 rounded-full bg-[#fe6712] hover:bg-[#e0580d] disabled:opacity-50 py-2 text-xs font-black text-white shadow-md"
-              >
-                <span>{submitting ? 'Registrando en AdonisJS...' : 'Completar pedido'}</span>
-                {!submitting && <Check className="h-4 w-4 stroke-[3]" />}
-              </button>
+              {ordenCreada ? (
+                <>
+                  <button
+                    type="button"
+                    onClick={handleUploadReference}
+                    disabled={uploading}
+                    className="w-full flex items-center justify-center gap-2 rounded-full bg-[#fe6712] hover:bg-[#e0580d] disabled:opacity-50 py-2 text-xs font-black text-white shadow-md"
+                  >
+                    <span>{uploading ? 'Enviando comprobante...' : 'Enviar comprobante'}</span>
+                    {!uploading && <Upload className="h-4 w-4" />}
+                  </button>
+                  <a
+                    href={buildWhatsAppReportUrl()}
+                    target="_blank"
+                    rel="noopener noreferrer"
+                    className="w-full flex items-center justify-center gap-2 rounded-full bg-white border border-[#25D366] hover:bg-emerald-50 py-1.5 text-[11px] font-black text-[#1a9c4c]"
+                  >
+                    <span>O reportar por WhatsApp</span>
+                  </a>
+                </>
+              ) : (
+                <button
+                  type="button"
+                  onClick={handleCompleteFinalOrder}
+                  disabled={submitting}
+                  className="w-full flex items-center justify-center gap-2 rounded-full bg-[#fe6712] hover:bg-[#e0580d] disabled:opacity-50 py-2 text-xs font-black text-white shadow-md"
+                >
+                  <span>{submitting ? 'Registrando en AdonisJS...' : 'Completar pedido'}</span>
+                  {!submitting && <Check className="h-4 w-4 stroke-[3]" />}
+                </button>
+              )}
               <div className="text-center">
                 <button
                   type="button"
-                  onClick={() => setPasoVista('formulario')}
-                  disabled={submitting}
+                  onClick={() => setPasoVista(ordenCreada ? 'exito' : 'formulario')}
+                  disabled={submitting || uploading}
                   className="text-[10px] font-bold text-slate-500 hover:text-slate-800 underline"
                 >
-                  Volver para cambiar método
+                  {ordenCreada ? 'Volver a la confirmación' : 'Volver para cambiar método'}
                 </button>
               </div>
             </div>
           ) : (
             <div className="space-y-1.5">
               {pagoPendiente ? (
-                <>
-                  <a
-                    href={buildWhatsAppReportUrl()}
-                    target="_blank"
-                    rel="noopener noreferrer"
-                    className="w-full flex items-center justify-center gap-2 rounded-full bg-[#25D366] hover:bg-[#1ebe5b] py-2 text-xs font-black text-white shadow-md"
-                  >
-                    <span>Reportar Pago por WhatsApp</span>
-                  </a>
-                  <button type="button" onClick={onViewTracking} className="w-full flex items-center justify-center gap-2 rounded-full bg-white border border-[#fe6712] hover:bg-orange-50 py-2 text-xs font-black text-[#fe6712]">
-                    <Clock className="h-4 w-4" />
-                    <span>Ver Seguimiento del Pedido</span>
-                  </button>
-                </>
+                <button type="button" onClick={onViewTracking} className="w-full flex items-center justify-center gap-2 rounded-full bg-[#fe6712] hover:bg-[#e0580d] py-2 text-xs font-black text-white shadow-md">
+                  <span>🕒 Ver seguimiento de pedido</span>
+                </button>
               ) : (
                 <button type="button" onClick={onViewTracking} className="w-full flex items-center justify-center gap-2 rounded-full bg-[#fe6712] hover:bg-[#e0580d] py-2 text-xs font-black text-white shadow-md">
                   <Clock className="h-4 w-4" />
