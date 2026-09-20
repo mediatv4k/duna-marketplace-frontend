@@ -372,6 +372,12 @@ export default function MultitiendaHub() {
               <input type="text" value={searchQuery} onChange={(e) => setSearchQuery(e.target.value)} placeholder="Busca comercios y productos..." className="w-full bg-transparent text-xs font-semibold text-slate-800 pl-11 pr-8 py-2.5 focus:outline-none placeholder-slate-400" />
             </div>
           </div>
+          <div className="hidden md:flex items-center gap-3">
+            <button type="button" onClick={() => setIsTrackingOpen(true)} className="bg-orange-50 hover:bg-orange-100 text-[#fe6712] border border-orange-200 px-3.5 py-2 rounded-2xl text-xs font-black flex items-center gap-1.5 transition cursor-pointer">
+              <Clock className="w-4 h-4 text-[#fe6712]" />
+              <span>Rastrear Pedido</span>
+            </button>
+          </div>
         </div>
       </header>
 

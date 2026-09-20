@@ -4,6 +4,7 @@ import React, { useState } from 'react';
 import { ShoppingBag, ChevronRight, Search, Star, Clock, MapPin, Sparkles } from 'lucide-react';
 import CartModal from './CartModal';
 import LocationPickerModal from './LocationPickerModal';
+import StoreScheduleModal from './StoreScheduleModal';
 import MasterProductModal from './MasterProductModal';
 import PromotionsCarousel from './PromotionsCarousel';
 import { getProduct, getStorePromotions, getDeliveryRate, getStorePaymentInfo } from '@/services/marketplaceService';
@@ -97,6 +98,7 @@ export default function MerchantStoreView({
   });
   const [isLocating, setIsLocating] = useState(false);
   const [isPickerOpen, setIsPickerOpen] = useState(false);
+  const [isScheduleOpen, setIsScheduleOpen] = useState(false);
   const [locationError, setLocationError] = useState<string | null>(null);
   const [quote, setQuote] = useState<DeliveryQuote>({ status: 'idle' });
 
@@ -485,6 +487,16 @@ export default function MerchantStoreView({
               <span className="bg-orange-100 text-[#fe6712] text-[10px] font-black uppercase tracking-wider px-2.5 py-1 rounded-xl">
                 {merchant.category || 'Comercio Verificado'}
               </span>
+              {merchant.badge && (
+                <button
+                  type="button"
+                  onClick={() => setIsScheduleOpen(true)}
+                  title="Ver horarios"
+                  className="bg-[#fe6712] hover:bg-[#e0580d] text-white text-[10px] font-black px-3 py-1 rounded-full uppercase tracking-wider cursor-pointer transition"
+                >
+                  {merchant.badge}
+                </button>
+              )}
             </div>
             <h1 className="text-2xl font-black text-slate-900 tracking-tight">{merchant.name}</h1>
             <p className="text-xs text-slate-500 font-medium mt-0.5">Cabimas, Zulia State, Venezuela</p>
@@ -673,6 +685,13 @@ export default function MerchantStoreView({
           isNationalShippingEnabled={true}
         />
       )}
+
+      <StoreScheduleModal
+        isOpen={isScheduleOpen}
+        onClose={() => setIsScheduleOpen(false)}
+        storeId={merchant?.id ?? null}
+        storeName={merchant?.name}
+      />
 
       {/* Dirección de entrega alterna (mapa): al confirmar, el efecto de cotización recalcula distancia, bloqueo de 12 km y getDeliveryRate */}
       <LocationPickerModal
