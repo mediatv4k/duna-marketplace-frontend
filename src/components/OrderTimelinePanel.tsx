@@ -3,6 +3,7 @@
 import React, { useEffect, useState } from 'react';
 import { Star, X } from 'lucide-react';
 import { friendlyStatus, getTrackingState, parseCoords, toWhatsAppNumber } from '@/lib/orderTracking';
+import LiveOrderMap from './LiveOrderMap';
 
 interface OrderTimelinePanelProps {
   remote: any; // data de GET /delivery/request/{id}/public (null mientras no hay respuesta)
@@ -13,7 +14,7 @@ interface OrderTimelinePanelProps {
 // código de entrega (solo al llegar), ficha compacta del repartidor, botón Google Maps y timeline descendente.
 // Al entregarse muestra el cierre con calificación. La alerta sonora/háptica vive en useArrivalAlert (la llama el contenedor).
 export default function OrderTimelinePanel({ remote, trackingError }: OrderTimelinePanelProps) {
-  const { history: trackingHistory, phase, isFinal, deliveryCode } = getTrackingState(remote);
+  const { history: trackingHistory, phase, isFinal, deliveryCode, driverConfirmed } = getTrackingState(remote);
   const orderKey = remote?.id !== undefined && remote?.id !== null ? String(remote.id) : '';
 
   // Repartidor (campos reales de GET /delivery/request/{id}/public)
@@ -30,23 +31,20 @@ export default function OrderTimelinePanel({ remote, trackingError }: OrderTimel
 
   // El bloque del repartidor solo existe mientras el pedido está en curso (se oculta al entregarse/cancelarse)
   const showDriver = hasDriver && !isFinal && phase !== 'delivered';
-  // WhatsApp habilitado solo con la carrera confirmada (TAKEN/Recogido/Entregando/Llega a sitio); en DRIVER_ASSIGNED (turno) no
-  const whatsappEnabled = phase === 'on_route' || phase === 'arrived';
+  // DRIVER_ASSIGNED / TAKEN / Recogido / Entregando / Llega a sitio = chofer asignado → WhatsApp habilitado.
+  // Solo en la rotación por turnos previa (sin ninguno de esos eventos) queda "de turno" con WhatsApp deshabilitado.
+  const whatsappEnabled = driverConfirmed;
 
   const [avatarFailed, setAvatarFailed] = useState(false);
   useEffect(() => { setAvatarFailed(false); }, [avatarUrl]);
 
-  // Google Maps: posición viva del repartidor; si no viene, coordenadas o texto de la dirección de entrega
-  const driverPos = parseCoords(remote?.current_location);
+  // Coordenadas reales del endpoint para el mapa embebido (food_store_location, customer_address, current_location)
+  const storePos = parseCoords(remote?.food_store_location);
   const customerPos = parseCoords(remote?.customer_address);
-  const customerText = String(remote?.customer_address_text || '').trim();
-  const mapsUrl = driverPos
-    ? `https://www.google.com/maps?q=${driverPos.lat},${driverPos.lng}`
-    : customerPos
-      ? `https://www.google.com/maps?q=${customerPos.lat},${customerPos.lng}`
-      : customerText
-        ? `https://www.google.com/maps?q=${encodeURIComponent(customerText)}`
-        : null;
+  const driverPos = parseCoords(remote?.current_location);
+  const hasMapPoints = !!(storePos || customerPos || driverPos);
+  const [showMap, setShowMap] = useState(false);
+  const mapVisible = showMap && hasMapPoints && !isFinal;
 
   // ---- Cierre al entregar: calificación 1–5 (servicio y comercio) ----
   const [showClosure, setShowClosure] = useState(false);
@@ -118,7 +116,7 @@ export default function OrderTimelinePanel({ remote, trackingError }: OrderTimel
       {showDriver && (
         <div className="bg-white p-3 rounded-2xl border border-slate-100 shadow-sm space-y-2">
           <h4 className="text-[10px] font-black text-slate-500 uppercase tracking-wider">
-            {whatsappEnabled ? 'Tu repartidor' : 'Repartidor de turno'}
+            {whatsappEnabled ? 'Repartidor asignado' : 'Repartidor de turno'}
           </h4>
           <div className="flex items-center gap-3">
             {avatarUrl && !avatarFailed ? (
@@ -171,18 +169,33 @@ export default function OrderTimelinePanel({ remote, trackingError }: OrderTimel
         </div>
       )}
 
-      {mapsUrl && !isFinal && (
-        <a
-          href={mapsUrl}
-          target="_blank"
-          rel="noopener noreferrer"
-          title={driverPos ? 'Posición del repartidor' : 'Aún no hay posición del repartidor: se abrirá la dirección de entrega'}
-          className="w-full flex items-center justify-center gap-1.5 rounded-full border border-[#fe6712] bg-white hover:bg-orange-50 py-1 text-[11px] font-black text-[#fe6712]"
+      {hasMapPoints && !isFinal && !mapVisible && (
+        <button
+          type="button"
+          onClick={() => setShowMap(true)}
+          className="w-full flex items-center justify-center gap-1.5 rounded-full border border-[#fe6712] bg-white hover:bg-orange-50 py-1.5 text-[11px] font-black text-[#fe6712] cursor-pointer"
         >
-          📍 Ver en Google Maps
-        </a>
+          🛵 Sigue tu pedido en línea
+        </button>
       )}
 
+      {mapVisible && (
+        <div className="space-y-2 bg-white p-3 rounded-2xl border border-slate-100 shadow-sm">
+          <div className="flex items-center justify-between">
+            <h4 className="text-[10px] font-black text-slate-500 uppercase tracking-wider">Sigue tu pedido en línea</h4>
+            <button
+              type="button"
+              onClick={() => setShowMap(false)}
+              className="text-[10px] font-black text-[#fe6712] bg-orange-50 border border-orange-200 rounded-full px-2.5 py-0.5 cursor-pointer"
+            >
+              Ver seguimiento
+            </button>
+          </div>
+          <LiveOrderMap store={storePos} customer={customerPos} driver={driverPos} />
+        </div>
+      )}
+
+      {!mapVisible && (
       <div className="space-y-3 bg-white p-3.5 rounded-2xl border border-slate-100 shadow-sm">
         <h4 className="text-xs font-black text-slate-800 uppercase tracking-wide mb-3">Estatus del pedido</h4>
         {trackingHistory.length === 0 ? (
@@ -213,6 +226,7 @@ export default function OrderTimelinePanel({ remote, trackingError }: OrderTimel
           </div>
         )}
       </div>
+      )}
 
       {showClosure && (
         <div className="fixed inset-0 z-[180] flex items-center justify-center bg-black/75 p-4 backdrop-blur-sm">
