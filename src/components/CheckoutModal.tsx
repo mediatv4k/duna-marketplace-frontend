@@ -105,7 +105,6 @@ export default function CheckoutModal({
   const [ordenCreada, setOrdenCreada] = useState<boolean>(false);
   const [ordenId, setOrdenId] = useState<string>(''); // id real de la orden creada (para PUT payment/reference)
   const [uploading, setUploading] = useState<boolean>(false);
-  const [comprobanteEnviado, setComprobanteEnviado] = useState<boolean>(false);
 
   const [paymentMethods, setPaymentMethods] = useState<PaymentConfigItem[]>([]);
   const [selectedMethod, setSelectedMethod] = useState<PaymentConfigItem | null>(null);
@@ -395,6 +394,15 @@ export default function CheckoutModal({
         const created = response.data as { id?: string | number; order_number?: string | number; orderNumber?: string | number } | undefined;
         setNumeroOrden(String(created?.order_number ?? created?.orderNumber ?? created?.id ?? ''));
         setOrdenCreada(true);
+        // Compra registrada: la bolsa se vacía de inmediato (localStorage + estado de la tienda vía evento)
+        try {
+          localStorage.removeItem('cart_data');
+          localStorage.removeItem('current_order');
+          localStorage.removeItem('current_cart_store_id');
+        } catch {
+          /* sin localStorage */
+        }
+        window.dispatchEvent(new Event('duna:cart-cleared'));
         setOrdenId(created?.id !== undefined && created?.id !== null ? String(created.id) : '');
         // Datos del cliente para futuras compras (la ubicación NO se guarda: el GPS en vivo es la predeterminada)
         try {
@@ -407,7 +415,7 @@ export default function CheckoutModal({
         setPagoPendiente(!archivoComprobante && !referenciaPago.trim());
         setPasoVista('exito');
       } else {
-        const errorMsg = response?.message || 'El servidor de AdonisJS rechazó la orden. Verifica los montos.';
+        const errorMsg = response?.message || 'No pudimos registrar tu pedido. Revisa tus datos e inténtalo de nuevo.';
         setSubmitError(errorMsg);
       }
     } catch (err: unknown) {
@@ -420,7 +428,7 @@ export default function CheckoutModal({
   // Orden ya creada: se adjunta comprobante/referencia con PUT payment/reference (nunca se vuelve a llamar a purchase)
   const handleUploadReference = async () => {
     if (!ordenId) {
-      setSubmitError('No tenemos el identificador de tu orden para adjuntar el comprobante. Repórtalo por WhatsApp.');
+      setSubmitError('No pudimos identificar tu orden para adjuntar el comprobante. Inténtalo de nuevo en unos minutos.');
       return;
     }
     if (!archivoComprobante && !referenciaPago.trim()) {
@@ -432,21 +440,11 @@ export default function CheckoutModal({
     const res = await uploadPaymentReference({ orderId: ordenId, file: archivoComprobante, referenceText: referenciaPago });
     setUploading(false);
     if (res && (res.code === 1 || res.code === 200 || res.code === 201)) {
-      setComprobanteEnviado(true);
       setPagoPendiente(false);
       setPasoVista('exito');
     } else {
       setSubmitError(res?.message || 'No se pudo enviar el comprobante. Intenta de nuevo.');
     }
-  };
-
-  // "Reportar Pago por WhatsApp": teléfono real del comercio (0 inicial = Venezuela +58), con número de orden y monto
-  const buildWhatsAppReportUrl = () => {
-    const digits = String(orderSummary.merchantPhone || '').replace(/\D/g, '');
-    const phone = digits.startsWith('0') ? `58${digits.slice(1)}` : digits;
-    const montoBs = tasaRef > 0 ? ` / Bs.S ${totalBolivares.toLocaleString('es-VE', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}` : '';
-    const texto = `Hola, quiero reportar el pago de mi orden${numeroOrden ? ` #${numeroOrden}` : ''} en ${merchantName}. Monto a pagar: $${totalFinalUSD.toFixed(2)} USD${montoBs}${selectedMethod ? ` (${selectedMethod.value})` : ''}.${referenciaPago.trim() ? ` Referencia de pago: ${referenciaPago.trim()}.` : ''} Te envío el comprobante por este medio.`;
-    return `https://wa.me/${phone}?text=${encodeURIComponent(texto)}`;
   };
 
   return (
@@ -802,13 +800,10 @@ export default function CheckoutModal({
             <div className="w-16 h-16 bg-[#10b981] rounded-full flex items-center justify-center shadow-[0_8px_30px_rgba(16,185,129,0.3)] mb-4">
               <Check className="w-8 h-8 text-white stroke-[3]" />
             </div>
-            <h3 className="text-xl font-black text-slate-900 mb-1">¡Pedido enviado a {merchantName}!</h3>
+            <h3 className="text-xl font-black text-slate-900 mb-1">¡Pedido enviado a {merchantName || 'el comercio'}!</h3>
             <p className="text-[12px] text-slate-500 font-medium mb-4">
-              Tu orden ha sido registrada con éxito en el servidor de AdonisJS.
+              Recibimos tu comprobante de pago. El comercio está verificando tu orden.
             </p>
-            {comprobanteEnviado && (
-              <p className="text-[12px] text-emerald-600 font-black mb-4">✓ Recibimos tu comprobante de pago.</p>
-            )}
             <button
               onClick={onViewReceipt}
               className="flex items-center gap-1.5 text-[#fe6712] font-black text-[12px] hover:text-[#e0580d] transition"
@@ -867,14 +862,6 @@ export default function CheckoutModal({
                     <span>{uploading ? 'Enviando comprobante...' : 'Enviar comprobante'}</span>
                     {!uploading && <Upload className="h-4 w-4" />}
                   </button>
-                  <a
-                    href={buildWhatsAppReportUrl()}
-                    target="_blank"
-                    rel="noopener noreferrer"
-                    className="w-full flex items-center justify-center gap-2 rounded-full bg-white border border-[#25D366] hover:bg-emerald-50 py-1.5 text-[11px] font-black text-[#1a9c4c]"
-                  >
-                    <span>O reportar por WhatsApp</span>
-                  </a>
                 </>
               ) : (
                 <button
@@ -883,7 +870,7 @@ export default function CheckoutModal({
                   disabled={submitting}
                   className="w-full flex items-center justify-center gap-2 rounded-full bg-[#fe6712] hover:bg-[#e0580d] disabled:opacity-50 py-2 text-xs font-black text-white shadow-md"
                 >
-                  <span>{submitting ? 'Registrando en AdonisJS...' : 'Completar pedido'}</span>
+                  <span>{submitting ? 'Registrando tu pedido...' : 'Completar pedido'}</span>
                   {!submitting && <Check className="h-4 w-4 stroke-[3]" />}
                 </button>
               )}

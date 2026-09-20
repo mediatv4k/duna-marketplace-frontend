@@ -54,7 +54,8 @@ export default function OrderTimelinePage() {
   // Alerta sonora/háptica al detectar la transición a "Llega a sitio"
   useArrivalAlert(getTrackingState(remote).phase, !!remote);
 
-  const displayId = remote?.order_number || remote?.id || orderId || '';
+  // ID global de la orden (el mismo de la URL y de la app del repartidor); order_number solo si no hay id
+  const displayId = remote?.id || orderId || remote?.order_number || '';
 
   return (
     <div className="min-h-screen bg-slate-50 flex flex-col">

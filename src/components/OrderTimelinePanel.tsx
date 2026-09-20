@@ -31,8 +31,8 @@ export default function OrderTimelinePanel({ remote, trackingError }: OrderTimel
 
   // El bloque del repartidor solo existe mientras el pedido está en curso (se oculta al entregarse/cancelarse)
   const showDriver = hasDriver && !isFinal && phase !== 'delivered';
-  // DRIVER_ASSIGNED / TAKEN / Recogido / Entregando / Llega a sitio = chofer asignado → WhatsApp habilitado.
-  // Solo en la rotación por turnos previa (sin ninguno de esos eventos) queda "de turno" con WhatsApp deshabilitado.
+  // Chofer confirmado (DRIVER_ASSIGNED en el historial, o Entregando / Llega a sitio) → "Repartidor asignado" + WhatsApp habilitado.
+  // Con datos de chofer pero sin DRIVER_ASSIGNED (p. ej. solo "Pedido en camino") es el chofer "de turno": WhatsApp deshabilitado.
   const whatsappEnabled = driverConfirmed;
 
   const [avatarFailed, setAvatarFailed] = useState(false);

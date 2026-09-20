@@ -249,6 +249,14 @@ export default function MerchantStoreView({
     }
   };
 
+  // CheckoutModal emite 'duna:cart-cleared' al registrar la compra (code 1): la bolsa queda en 0 y la barra flotante se oculta
+  React.useEffect(() => {
+    const onCartCleared = () => updateCartStorage([]);
+    window.addEventListener('duna:cart-cleared', onCartCleared);
+    return () => window.removeEventListener('duna:cart-cleared', onCartCleared);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []);
+
   const handleProductClick = async (product: any) => {
     setLoadingProduct(true);
     try {

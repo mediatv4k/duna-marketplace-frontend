@@ -76,9 +76,9 @@ export function getTrackingState(remote: any) {
   // Código de entrega: delivery_code (verificado en DEV); se aceptan alias por si el backend los expone
   const deliveryCode = [remote?.delivery_code, remote?.code, remote?.pin, remote?.confirmation_code]
     .map((v: unknown) => String(v ?? '').trim()).find(Boolean) || '';
-  // Chofer confirmado: el historial ya registró DRIVER_ASSIGNED / TAKEN / Recogido / Entregando / Llega a sitio (o la fase actual lo implica).
-  // Sin ninguno de esos eventos el chofer es solo el "de turno" (rotación, aún sin confirmar la carrera).
-  const driverConfirmed = history.some((h: any) => /^(driver_assigned|taken|recogido|entregando|llega a sitio|en camino|lleg[oó])/i.test(String(h?.status ?? '').trim()))
-    || phase === 'driver_assigned' || phase === 'on_route' || phase === 'arrived';
+  // Chofer CONFIRMADO si y solo si el historial contiene DRIVER_ASSIGNED (o un estado posterior de entrega: TAKEN / Entregando /
+  // Llega a sitio / Entregado). "Recogido" / "Pedido en camino" es un despacho de la tienda/sistema y NO confirma al chofer: el
+  // sistema asigna preliminarmente a un chofer de turno que puede no aceptar y la orden rota (caso orden #57).
+  const driverConfirmed = history.some((h: any) => /^(driver_assigned|taken|entregando|llega a sitio|lleg[oó]|entregado)/i.test(String(h?.status ?? '').trim()));
   return { history, currentRaw, phase, isFinal: isFinalStatus(remote?.status), deliveryCode, driverConfirmed };
 }

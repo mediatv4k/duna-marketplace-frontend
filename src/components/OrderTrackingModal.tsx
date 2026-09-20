@@ -133,7 +133,8 @@ export default function OrderTrackingModal({ isOpen, onClose, orderId, orderSumm
 
   // Prioridad: datos reales del backend (/public) → datos locales del checkout. Sin valores inventados.
   const displayMerchant = remote?.food_store || orderData?.merchantName || orderSummary?.merchantName || '';
-  const displayId = remote?.order_number || remote?.id || orderData?.id || orderId || '';
+  // ID global de la orden (el que usa el repartidor y la URL /order/{id}/timeline); order_number (contador secundario) solo como último recurso
+  const displayId = remote?.id || orderData?.id || orderId || remote?.order_number || '';
   const displayClient = remote?.customer_name || orderData?.nombre || '';
   const displayAddress = remote?.customer_address_text || orderData?.direccion || orderSummary?.direccion || '';
   const costoEnvio = Number(orderData?.costoEnvio ?? orderSummary?.costoEnvio ?? remote?.service_amount ?? 0);
