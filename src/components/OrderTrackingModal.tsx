@@ -10,6 +10,45 @@ import { getOrderPublic } from '@/services/marketplaceService';
 const POLL_INTERVAL_MS = 9000;
 const FINAL_STATUSES = ['DELIVERED', 'CANCELLED', 'REJECTED', 'COMPLETED'];
 
+// Nombres amigables de los estados del historial (history[].status del backend)
+const STATUS_LABELS: Record<string, string> = {
+  'driver_assigned': 'Repartidor asignado',
+  'inicia': 'Pedido recibido',
+  'solicitud completa': 'Orden confirmada',
+  'aceptado': 'Aceptado por el comercio',
+  'listo': 'Orden lista para entrega',
+  'recogido': 'Pedido en camino',
+};
+
+// Estado no mapeado → texto limpio (sin guiones bajos, primera letra en mayúscula). Ej: "FORWARDED" → "Forwarded"
+function friendlyStatus(raw: unknown): string {
+  const text = String(raw ?? '').trim();
+  if (!text) return '';
+  const mapped = STATUS_LABELS[text.toLowerCase()];
+  if (mapped) return mapped;
+  const clean = text.replace(/_/g, ' ').replace(/\s+/g, ' ').toLowerCase();
+  return clean.charAt(0).toUpperCase() + clean.slice(1);
+}
+
+// Coordenadas del backend: objeto o string JSON, con {latitude,longitude} o {lat,lng}
+function parseCoords(value: unknown): { lat: number; lng: number } | null {
+  let obj: any = value;
+  if (typeof value === 'string') {
+    try { obj = JSON.parse(value); } catch { return null; }
+  }
+  if (!obj || typeof obj !== 'object') return null;
+  const lat = Number(obj.latitude ?? obj.lat);
+  const lng = Number(obj.longitude ?? obj.lng);
+  return Number.isFinite(lat) && Number.isFinite(lng) ? { lat, lng } : null;
+}
+
+// Teléfono → formato internacional para wa.me (el backend trae "0416…" y "57314…"; 0 inicial = Venezuela +58)
+function toWhatsAppNumber(raw: unknown): string {
+  const digits = String(raw ?? '').replace(/\D/g, '');
+  if (!digits) return '';
+  return digits.startsWith('0') ? `58${digits.slice(1)}` : digits;
+}
+
 interface OrderTrackingModalProps {
   isOpen: boolean;
   onClose: () => void;
@@ -140,9 +179,34 @@ export default function OrderTrackingModal({ isOpen, onClose, orderId, orderSumm
   const displayPhone = remote?.customer_phone || orderData?.telefono || orderSummary?.telefono || '';
   const metodoPagoLower = String(orderData?.metodoPago || '').toLowerCase();
   const isPagoMethod = (keyword: string) => metodoPagoLower.includes(keyword);
+  // Timeline descendente: el evento más reciente arriba (empate de fecha → id mayor primero)
   const trackingHistory: any[] = Array.isArray(remote?.history)
-    ? [...remote.history].sort((x: any, y: any) => new Date(x.date).getTime() - new Date(y.date).getTime())
+    ? [...remote.history].sort((x: any, y: any) =>
+        (new Date(y.date).getTime() - new Date(x.date).getTime()) || (Number(y.id || 0) - Number(x.id || 0)))
     : [];
+  const remoteStatusUpper = String(remote?.status || '').toUpperCase();
+  const isFinalStatus = FINAL_STATUSES.includes(remoteStatusUpper);
+
+  // Repartidor (campos reales de GET /delivery/request/{id}/public)
+  const driverName = String(remote?.delivery_driver_name || '').trim();
+  const driverPhoneRaw = String(remote?.delivery_driver_phone || '').trim();
+  const driverWa = toWhatsAppNumber(driverPhoneRaw);
+  const vehicleDesc = [remote?.delivery_vehicle_type, remote?.delivery_vehicle_brand, remote?.delivery_vehicle_color]
+    .map((v: unknown) => String(v || '').trim()).filter(Boolean).join(' · ');
+  const vehiclePlate = String(remote?.delivery_vehicle_license || '').trim();
+  const hasDriver = !!(driverName || driverPhoneRaw);
+
+  // Google Maps: posición viva del repartidor; si no viene, coordenadas o texto de la dirección de entrega
+  const driverPos = parseCoords(remote?.current_location);
+  const customerPos = parseCoords(remote?.customer_address);
+  const customerText = String(remote?.customer_address_text || '').trim();
+  const mapsUrl = driverPos
+    ? `https://www.google.com/maps?q=${driverPos.lat},${driverPos.lng}`
+    : customerPos
+      ? `https://www.google.com/maps?q=${customerPos.lat},${customerPos.lng}`
+      : customerText
+        ? `https://www.google.com/maps?q=${encodeURIComponent(customerText)}`
+        : null;
   const DIVIDER = '-'.repeat(40);
 
   return (
@@ -352,9 +416,9 @@ export default function OrderTrackingModal({ isOpen, onClose, orderId, orderSumm
                     <div className="flex justify-between items-center">
                       <span className="text-[10px] font-black text-slate-400 uppercase tracking-wider">Cliente</span>
                       {remote && (
-                        <span className={`text-[10px] font-black px-2.5 py-0.5 rounded-full uppercase flex items-center gap-1 ${remote.status === 'CANCELLED' ? 'bg-red-100 text-red-800' : 'bg-emerald-100 text-emerald-800'}`}>
-                          {!FINAL_STATUSES.includes(String(remote.status || '').toUpperCase()) && <span className="h-1.5 w-1.5 rounded-full bg-emerald-500 animate-pulse"></span>}
-                          {trackingHistory.length > 0 ? trackingHistory[trackingHistory.length - 1].status : remote.status}
+                        <span className={`text-[10px] font-black px-2.5 py-0.5 rounded-full uppercase flex items-center gap-1 ${remoteStatusUpper === 'CANCELLED' ? 'bg-red-100 text-red-800' : 'bg-emerald-100 text-emerald-800'}`}>
+                          {!isFinalStatus && <span className="h-1.5 w-1.5 rounded-full bg-emerald-500 animate-pulse"></span>}
+                          {trackingHistory.length > 0 ? friendlyStatus(trackingHistory[0].status) : friendlyStatus(remote.status)}
                         </span>
                       )}
                     </div>
@@ -365,6 +429,47 @@ export default function OrderTrackingModal({ isOpen, onClose, orderId, orderSumm
                     </p>
                   </div>
 
+                  {hasDriver && (
+                    <div className="bg-white p-4 rounded-2xl border border-slate-100 shadow-sm space-y-2">
+                      <h4 className="text-xs font-black text-slate-800 uppercase tracking-wide flex items-center gap-1.5">
+                        <Bike className="w-4 h-4 text-[#fe6712]" /> Tu repartidor
+                      </h4>
+                      {driverName && <p className="text-sm font-black text-slate-900 leading-tight">{driverName}</p>}
+                      {driverPhoneRaw && <p className="text-[11px] text-slate-600 font-medium">Teléfono: {driverPhoneRaw}</p>}
+                      {(vehicleDesc || vehiclePlate) && (
+                        <p className="text-[11px] text-slate-600 font-medium">
+                          Vehículo: {vehicleDesc}{vehicleDesc && vehiclePlate ? ' · ' : ''}{vehiclePlate && <span>Placa <strong>{vehiclePlate}</strong></span>}
+                        </p>
+                      )}
+                      {driverWa && (
+                        <a
+                          href={`https://wa.me/${driverWa}`}
+                          target="_blank"
+                          rel="noopener noreferrer"
+                          className="w-full flex items-center justify-center gap-1.5 rounded-full bg-[#25D366] hover:bg-[#1ebe5b] py-1.5 text-[11px] font-black text-white shadow-sm"
+                        >
+                          Escribir al repartidor por WhatsApp
+                        </a>
+                      )}
+                    </div>
+                  )}
+
+                  {mapsUrl && (
+                    <div className="space-y-1">
+                      <a
+                        href={mapsUrl}
+                        target="_blank"
+                        rel="noopener noreferrer"
+                        className="w-full flex items-center justify-center gap-1.5 rounded-full border border-[#fe6712] bg-white hover:bg-orange-50 py-1.5 text-[11px] font-black text-[#fe6712]"
+                      >
+                        📍 Ver en Google Maps
+                      </a>
+                      {!driverPos && (
+                        <p className="text-[9px] text-slate-400 text-center">Aún no hay posición del repartidor: se abrirá la dirección de entrega.</p>
+                      )}
+                    </div>
+                  )}
+
                   <div className="space-y-3 bg-white p-4 rounded-2xl border border-slate-100 shadow-sm">
                     <h4 className="text-xs font-black text-slate-800 uppercase tracking-wide mb-4">Estatus del pedido</h4>
                     {trackingHistory.length === 0 ? (
@@ -372,13 +477,21 @@ export default function OrderTrackingModal({ isOpen, onClose, orderId, orderSumm
                     ) : (
                       <div className="space-y-4 relative before:absolute before:inset-y-2 before:left-3 before:w-0.5 before:bg-slate-200">
                         {trackingHistory.map((h: any, hIdx: number) => {
-                          const isLast = hIdx === trackingHistory.length - 1;
-                          const isCancel = isLast && String(remote?.status || '').toUpperCase() === 'CANCELLED';
+                          const isCurrent = hIdx === 0;
+                          const isCancel = isCurrent && remoteStatusUpper === 'CANCELLED';
+                          const dotClass = isCancel
+                            ? 'bg-red-500'
+                            : isCurrent && !isFinalStatus
+                              ? 'bg-[#fe6712] animate-pulse ring-4 ring-orange-100'
+                              : 'bg-emerald-500';
                           return (
                             <div key={h.id ?? hIdx} className="flex items-start gap-3 relative">
-                              <div className={`w-6 h-6 rounded-full text-white flex items-center justify-center z-10 shrink-0 text-xs shadow-xs ${isCancel ? 'bg-red-500' : isLast && !FINAL_STATUSES.includes(String(remote?.status || '').toUpperCase()) ? 'bg-[#fe6712] animate-pulse' : 'bg-emerald-500'}`}>{isCancel ? '✕' : '✓'}</div>
+                              <div className={`w-6 h-6 rounded-full text-white flex items-center justify-center z-10 shrink-0 text-xs shadow-xs ${dotClass}`}>{isCancel ? '✕' : '✓'}</div>
                               <div>
-                                <h5 className="text-xs font-black text-slate-900 leading-none">{h.status}</h5>
+                                <h5 className={`leading-none ${isCurrent ? 'text-sm font-black text-slate-900' : 'text-xs font-bold text-slate-600'}`}>
+                                  {friendlyStatus(h.status)}
+                                  {isCurrent && <span className="ml-1.5 align-middle text-[8px] font-black uppercase tracking-wide text-[#fe6712] bg-orange-50 border border-orange-200 px-1.5 py-0.5 rounded-full">Estado actual</span>}
+                                </h5>
                                 <p className="text-[10px] text-slate-500 mt-0.5">{h.date ? new Date(h.date).toLocaleString('es-VE') : ''}</p>
                               </div>
                             </div>

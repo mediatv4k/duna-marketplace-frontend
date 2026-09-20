@@ -99,6 +99,9 @@ export default function CheckoutModal({
   const [pasoVista, setPasoVista] = useState<'formulario' | 'instrucciones' | 'exito'>('formulario');
   const [submitting, setSubmitting] = useState<boolean>(false);
   const [submitError, setSubmitError] = useState<string | null>(null);
+  // Fase 4: orden creada sin comprobante ni referencia → pago pendiente (se reporta por WhatsApp)
+  const [pagoPendiente, setPagoPendiente] = useState<boolean>(false);
+  const [numeroOrden, setNumeroOrden] = useState<string>('');
 
   const [paymentMethods, setPaymentMethods] = useState<PaymentConfigItem[]>([]);
   const [selectedMethod, setSelectedMethod] = useState<PaymentConfigItem | null>(null);
@@ -345,6 +348,9 @@ export default function CheckoutModal({
           status: 'pendiente'
         });
 
+        const created = response.data as { id?: string | number; order_number?: string | number; orderNumber?: string | number } | undefined;
+        setNumeroOrden(String(created?.order_number ?? created?.orderNumber ?? created?.id ?? ''));
+        setPagoPendiente(!archivoComprobante && !referenciaPago.trim());
         setPasoVista('exito');
       } else {
         const errorMsg = response?.message || 'El servidor de AdonisJS rechazó la orden. Verifica los montos.';
@@ -357,6 +363,15 @@ export default function CheckoutModal({
     }
   };
 
+  // "Reportar Pago por WhatsApp": teléfono real del comercio (0 inicial = Venezuela +58), con número de orden y monto
+  const buildWhatsAppReportUrl = () => {
+    const digits = String(orderSummary.merchantPhone || '').replace(/\D/g, '');
+    const phone = digits.startsWith('0') ? `58${digits.slice(1)}` : digits;
+    const montoBs = tasaRef > 0 ? ` / Bs.S ${totalBolivares.toLocaleString('es-VE', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}` : '';
+    const texto = `Hola, quiero reportar el pago de mi orden${numeroOrden ? ` #${numeroOrden}` : ''} en ${merchantName}. Monto a pagar: $${totalFinalUSD.toFixed(2)} USD${montoBs}${selectedMethod ? ` (${selectedMethod.value})` : ''}. Te envío el comprobante por este medio.`;
+    return `https://wa.me/${phone}?text=${encodeURIComponent(texto)}`;
+  };
+
   return (
     <div className="fixed inset-0 z-[140] flex items-center justify-center bg-black/75 p-3 backdrop-blur-sm">
       <div className="w-full max-w-[420px] h-[610px] overflow-hidden rounded-[28px] bg-white shadow-2xl border border-slate-100 flex flex-col justify-between">
@@ -364,10 +379,10 @@ export default function CheckoutModal({
         <div className="bg-[#fe6712] px-5 py-3 text-white flex items-center justify-between shrink-0">
           <div>
             <h3 className="font-black text-[17px] leading-tight mb-0.5">
-              {pasoVista === 'formulario' ? 'Fase 2: Datos y Métodos' : pasoVista === 'instrucciones' ? 'Fase 3: Pago' : 'Confirmación'}
+              {pasoVista === 'formulario' ? 'Fase 2: Datos y Métodos' : pasoVista === 'instrucciones' ? 'Fase 3: Pago' : (pagoPendiente ? 'Fase 4: Pago Pendiente' : 'Confirmación')}
             </h3>
             <p className="text-[10px] font-medium text-white/90">
-              {pasoVista === 'formulario' ? 'Completa tus datos reales de contacto' : pasoVista === 'instrucciones' ? 'Transfiere a las cuentas oficiales del comercio' : 'Orden registrada'}
+              {pasoVista === 'formulario' ? 'Completa tus datos reales de contacto' : pasoVista === 'instrucciones' ? 'Transfiere a las cuentas oficiales del comercio' : (pagoPendiente ? 'Tu orden quedó reservada, falta reportar el pago' : 'Orden registrada')}
             </p>
           </div>
           <button type="button" onClick={onClose} className="w-6 h-6 rounded-full bg-white/20 flex items-center justify-center text-white hover:bg-white/30">
@@ -646,7 +661,36 @@ export default function CheckoutModal({
           </div>
         )}
 
-        {pasoVista === 'exito' && (
+        {pasoVista === 'exito' && pagoPendiente && (
+          <div className="flex-1 flex flex-col items-center justify-center text-center px-6 bg-white py-4">
+            <div className="w-14 h-14 bg-amber-100 rounded-full flex items-center justify-center mb-3">
+              <Clock className="w-7 h-7 text-amber-600" />
+            </div>
+            <h3 className="text-lg font-black text-slate-900 leading-tight mb-1">
+              ¡Orden {numeroOrden ? `#${numeroOrden} ` : ''}registrada!
+            </h3>
+            <p className="text-[12px] text-slate-500 font-medium mb-3">
+              Tu orden fue registrada en el sistema y está <strong className="text-slate-700">reservada</strong> en {merchantName}. Falta confirmar tu pago: transfiere el monto y repórtalo por WhatsApp.
+            </p>
+            <div className="w-full bg-slate-50 border border-slate-100 rounded-2xl p-3 space-y-1">
+              <span className="text-[9px] font-black text-slate-400 uppercase tracking-widest block">Total a transferir</span>
+              <span className="text-2xl font-black text-[#fe6712] block leading-tight">${totalFinalUSD.toFixed(2)} USD</span>
+              {tasaRef > 0 && (
+                <span className="text-sm font-black text-slate-700 block">
+                  Bs.S {totalBolivares.toLocaleString('es-VE', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}
+                </span>
+              )}
+              {tasaRef > 0 && <span className="text-[9px] font-bold text-slate-400 block">Tasa oficial Bs.S {tasaRef.toFixed(2)} / $</span>}
+              {selectedMethod && (
+                <span className="inline-block mt-1 text-[8px] font-black bg-orange-50 text-[#fe6712] px-2 py-0.5 rounded-full border border-orange-200/50">
+                  {selectedMethod.value.toUpperCase()}
+                </span>
+              )}
+            </div>
+          </div>
+        )}
+
+        {pasoVista === 'exito' && !pagoPendiente && (
           <div className="flex-1 flex flex-col items-center justify-center text-center px-6 bg-white py-6">
             <div className="w-16 h-16 bg-[#10b981] rounded-full flex items-center justify-center shadow-[0_8px_30px_rgba(16,185,129,0.3)] mb-4">
               <Check className="w-8 h-8 text-white stroke-[3]" />
@@ -724,10 +768,27 @@ export default function CheckoutModal({
             </div>
           ) : (
             <div className="space-y-1.5">
-              <button type="button" onClick={onViewTracking} className="w-full flex items-center justify-center gap-2 rounded-full bg-[#fe6712] hover:bg-[#e0580d] py-2 text-xs font-black text-white shadow-md">
-                <Clock className="h-4 w-4" />
-                <span>Ver seguimiento de pedido</span>
-              </button>
+              {pagoPendiente ? (
+                <>
+                  <a
+                    href={buildWhatsAppReportUrl()}
+                    target="_blank"
+                    rel="noopener noreferrer"
+                    className="w-full flex items-center justify-center gap-2 rounded-full bg-[#25D366] hover:bg-[#1ebe5b] py-2 text-xs font-black text-white shadow-md"
+                  >
+                    <span>Reportar Pago por WhatsApp</span>
+                  </a>
+                  <button type="button" onClick={onViewTracking} className="w-full flex items-center justify-center gap-2 rounded-full bg-white border border-[#fe6712] hover:bg-orange-50 py-2 text-xs font-black text-[#fe6712]">
+                    <Clock className="h-4 w-4" />
+                    <span>Ver Seguimiento del Pedido</span>
+                  </button>
+                </>
+              ) : (
+                <button type="button" onClick={onViewTracking} className="w-full flex items-center justify-center gap-2 rounded-full bg-[#fe6712] hover:bg-[#e0580d] py-2 text-xs font-black text-white shadow-md">
+                  <Clock className="h-4 w-4" />
+                  <span>Ver seguimiento de pedido</span>
+                </button>
+              )}
               <button type="button" onClick={onClose} className="w-full flex items-center justify-center rounded-full bg-white border border-slate-200 hover:bg-slate-50 py-2 text-xs font-bold text-slate-700">
                 Continuar
               </button>
