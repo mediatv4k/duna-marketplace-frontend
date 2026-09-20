@@ -40,12 +40,116 @@ export interface VariantSelectionPayload {
   pricing?: { unitBasePrice: number; addonsTotal: number; unitFinalPrice: number };
 }
 
+// Etiquetas de precio extra para una cápsula. Solo presentación: no participa en ningún cálculo.
+// `isReplacement` = el precio de la opción reemplaza el precio base (pricingRole BASE), así que
+// se muestra sin el prefijo "+".
+function getOptionPriceLabels(price: number, isReplacement: boolean, bcvRate: number | null) {
+  if (!(price > 0)) return { priceLabel: null as string | null, bsLabel: null as string | null };
+  return {
+    priceLabel: `${isReplacement ? '' : '+'}$${price.toFixed(2)}`,
+    bsLabel: bcvRate ? `Bs ${(price * bcvRate).toFixed(2)}` : null,
+  };
+}
+
+interface OptionCapsuleProps {
+  name: string;
+  image?: string;
+  priceLabel: string | null;
+  bsLabel: string | null;
+  count: number;
+  mode: 'single' | 'counter';
+  onSelect?: () => void;
+  onIncrement?: () => void;
+  onDecrement?: () => void;
+}
+
+// Cápsula táctil de opción. Solo renderiza; la lógica de selección vive en los handlers que recibe.
+function OptionCapsule({ name, image, priceLabel, bsLabel, count, mode, onSelect, onIncrement, onDecrement }: OptionCapsuleProps) {
+  const isActive = count > 0;
+  const shell = `w-full rounded-2xl border p-2.5 transition-all duration-150 ${
+    isActive
+      ? 'border-[#fe6712] bg-[#fff5ed] ring-1 ring-[#fe6712]/30 shadow-sm'
+      : 'border-slate-200 bg-white hover:border-slate-300'
+  }`;
+
+  const label = (
+    <>
+      {image && (
+        <img src={image} alt={name} className="w-9 h-9 rounded-xl object-cover border border-slate-200 shrink-0" />
+      )}
+      <div className="min-w-0 flex-1">
+        <span className="block text-xs font-bold text-slate-800 leading-tight line-clamp-2">{name}</span>
+        {priceLabel ? (
+          <span className="mt-1 inline-flex items-center gap-1 rounded-full bg-orange-100/80 px-2 py-0.5 text-[10px] font-black text-[#fe6712]">
+            {priceLabel}
+            {bsLabel && <span className="font-bold text-slate-500">· {bsLabel}</span>}
+          </span>
+        ) : (
+          <span className="mt-1 block text-[10px] font-black text-emerald-600">Incluido</span>
+        )}
+      </div>
+    </>
+  );
+
+  if (mode === 'single') {
+    return (
+      <button
+        type="button"
+        onClick={onSelect}
+        aria-pressed={isActive}
+        className={`${shell} flex items-center gap-2.5 text-left cursor-pointer active:scale-[0.98]`}
+      >
+        {label}
+        <span
+          className={`flex h-5 w-5 shrink-0 items-center justify-center rounded-full border transition ${
+            isActive ? 'border-[#fe6712] bg-[#fe6712] text-white' : 'border-slate-300 bg-white text-transparent'
+          }`}
+        >
+          <Check className="h-3 w-3 stroke-[3]" />
+        </span>
+      </button>
+    );
+  }
+
+  return (
+    <div className={`${shell} flex items-center gap-2`}>
+      <button
+        type="button"
+        onClick={onIncrement}
+        className="flex min-w-0 flex-1 items-center gap-2.5 text-left cursor-pointer active:scale-[0.98]"
+      >
+        {label}
+      </button>
+      <div className="flex shrink-0 items-center gap-1.5 rounded-full border border-slate-200 bg-white p-1">
+        <button
+          type="button"
+          onClick={onDecrement}
+          disabled={count <= 0}
+          aria-label={`Quitar ${name}`}
+          className="flex h-6 w-6 items-center justify-center rounded-full text-slate-600 transition hover:bg-slate-100 cursor-pointer disabled:cursor-not-allowed disabled:opacity-30 disabled:hover:bg-transparent"
+        >
+          <Minus className="h-3.5 w-3.5 stroke-[2.5]" />
+        </button>
+        <span className={`w-5 text-center text-xs font-black ${isActive ? 'text-[#fe6712]' : 'text-slate-400'}`}>{count}</span>
+        <button
+          type="button"
+          onClick={onIncrement}
+          aria-label={`Agregar ${name}`}
+          className="flex h-6 w-6 items-center justify-center rounded-full bg-[#fe6712] text-white transition hover:bg-[#e0580d] cursor-pointer"
+        >
+          <Plus className="h-3.5 w-3.5 stroke-[2.5]" />
+        </button>
+      </div>
+    </div>
+  );
+}
+
 interface MasterProductModalProps {
   isOpen: boolean;
   onClose: () => void;
   product: any | null;
   nicheEngine: string;
-  bcvRate: number;
+  bcvRate: number | null;
   onAddToCart: (payload: VariantSelectionPayload) => void;
 }
 
@@ -617,9 +721,9 @@ export default function MasterProductModal({
                         <span className="text-2xl font-black text-slate-900">
                           ${(isSlotMode ? (unitPrice * qty + totalSlotVariantsPrice) : ((unitPrice + totalVariantsPrice) * qty)).toFixed(2)}
                         </span>
-                        <span className="text-xs font-bold text-slate-500">
+                        {bcvRate ? <span className="text-xs font-bold text-slate-500">
                           ~ Bs. {((isSlotMode ? (unitPrice * qty + totalSlotVariantsPrice) : ((unitPrice + totalVariantsPrice) * qty)) * bcvRate).toFixed(2)}
-                        </span>
+                        </span> : null}
                       </div>
                     </div>
                     <span className="bg-emerald-50 text-emerald-700 text-[10px] font-black px-2 py-1 rounded-lg border border-emerald-200 flex items-center gap-1">
@@ -660,59 +764,34 @@ export default function MasterProductModal({
                       const currentCount = matchedItem ? (matchedItem.count || 0) : (opt.code === group.options[0]?.code ? 1 : 0);
 
                       if (group.selectType === 'SINGLE') {
-                        const isSelected = currentCount > 0;
+                        const { priceLabel, bsLabel } = getOptionPriceLabels(opt.price, group.pricingRole === 'BASE', bcvRate);
                         return (
-                          <button
-                            type="button"
+                          <OptionCapsule
                             key={opt.code}
-                            onClick={() => handleGlobalSingleSelect(gIdx, opt.code)}
-                            className={`p-3 rounded-xl border flex items-center justify-between gap-3 shadow-2xs text-left transition cursor-pointer ${
-                              isSelected ? 'border-[#fe6712] bg-[#fff5ed] ring-1 ring-[#fe6712]/30' : 'border-slate-200 bg-white hover:border-slate-300'
-                            }`}
-                          >
-                            <div className="flex items-center gap-2 min-w-0">
-                              {opt.image && (
-                                <img src={opt.image} alt={opt.name} className="w-8 h-8 rounded-lg object-cover border border-slate-200 shrink-0" />
-                              )}
-                              <div className="min-w-0">
-                                <span className="text-xs font-bold text-slate-800 block leading-tight truncate">{opt.name}</span>
-                                <span className="text-[10px] font-black text-[#fe6712]">{opt.price > 0 ? `$${opt.price.toFixed(2)}` : 'Incluido'}</span>
-                              </div>
-                            </div>
-                            {isSelected && <Check className="w-4 h-4 text-[#fe6712] shrink-0" />}
-                          </button>
+                            mode="single"
+                            name={opt.name}
+                            image={opt.image}
+                            priceLabel={priceLabel}
+                            bsLabel={bsLabel}
+                            count={currentCount}
+                            onSelect={() => handleGlobalSingleSelect(gIdx, opt.code)}
+                          />
                         );
                       }
 
+                      const { priceLabel, bsLabel } = getOptionPriceLabels(opt.price, false, bcvRate);
                       return (
-                        <div key={opt.code} className="p-3 rounded-xl border border-slate-200 bg-white flex items-center justify-between gap-3 shadow-2xs">
-                          <div className="flex items-center gap-2 min-w-0">
-                            {opt.image && (
-                              <img src={opt.image} alt={opt.name} className="w-8 h-8 rounded-lg object-cover border border-slate-200 shrink-0" />
-                            )}
-                            <div className="min-w-0">
-                              <span className="text-xs font-bold text-slate-800 block leading-tight truncate">{opt.name}</span>
-                              <span className="text-[10px] font-black text-[#fe6712]">{opt.price > 0 ? `+$${opt.price.toFixed(2)}` : 'Incluido'}</span>
-                            </div>
-                          </div>
-                          <div className="flex items-center gap-2 bg-slate-50 p-1 rounded-xl border border-slate-200 shrink-0">
-                            <button
-                              type="button"
-                              onClick={() => handleGlobalOptionQuantityChange(gIdx, opt.code, -1)}
-                              className="w-6 h-6 flex items-center justify-center text-slate-600 hover:bg-white rounded-lg transition cursor-pointer shadow-2xs"
-                            >
-                              <Minus className="w-3.5 h-3.5 stroke-[2.5]" />
-                            </button>
-                            <span className="font-black text-xs w-5 text-center text-slate-900">{currentCount}</span>
-                            <button
-                              type="button"
-                              onClick={() => handleGlobalOptionQuantityChange(gIdx, opt.code, 1)}
-                              className="w-6 h-6 flex items-center justify-center text-[#fe6712] hover:bg-white rounded-lg transition cursor-pointer shadow-2xs"
-                            >
-                              <Plus className="w-3.5 h-3.5 stroke-[2.5]" />
-                            </button>
-                          </div>
-                        </div>
+                        <OptionCapsule
+                          key={opt.code}
+                          mode="counter"
+                          name={opt.name}
+                          image={opt.image}
+                          priceLabel={priceLabel}
+                          bsLabel={bsLabel}
+                          count={currentCount}
+                          onIncrement={() => handleGlobalOptionQuantityChange(gIdx, opt.code, 1)}
+                          onDecrement={() => handleGlobalOptionQuantityChange(gIdx, opt.code, -1)}
+                        />
                       );
                     })}
                   </div>
@@ -828,30 +907,19 @@ export default function MasterProductModal({
                                   : null;
                                 const countVal = matched ? (matched.count || 0) : 0;
 
+                                const { priceLabel, bsLabel } = getOptionPriceLabels(opt.price, false, bcvRate);
                                 return (
-                                  <div key={opt.code} className="p-2.5 rounded-xl border border-slate-200 bg-white flex items-center justify-between gap-2 shadow-2xs">
-                                    <div className="min-w-0 pr-1">
-                                      <span className="text-[11px] font-bold text-slate-800 block leading-tight truncate">{opt.name}</span>
-                                      <span className="text-[10px] font-black text-[#fe6712]">{opt.price > 0 ? `+$${opt.price.toFixed(2)}` : 'Incluido'}</span>
-                                    </div>
-                                    <div className="flex items-center gap-1.5 bg-slate-50 p-1 rounded-xl border border-slate-200 shrink-0">
-                                      <button
-                                        type="button"
-                                        onClick={() => handleSlotOptionQuantityChange(gIdx, opt.code, -1)}
-                                        className="w-6 h-6 flex items-center justify-center text-slate-600 hover:bg-white rounded-lg transition cursor-pointer shadow-2xs"
-                                      >
-                                        <Minus className="w-3.5 h-3.5 stroke-[2.5]" />
-                                      </button>
-                                      <span className="font-black text-xs w-5 text-center text-slate-900">{countVal}</span>
-                                      <button
-                                        type="button"
-                                        onClick={() => handleSlotOptionQuantityChange(gIdx, opt.code, 1)}
-                                        className="w-6 h-6 flex items-center justify-center text-[#fe6712] hover:bg-white rounded-lg transition cursor-pointer shadow-2xs"
-                                      >
-                                        <Plus className="w-3.5 h-3.5 stroke-[2.5]" />
-                                      </button>
-                                    </div>
-                                  </div>
+                                  <OptionCapsule
+                                    key={opt.code}
+                                    mode="counter"
+                                    name={opt.name}
+                                    image={opt.image}
+                                    priceLabel={priceLabel}
+                                    bsLabel={bsLabel}
+                                    count={countVal}
+                                    onIncrement={() => handleSlotOptionQuantityChange(gIdx, opt.code, 1)}
+                                    onDecrement={() => handleSlotOptionQuantityChange(gIdx, opt.code, -1)}
+                                  />
                                 );
                               })}
                             </div>
@@ -1025,7 +1093,7 @@ export default function MasterProductModal({
               <span className="text-[10px] font-black text-slate-400 uppercase block mb-0.5">Total a Pagar</span>
               <div className="flex flex-col sm:flex-row sm:items-baseline sm:gap-1.5">
                 <span className="text-xl font-black text-slate-900 leading-none">${totalCalculated.toFixed(2)}</span>
-                <span className="text-xs font-bold text-slate-500">/ Bs. {(totalCalculated * bcvRate).toFixed(2)}</span>
+                {bcvRate ? <span className="text-xs font-bold text-slate-500">/ Bs. {(totalCalculated * bcvRate).toFixed(2)}</span> : null}
               </div>
             </div>
 

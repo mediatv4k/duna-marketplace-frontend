@@ -15,12 +15,13 @@ export function shareStoreWhatsApp(store: { name: string; code: string; address?
   window.open(url, '_blank');
 }
 
-export function shareProductWhatsApp(product: { name: string; price: number; code: string }, selectedVariant?: string, bcvRate: number = 48.50) {
+export function shareProductWhatsApp(product: { name: string; price: number; code: string }, selectedVariant?: string, bcvRate?: number | null) {
   const productUrl = `${window.location.origin}${window.location.pathname}?item=${product.code}`;
-  const priceBs = (product.price * bcvRate).toFixed(2);
+  // Solo se muestra Bs. si se pasa una tasa real
+  const priceBsText = bcvRate ? ` (~ Bs. ${(product.price * bcvRate).toFixed(2)})` : '';
   const variantText = selectedVariant ? ` (Opción: ${selectedVariant})` : '';
 
-  const text = `✨ *¡Mira este producto en D'una Marketplace!*\n\n🛍️ *${product.name}*${variantText}\n💰 *Precio:* $${product.price.toFixed(2)} (~ Bs. ${priceBs})\n\n🔗 *Cómpralo directo aquí:*\n${productUrl}\n\n👉 _¡Delivery inmediato en Cabimas!_`;
+  const text = `✨ *¡Mira este producto en D'una Marketplace!*\n\n🛍️ *${product.name}*${variantText}\n💰 *Precio:* $${product.price.toFixed(2)}${priceBsText}\n\n🔗 *Cómpralo directo aquí:*\n${productUrl}\n\n👉 _¡Delivery inmediato en Cabimas!_`;
   const url = `https://api.whatsapp.com/send?text=${encodeURIComponent(text)}`;
   window.open(url, '_blank');
 }

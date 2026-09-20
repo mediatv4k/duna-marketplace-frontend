@@ -49,6 +49,15 @@ interface CartModalProps {
   onUpdateQty: (identifier: string, delta: number) => void;
   onOpenCheckout: (summary: any) => void;
   isNationalShippingEnabled?: boolean;
+  // Cotización real de delivery (GPS + GET /deliveryRate). Por defecto 'ok' para no bloquear usos sin cotización.
+  quoteStatus?: 'idle' | 'loading' | 'ok' | 'blocked';
+  quoteMessage?: string;
+  distanceKm?: number;
+  durationMin?: number;
+  customerLocation?: { lat: number; lng: number; label: string } | null;
+  isLocating?: boolean;
+  locationError?: string | null;
+  onRequestLocation?: () => void;
 }
 
 export default function CartModal({
@@ -70,6 +79,14 @@ export default function CartModal({
   onUpdateQty,
   onOpenCheckout,
   isNationalShippingEnabled = true,
+  quoteStatus = 'ok',
+  quoteMessage,
+  distanceKm,
+  durationMin,
+  customerLocation,
+  isLocating = false,
+  locationError,
+  onRequestLocation,
 }: CartModalProps) {
 
   const [selectedAgency, setSelectedAgency] = useState<'MRW' | 'ZOOM' | 'TEALCA'>('MRW');
@@ -77,7 +94,9 @@ export default function CartModal({
 
   if (!isOpen) return null;
 
-  const fleteFinalMostrado = deliveryMode === 'national' ? costoNacionalFijo : (esEnvioGratis ? 0 : deliveryCost);
+  // En delivery no se muestra ni se cobra flete hasta tener la cotización oficial
+  const deliveryBlocked = deliveryMode === 'delivery' && quoteStatus !== 'ok';
+  const fleteFinalMostrado = deliveryMode === 'national' ? costoNacionalFijo : (deliveryBlocked ? 0 : (esEnvioGratis ? 0 : deliveryCost));
   const totalCalculadoFinal = subtotalUSD + fleteFinalMostrado;
 
   return (
@@ -242,7 +261,9 @@ export default function CartModal({
                 <div className="flex gap-1.5">
                   <button
                     type="button"
-                    className="flex-1 border border-orange-200 text-[#fe6712] py-1 rounded-full text-[12px] font-black flex items-center justify-center gap-1 hover:bg-orange-50 transition cursor-pointer"
+                    onClick={onRequestLocation}
+                    disabled={isLocating}
+                    className="flex-1 border border-orange-200 text-[#fe6712] py-1 rounded-full text-[12px] font-black flex items-center justify-center gap-1 hover:bg-orange-50 transition cursor-pointer disabled:opacity-60"
                   >
                     <Navigation className="w-3.5 h-3.5" /> Mi Ubicación
                   </button>
@@ -256,7 +277,23 @@ export default function CartModal({
 
                 <div className="bg-slate-50 rounded-full py-1 px-3 text-center border border-slate-200 flex items-center justify-center gap-1">
                   <span>📍</span>
-                  <span className="text-[10px] font-bold text-slate-700 truncate">Cabimas Centro (Sector Av. Intercomunal)</span>
+                  {deliveryMode === 'delivery' ? (
+                    <span className={`text-[10px] font-bold truncate ${quoteStatus === 'blocked' || locationError ? 'text-red-600' : 'text-slate-700'}`}>
+                      {isLocating
+                        ? 'Obteniendo tu ubicación…'
+                        : locationError
+                          ? locationError
+                          : !customerLocation
+                            ? 'Toca "Mi Ubicación" para cotizar tu delivery'
+                            : quoteStatus === 'loading'
+                              ? 'Cotizando flete…'
+                              : quoteStatus === 'blocked'
+                                ? (quoteMessage || 'Servicio no disponible para tu ubicación')
+                                : customerLocation.label}
+                    </span>
+                  ) : (
+                    <span className="text-[10px] font-bold text-slate-700 truncate">Retiro en la tienda</span>
+                  )}
                 </div>
               </>
             )}
@@ -265,15 +302,15 @@ export default function CartModal({
               <div className="grid grid-cols-3 pt-0.5">
                 <div className="text-center">
                   <p className="text-[8px] font-black text-slate-400 uppercase tracking-widest">Flete Final</p>
-                  <p className="text-[10px] font-black"><span className="text-[#fe6712]">{esEnvioGratis ? 'GRATIS' : `$${deliveryCost.toFixed(2)}`}</span></p>
+                  <p className="text-[10px] font-black"><span className="text-[#fe6712]">{deliveryBlocked ? '—' : (esEnvioGratis ? 'GRATIS' : `$${deliveryCost.toFixed(2)}`)}</span></p>
                 </div>
                 <div className="text-center border-l border-slate-100">
                   <p className="text-[8px] font-black text-slate-400 uppercase tracking-widest">Distancia</p>
-                  <p className="text-[10px] font-black text-slate-800">0.6 km</p>
+                  <p className="text-[10px] font-black text-slate-800">{distanceKm !== undefined ? `${distanceKm.toFixed(1)} km` : '—'}</p>
                 </div>
                 <div className="text-center border-l border-slate-100">
                   <p className="text-[8px] font-black text-slate-400 uppercase tracking-widest">Tiempo Est.</p>
-                  <p className="text-[10px] font-black text-slate-800">1 min</p>
+                  <p className="text-[10px] font-black text-slate-800">{durationMin !== undefined ? `${durationMin} min` : '—'}</p>
                 </div>
               </div>
             )}
@@ -307,7 +344,7 @@ export default function CartModal({
                   )}
                 </span>
                 <span className="font-black text-[#fe6712] text-[12px]">
-                  {esEnvioGratis ? '$0.00 USD' : `$${deliveryCost.toFixed(2)} USD`}
+                  {deliveryBlocked ? '—' : (esEnvioGratis ? '$0.00 USD' : `$${deliveryCost.toFixed(2)} USD`)}
                 </span>
               </div>
             )}
@@ -335,7 +372,7 @@ export default function CartModal({
                 onOpenCheckout({
                   metodoEntrega: deliveryMode,
                   direccion: deliveryMode === 'national' ? `Agencia ${selectedAgency} (Cabimas)` : 'Cabimas Centro (Sector Av. Intercomunal)',
-                  costoEnvio: deliveryMode === 'national' ? costoNacionalFijo : (esEnvioGratis ? 0 : deliveryCost),
+                  costoEnvio: fleteFinalMostrado,
                   subtotalUSD: subtotalUSD,
                   totalUSD: totalCalculadoFinal,
                   esEnvioNacional: deliveryMode === 'national',
@@ -344,7 +381,8 @@ export default function CartModal({
                   items: cartItems
                 });
               }}
-              className={`w-full text-white font-black py-1.5 mt-1 rounded-full transition shadow-md text-[12px] flex items-center justify-center gap-1.5 cursor-pointer active:scale-95 ${deliveryMode === 'national' ? 'bg-sky-600 hover:bg-sky-700' : 'bg-[#fe6712] hover:bg-[#e0580d]'}`}
+              disabled={deliveryBlocked}
+              className={`w-full text-white font-black py-1.5 mt-1 rounded-full transition shadow-md text-[12px] flex items-center justify-center gap-1.5 cursor-pointer active:scale-95 disabled:opacity-50 disabled:cursor-not-allowed disabled:active:scale-100 ${deliveryMode === 'national' ? 'bg-sky-600 hover:bg-sky-700' : 'bg-[#fe6712] hover:bg-[#e0580d]'}`}
             >
               <span>PROCEDER AL PAGO</span>
               <ArrowRight className="w-3.5 h-3.5" />

@@ -5,20 +5,10 @@ import {
   X, Clock, MapPin, ShieldCheck, RefreshCw, ChefHat,
   Bike, PackageCheck, Receipt, Printer, DollarSign, FileText
 } from 'lucide-react';
-import { initializeApp, getApps, getApp } from 'firebase/app';
-import { getFirestore, collection, query, orderBy, limit, getDocs } from 'firebase/firestore';
+import { getOrderPublic } from '@/services/marketplaceService';
 
-const firebaseConfig = {
-  apiKey: process.env.NEXT_PUBLIC_FIREBASE_API_KEY,
-  authDomain: process.env.NEXT_PUBLIC_FIREBASE_AUTH_DOMAIN,
-  projectId: process.env.NEXT_PUBLIC_FIREBASE_PROJECT_ID,
-  storageBucket: process.env.NEXT_PUBLIC_FIREBASE_STORAGE_BUCKET,
-  messagingSenderId: process.env.NEXT_PUBLIC_FIREBASE_MESSAGING_SENDER_ID,
-  appId: process.env.NEXT_PUBLIC_FIREBASE_APP_ID
-};
-
-const app = !getApps().length ? initializeApp(firebaseConfig) : getApp();
-const db = getFirestore(app);
+const POLL_INTERVAL_MS = 9000;
+const FINAL_STATUSES = ['DELIVERED', 'CANCELLED', 'REJECTED', 'COMPLETED'];
 
 interface OrderTrackingModalProps {
   isOpen: boolean;
@@ -30,70 +20,70 @@ interface OrderTrackingModalProps {
 export default function OrderTrackingModal({ isOpen, onClose, orderId, orderSummary }: OrderTrackingModalProps) {
   const [loading, setLoading] = useState<boolean>(true);
   const [orderData, setOrderData] = useState<any>(null);
+  const [remote, setRemote] = useState<any>(null);
+  const [trackingError, setTrackingError] = useState<string | null>(null);
   const [activeTab, setActiveTab] = useState<'TRACKING' | 'KITCHEN' | 'RECEIPT'>('KITCHEN');
 
   useEffect(() => {
     if (!isOpen) return;
 
     let isMounted = true;
+    let timer: ReturnType<typeof setTimeout> | null = null;
 
-    async function fetchLatestOrder() {
-      setLoading(true);
-      try {
-        const ordersRef = collection(db, 'orders');
-        const q = query(ordersRef, orderBy('createdAt', 'desc'), limit(1));
+    // Datos locales del checkout (items/totales): /public no devuelve los ítems del pedido
+    let savedOrder: any = null;
+    let resolvedId: string | null = orderId || null;
+    try {
+      const savedOrderStr = localStorage.getItem('last_active_order');
+      if (savedOrderStr) savedOrder = JSON.parse(savedOrderStr);
+      if (!resolvedId) resolvedId = savedOrder?.id ? String(savedOrder.id) : localStorage.getItem('last_active_order_id');
+    } catch (e) {}
 
-        const fetchPromise = getDocs(q);
-        const timeoutPromise = new Promise((_, reject) => setTimeout(() => reject(new Error('timeout')), 2000));
-
-        const querySnapshot = await Promise.race([fetchPromise, timeoutPromise]) as any;
-
-        if (isMounted && querySnapshot && !querySnapshot.empty) {
-          const docData = querySnapshot.docs[0].data();
-          setOrderData({
-            id: querySnapshot.docs[0].id.slice(-6).toUpperCase(),
-            ...docData,
-            items: (docData.items && docData.items.length > 0) ? docData.items : (orderSummary?.items || [])
-          });
-        } else {
-          throw new Error("Empty query");
-        }
-      } catch (err: any) {
-        if (isMounted) {
-          const savedOrderStr = typeof window !== 'undefined' ? localStorage.getItem('last_active_order') : null;
-          let savedOrder: any = null;
-          try {
-            if (savedOrderStr) savedOrder = JSON.parse(savedOrderStr);
-          } catch (e) {}
-
-          const resolvedId = orderId || savedOrder?.id || (typeof window !== 'undefined' ? localStorage.getItem('last_active_order_id') : null) || '1986';
-
-          setOrderData({
-            id: resolvedId,
-            nombre: savedOrder?.nombre || 'OSMER BENITO',
-            documento: savedOrder?.cedula || '18634536',
-            direccion: orderSummary?.direccion || savedOrder?.direccion || 'Cabimas, Estado Zulia',
-            telefono: savedOrder?.telefono ?? orderSummary?.telefono ?? '',
-            totalUSD: savedOrder?.totalUSD ?? ((orderSummary?.totalUSD ?? 13.80) + (orderSummary?.propina ?? savedOrder?.propina ?? 0.50)),
-            tasa: savedOrder?.tasaBcv || 48.50,
-            status: savedOrder?.status || 'pendiente',
-            metodoPago: savedOrder?.metodoPago || 'pago_movil',
-            merchantName: orderSummary?.merchantName || savedOrder?.merchantName || 'Mostaza Food Truck',
-            costoEnvio: orderSummary?.costoEnvio ?? savedOrder?.costoEnvio ?? 1.50,
-            descuentoUSD: savedOrder?.descuentoUSD ?? 0,
-            propina: orderSummary?.propina ?? savedOrder?.propina ?? 0.50,
-            items: (orderSummary?.items && orderSummary.items.length > 0) ? orderSummary.items : (savedOrder?.items || []),
-            createdAt: new Date()
-          });
-        }
-      } finally {
-        if (isMounted) setLoading(false);
-      }
+    if (!resolvedId) {
+      setOrderData(null);
+      setRemote(null);
+      setTrackingError('No hay un pedido activo para rastrear.');
+      setLoading(false);
+      return;
     }
 
-    fetchLatestOrder();
+    if (savedOrder && String(savedOrder.id) === String(resolvedId)) {
+      setOrderData({
+        ...savedOrder,
+        tasa: savedOrder.tasaBcv,
+        items: (orderSummary?.items && orderSummary.items.length > 0) ? orderSummary.items : (savedOrder.items || [])
+      });
+    } else {
+      setOrderData(null);
+    }
 
-    return () => { isMounted = false; };
+    setRemote(null);
+    setTrackingError(null);
+
+    async function fetchOrder(first: boolean) {
+      if (first) setLoading(true);
+      const res = await getOrderPublic(resolvedId as string);
+      if (!isMounted) return;
+      if (res && res.code === 1 && res.data) {
+        setRemote(res.data);
+        setTrackingError(null);
+        if (!FINAL_STATUSES.includes(String(res.data.status || '').toUpperCase())) {
+          timer = setTimeout(() => fetchOrder(false), POLL_INTERVAL_MS);
+        }
+      } else {
+        setTrackingError(res?.message || 'No se pudo consultar el estado del pedido.');
+        // Error transitorio: se reintenta; si ya hay datos previos se conservan
+        timer = setTimeout(() => fetchOrder(false), POLL_INTERVAL_MS);
+      }
+      if (first) setLoading(false);
+    }
+
+    fetchOrder(true);
+
+    return () => {
+      isMounted = false;
+      if (timer) clearTimeout(timer);
+    };
   }, [isOpen, orderId, orderSummary]);
 
   if (!isOpen) return null;
@@ -131,23 +121,28 @@ export default function OrderTrackingModal({ isOpen, onClose, orderId, orderSumm
     return rows;
   };
 
-  const displayMerchant = orderData?.merchantName || orderSummary?.merchantName || 'Mostaza Food Truck';
-  const displayId = orderData?.id || orderId || '1986';
-  const displayClient = orderData?.nombre || 'Cliente D\'una';
-  const displayAddress = orderData?.direccion || orderSummary?.direccion || 'Cabimas, Estado Zulia';
-  const costoEnvio = orderData?.costoEnvio ?? orderSummary?.costoEnvio ?? 1.50;
-  const propinaVal = orderData?.propina ?? orderSummary?.propina ?? 0.50;
-  const displayTotal = orderData?.totalUSD ?? (orderSummary?.totalUSD ? (orderSummary.totalUSD + propinaVal) : 14.30);
+  // Prioridad: datos reales del backend (/public) → datos locales del checkout. Sin valores inventados.
+  const displayMerchant = remote?.food_store || orderData?.merchantName || orderSummary?.merchantName || '';
+  const displayId = remote?.order_number || remote?.id || orderData?.id || orderId || '';
+  const displayClient = remote?.customer_name || orderData?.nombre || '';
+  const displayAddress = remote?.customer_address_text || orderData?.direccion || orderSummary?.direccion || '';
+  const costoEnvio = Number(orderData?.costoEnvio ?? orderSummary?.costoEnvio ?? remote?.service_amount ?? 0);
+  const propinaVal = Number(orderData?.propina ?? orderSummary?.propina ?? remote?.customer_tip_amount ?? 0);
+  const displayTotal = Number(orderData?.totalUSD ?? remote?.totalPaidDefaultAmount ?? (orderSummary?.totalUSD ? (orderSummary.totalUSD + propinaVal) : 0));
   const subtotalNeto = currentItems.reduce((acc: number, it: any) => acc + ((it.price || 0) * (it.qty || it.quantity || 1)), 0);
   // Fuente única de verdad para la tasa de referencia: Total Bs. = Total USD * Tasa REF
-  const tasaRef = orderData?.tasa || 48.50;
+  const remoteRate = Number(remote?.totalPaidDefaultAmount) > 0 ? Number(remote?.totalPaidReferenceAmount) / Number(remote?.totalPaidDefaultAmount) : 0;
+  const tasaRef = Number(orderData?.tasa) || remoteRate || 0;
   const displayTotalBs = displayTotal * tasaRef;
   // Cofre Recompensa D'una: refleja el 25% OFF en flete si el cliente lo activó en el checkout
   const descuentoFleteVal = orderData?.descuentoUSD ?? 0;
   const costoEnvioFinal = Math.max(0, costoEnvio - descuentoFleteVal);
-  const displayPhone = orderData?.telefono || orderSummary?.telefono || '';
+  const displayPhone = remote?.customer_phone || orderData?.telefono || orderSummary?.telefono || '';
   const metodoPagoLower = String(orderData?.metodoPago || '').toLowerCase();
   const isPagoMethod = (keyword: string) => metodoPagoLower.includes(keyword);
+  const trackingHistory: any[] = Array.isArray(remote?.history)
+    ? [...remote.history].sort((x: any, y: any) => new Date(x.date).getTime() - new Date(y.date).getTime())
+    : [];
   const DIVIDER = '-'.repeat(40);
 
   return (
@@ -161,7 +156,7 @@ export default function OrderTrackingModal({ isOpen, onClose, orderId, orderSumm
               <Clock className="w-4 h-4 text-white" />
             </div>
             <div>
-              <h2 className="text-sm font-black tracking-tight leading-none">Orden #{orderData?.id || orderId || '1986'}</h2>
+              <h2 className="text-sm font-black tracking-tight leading-none">Orden #{displayId}</h2>
               <p className="text-[9px] text-orange-100 font-medium mt-0.5">Monitoreo de Flota D&apos;una Cabimas</p>
             </div>
           </div>
@@ -189,6 +184,12 @@ export default function OrderTrackingModal({ isOpen, onClose, orderId, orderSumm
             <div className="py-16 flex flex-col items-center justify-center space-y-3">
               <RefreshCw className="w-8 h-8 text-[#fe6712] animate-spin" />
               <p className="text-xs font-bold text-slate-500">Sincronizando de forma segura...</p>
+            </div>
+          ) : (!remote && !orderData) ? (
+            <div className="py-16 flex flex-col items-center justify-center space-y-2 text-center">
+              <Clock className="w-8 h-8 text-slate-300" />
+              <p className="text-xs font-bold text-slate-600">{trackingError || 'No hay información del pedido.'}</p>
+              {orderId || remote ? <p className="text-[10px] text-slate-400">Reintentando automáticamente…</p> : null}
             </div>
           ) : (
             <>
@@ -303,8 +304,8 @@ export default function OrderTrackingModal({ isOpen, onClose, orderId, orderSumm
                     <div className="grid grid-cols-[1fr_auto] gap-x-2 font-black text-sm uppercase">
                       <span>Total</span>
                       <span className="text-right">${displayTotal.toFixed(2)}</span>
-                      <span className="truncate">Ref Bs.S {tasaRef.toLocaleString('es-VE', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}</span>
-                      <span className="text-right">Bs.S {displayTotalBs.toLocaleString('es-VE', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}</span>
+                      {tasaRef > 0 && <><span className="truncate">Ref Bs.S {tasaRef.toLocaleString('es-VE', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}</span>
+                      <span className="text-right">Bs.S {displayTotalBs.toLocaleString('es-VE', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}</span></>}
                     </div>
 
                     <p className="text-slate-300 select-none overflow-hidden whitespace-nowrap my-1.5">{DIVIDER}</p>
@@ -344,51 +345,47 @@ export default function OrderTrackingModal({ isOpen, onClose, orderId, orderSumm
               {/* VISTA 2: SEGUIMIENTO ORIGINAL (TIMELINE) */}
               {activeTab === 'TRACKING' && (
                 <div className="space-y-4 animate-in fade-in slide-in-from-right-4 duration-300">
+                  {trackingError && (
+                    <div className="bg-red-50 border border-red-200 text-red-700 text-[10px] font-bold p-2.5 rounded-xl">{trackingError}</div>
+                  )}
                   <div className="bg-orange-50/70 border border-orange-200/60 p-4 rounded-2xl space-y-2">
                     <div className="flex justify-between items-center">
                       <span className="text-[10px] font-black text-slate-400 uppercase tracking-wider">Cliente</span>
-                      <span className="bg-emerald-100 text-emerald-800 text-[10px] font-black px-2.5 py-0.5 rounded-full uppercase flex items-center gap-1">
-                        <span className="h-1.5 w-1.5 rounded-full bg-emerald-500 animate-pulse"></span> En proceso
-                      </span>
+                      {remote && (
+                        <span className={`text-[10px] font-black px-2.5 py-0.5 rounded-full uppercase flex items-center gap-1 ${remote.status === 'CANCELLED' ? 'bg-red-100 text-red-800' : 'bg-emerald-100 text-emerald-800'}`}>
+                          {!FINAL_STATUSES.includes(String(remote.status || '').toUpperCase()) && <span className="h-1.5 w-1.5 rounded-full bg-emerald-500 animate-pulse"></span>}
+                          {trackingHistory.length > 0 ? trackingHistory[trackingHistory.length - 1].status : remote.status}
+                        </span>
+                      )}
                     </div>
-                    <h3 className="text-base font-black text-slate-900 leading-tight">{orderData.nombre}</h3>
+                    <h3 className="text-base font-black text-slate-900 leading-tight">{displayClient}</h3>
                     <p className="text-[11px] text-slate-600 font-medium flex items-center gap-1">
                       <MapPin className="w-3.5 h-3.5 text-[#fe6712] shrink-0" />
-                      <span className="truncate">{orderData.direccion}</span>
+                      <span className="truncate">{displayAddress}</span>
                     </p>
                   </div>
 
                   <div className="space-y-3 bg-white p-4 rounded-2xl border border-slate-100 shadow-sm">
                     <h4 className="text-xs font-black text-slate-800 uppercase tracking-wide mb-4">Estatus del pedido</h4>
-                    <div className="space-y-4 relative before:absolute before:inset-y-2 before:left-3 before:w-0.5 before:bg-slate-200">
-
-                      <div className="flex items-start gap-3 relative">
-                        <div className="w-6 h-6 rounded-full bg-emerald-500 text-white flex items-center justify-center z-10 shrink-0 text-xs shadow-xs">✓</div>
-                        <div>
-                          <h5 className="text-xs font-black text-slate-900 leading-none">Pedido Recibido</h5>
-                          <p className="text-[10px] text-slate-500 mt-0.5">Pago validado por pasarela D&apos;una.</p>
-                        </div>
+                    {trackingHistory.length === 0 ? (
+                      <p className="text-[10px] text-slate-400">Sin movimientos registrados todavía.</p>
+                    ) : (
+                      <div className="space-y-4 relative before:absolute before:inset-y-2 before:left-3 before:w-0.5 before:bg-slate-200">
+                        {trackingHistory.map((h: any, hIdx: number) => {
+                          const isLast = hIdx === trackingHistory.length - 1;
+                          const isCancel = isLast && String(remote?.status || '').toUpperCase() === 'CANCELLED';
+                          return (
+                            <div key={h.id ?? hIdx} className="flex items-start gap-3 relative">
+                              <div className={`w-6 h-6 rounded-full text-white flex items-center justify-center z-10 shrink-0 text-xs shadow-xs ${isCancel ? 'bg-red-500' : isLast && !FINAL_STATUSES.includes(String(remote?.status || '').toUpperCase()) ? 'bg-[#fe6712] animate-pulse' : 'bg-emerald-500'}`}>{isCancel ? '✕' : '✓'}</div>
+                              <div>
+                                <h5 className="text-xs font-black text-slate-900 leading-none">{h.status}</h5>
+                                <p className="text-[10px] text-slate-500 mt-0.5">{h.date ? new Date(h.date).toLocaleString('es-VE') : ''}</p>
+                              </div>
+                            </div>
+                          );
+                        })}
                       </div>
-
-                      <div className="flex items-start gap-3 relative">
-                        <div className="w-6 h-6 rounded-full bg-[#fe6712] text-white flex items-center justify-center z-10 shrink-0 shadow-xs animate-pulse">
-                          <ChefHat className="w-3.5 h-3.5" />
-                        </div>
-                        <div>
-                          <h5 className="text-xs font-black text-slate-900 leading-none">En preparación</h5>
-                          <p className="text-[10px] text-slate-500 mt-0.5">El aliado comercial está cocinando.</p>
-                        </div>
-                      </div>
-
-                      <div className="flex items-start gap-3 relative opacity-50">
-                        <div className="w-6 h-6 rounded-full bg-slate-200 text-slate-600 flex items-center justify-center z-10 shrink-0"><Bike className="w-3.5 h-3.5" /></div>
-                        <div>
-                          <h5 className="text-xs font-black text-slate-700 leading-none">En camino</h5>
-                          <p className="text-[10px] text-slate-400 mt-0.5">Asignado a Flota Activa Cabimas.</p>
-                        </div>
-                      </div>
-
-                    </div>
+                    )}
                   </div>
                 </div>
               )}
@@ -507,8 +504,8 @@ export default function OrderTrackingModal({ isOpen, onClose, orderId, orderSumm
                     <div className="grid grid-cols-[1fr_auto] gap-x-2 font-black text-sm uppercase">
                       <span>Total</span>
                       <span className="text-right">${displayTotal.toFixed(2)}</span>
-                      <span className="truncate">Ref Bs.S {tasaRef.toLocaleString('es-VE', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}</span>
-                      <span className="text-right">Bs.S {displayTotalBs.toLocaleString('es-VE', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}</span>
+                      {tasaRef > 0 && <><span className="truncate">Ref Bs.S {tasaRef.toLocaleString('es-VE', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}</span>
+                      <span className="text-right">Bs.S {displayTotalBs.toLocaleString('es-VE', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}</span></>}
                     </div>
 
                     <p className="text-slate-300 select-none overflow-hidden whitespace-nowrap my-1.5">{DIVIDER}</p>

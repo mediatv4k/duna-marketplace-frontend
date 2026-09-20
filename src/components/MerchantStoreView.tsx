@@ -5,10 +5,22 @@ import { ShoppingBag, ChevronRight, Search, Star, Clock, MapPin, Sparkles } from
 import CartModal from './CartModal';
 import MasterProductModal from './MasterProductModal';
 import PromotionsCarousel from './PromotionsCarousel';
-import { getProduct, getStorePromotions } from '@/services/marketplaceService';
+import { getProduct, getStorePromotions, getDeliveryRate, getStorePaymentInfo } from '@/services/marketplaceService';
+import { getDistanceAndTime } from '@/lib/logisticsEngine';
 import { detectStoreNiche, getModalEngine, getNicheConfig } from '@/lib/nicheConfig';
-import { getBCVRate } from '@/lib/bcvRate';
 import { getNicheIcon, getBadgeColorClasses } from '@/lib/nicheIcons';
+
+// Regla del contrato: el backend no presta servicio de delivery a más de 12 km
+const MAX_DELIVERY_KM = 12;
+
+type CustomerLocation = { lat: number; lng: number; label: string };
+type DeliveryQuote = {
+  status: 'idle' | 'loading' | 'ok' | 'blocked';
+  rate?: number;
+  distanceKm?: number;
+  durationMin?: number;
+  message?: string;
+};
 
 interface MerchantStoreViewProps {
   merchant: any;
@@ -16,6 +28,7 @@ interface MerchantStoreViewProps {
   onBack: () => void;
   onOpenCheckout: (summary: any) => void;
   forceOpenCartTrigger?: number;
+  userLocation?: CustomerLocation | null;
 }
 
 export default function MerchantStoreView({
@@ -24,6 +37,7 @@ export default function MerchantStoreView({
   onBack,
   onOpenCheckout,
   forceOpenCartTrigger,
+  userLocation,
 }: MerchantStoreViewProps) {
   const [cartItems, setCartItems] = useState<any[]>(() => {
     if (typeof window !== 'undefined') {
@@ -68,6 +82,86 @@ export default function MerchantStoreView({
 
   const [deliveryMode, setDeliveryMode] = useState<'delivery' | 'pickup' | 'national'>('delivery');
   const [rewardMode, setRewardMode] = useState<'DYNAMIC' | 'FIXED'>('DYNAMIC');
+
+  // Ubicación real del cliente (GPS / sector elegido en el Home) y cotización oficial del flete
+  const [customerLocation, setCustomerLocation] = useState<CustomerLocation | null>(() => {
+    if (userLocation) return userLocation;
+    try {
+      const saved = typeof window !== 'undefined' ? sessionStorage.getItem('duna_customer_location') : null;
+      return saved ? JSON.parse(saved) : null;
+    } catch {
+      return null;
+    }
+  });
+  const [isLocating, setIsLocating] = useState(false);
+  const [locationError, setLocationError] = useState<string | null>(null);
+  const [quote, setQuote] = useState<DeliveryQuote>({ status: 'idle' });
+
+  const handleRequestLocation = () => {
+    if (typeof navigator === 'undefined' || !navigator.geolocation) {
+      setLocationError('Tu navegador no permite obtener la ubicación.');
+      return;
+    }
+    setIsLocating(true);
+    setLocationError(null);
+    navigator.geolocation.getCurrentPosition(
+      (pos) => {
+        setCustomerLocation({ lat: pos.coords.latitude, lng: pos.coords.longitude, label: 'GPS Actual' });
+        setIsLocating(false);
+      },
+      () => {
+        setIsLocating(false);
+        setLocationError('No pudimos obtener tu ubicación. Activa el GPS y los permisos.');
+      },
+      { timeout: 8000, enableHighAccuracy: true }
+    );
+  };
+
+  React.useEffect(() => {
+    if (!isCartOpen || deliveryMode !== 'delivery') return;
+    if (!customerLocation) {
+      setQuote({ status: 'idle' });
+      return;
+    }
+    try { sessionStorage.setItem('duna_customer_location', JSON.stringify(customerLocation)); } catch {}
+
+    const storeCoords = merchant?.coords;
+    if (!merchant?.id || !storeCoords || !Number.isFinite(Number(storeCoords.lat)) || !Number.isFinite(Number(storeCoords.lng))) {
+      setQuote({ status: 'blocked', message: 'No se pudo determinar la ubicación de la tienda.' });
+      return;
+    }
+
+    let cancelled = false;
+    setQuote({ status: 'loading' });
+    (async () => {
+      const matrix = await getDistanceAndTime(
+        { lat: Number(storeCoords.lat), lng: Number(storeCoords.lng) },
+        { lat: customerLocation.lat, lng: customerLocation.lng }
+      );
+      const distanceKm = Number((matrix.distance / 1000).toFixed(1));
+      const durationMin = Math.max(1, Math.round(matrix.duration / 60));
+      if (cancelled) return;
+      if (distanceKm > MAX_DELIVERY_KM) {
+        setQuote({ status: 'blocked', distanceKm, durationMin, message: 'Servicio no disponible a más de 12km' });
+        return;
+      }
+      const result = await getDeliveryRate({
+        storeId: merchant.id,
+        lat: customerLocation.lat,
+        lng: customerLocation.lng,
+        distance: distanceKm,
+        duration: durationMin,
+      });
+      if (cancelled) return;
+      setQuote(result.ok
+        ? { status: 'ok', rate: result.rate, distanceKm, durationMin }
+        : { status: 'blocked', distanceKm, durationMin, message: result.message });
+    })().catch(() => {
+      if (!cancelled) setQuote({ status: 'blocked', message: 'No se pudo cotizar el flete. Intenta de nuevo.' });
+    });
+
+    return () => { cancelled = true; };
+  }, [isCartOpen, deliveryMode, customerLocation?.lat, customerLocation?.lng, merchant?.id, merchant?.coords?.lat, merchant?.coords?.lng]);
 
   // Nicho real de la tienda (antes hardcodeado a "FOOD_SWEET" para todas las tiendas)
   const storeNiche = detectStoreNiche(merchant);
@@ -128,11 +222,20 @@ export default function MerchantStoreView({
     });
   };
 
-  // Tasa BCV real (antes hardcodeada a 827.74 para todas las tiendas)
-  const [bcvRate, setBcvRate] = useState<number>(48.50);
+  // Tasa oficial de la tienda: store.referenceRateValue de GET /store/{id}/payment/info.
+  // null = no disponible → el modal de producto no muestra montos en Bs. (nunca una tasa inventada)
+  const [bcvRate, setBcvRate] = useState<number | null>(null);
   React.useEffect(() => {
-    getBCVRate().then(setBcvRate).catch(() => {});
-  }, []);
+    if (!merchant?.id) return;
+    let cancelled = false;
+    getStorePaymentInfo(merchant.id)
+      .then((res) => {
+        const rate = Number(res?.data?.store?.referenceRateValue);
+        if (!cancelled && res?.code === 1 && Number.isFinite(rate) && rate > 0) setBcvRate(rate);
+      })
+      .catch(() => {});
+    return () => { cancelled = true; };
+  }, [merchant?.id]);
 
   const updateCartStorage = (newItems: any[]) => {
     setCartItems(newItems);
@@ -232,9 +335,15 @@ export default function MerchantStoreView({
 
   const handleAddToCartFromModal = (configuredItem: any) => {
     const rawId = configuredItem.productId || configuredItem.id || selectedProductDetail?.id;
-    const realId = Number(rawId) || 101;
+    const realId = Number(rawId);
+    const productCode = configuredItem.productCode || selectedProductDetail?.code;
+    // Nunca se inventan ids/códigos de producto: deben ser los reales del backend
+    if (!Number.isFinite(realId) || realId <= 0 || !productCode) {
+      alert('No se pudo identificar el producto. Recarga la tienda e inténtalo de nuevo.');
+      return;
+    }
     // Identidad única por producto + configuración de variantes: sabores distintos del mismo producto NO deben fusionarse
-    const cartItemId = `${configuredItem.productCode || realId}::${JSON.stringify(configuredItem.variants || [])}`;
+    const cartItemId = `${productCode}::${JSON.stringify(configuredItem.variants || [])}`;
 
     const existingIndex = cartItems.findIndex(item => item.cartItemId === cartItemId);
     let updated;
@@ -250,7 +359,7 @@ export default function MerchantStoreView({
       const newItem = {
         id: realId,
         cartItemId,
-        code: configuredItem.productCode || selectedProductDetail?.code || 'P001',
+        code: productCode,
         name: configuredItem.productName || selectedProductDetail?.name || 'Producto',
         price: configuredItem.totalPrice / (configuredItem.qty || 1),
         qty: configuredItem.qty || configuredItem.quantity || 1,
@@ -308,7 +417,11 @@ export default function MerchantStoreView({
   const faltaParaEnvioGratis = Math.max(0, umbralEnvio - subtotalUSD);
   const esEnvioGratis = subtotalUSD >= umbralEnvio;
   const progresoEnvio = Math.min(100, (subtotalUSD / umbralEnvio) * 100);
-  const deliveryCost = Number(merchant?.deliveryFee?.replace('$', '') || 1.50);
+  // Flete: cotización oficial del backend (deliveryRate) cuando existe; la tarifa mínima de la tienda queda solo como referencia previa
+  const staticDeliveryFee = Number(merchant?.deliveryFee?.replace('$', '') || 1.50);
+  const deliveryCost = quote.status === 'ok' && quote.rate !== undefined
+    ? quote.rate
+    : (Number.isFinite(staticDeliveryFee) ? staticDeliveryFee : 1.50);
   const discountDelivery = esEnvioGratis ? deliveryCost : 0;
   const fleteActivo = deliveryMode === 'national' ? 4.50 : (esEnvioGratis ? 0 : deliveryCost);
   const totalUSD = subtotalUSD + fleteActivo;
@@ -520,9 +633,28 @@ export default function MerchantStoreView({
           discountDelivery={discountDelivery}
           totalUSD={totalUSD}
           onUpdateQty={handleUpdateQty}
+          quoteStatus={quote.status}
+          quoteMessage={quote.message}
+          distanceKm={quote.distanceKm}
+          durationMin={quote.durationMin}
+          customerLocation={customerLocation}
+          isLocating={isLocating}
+          locationError={locationError}
+          onRequestLocation={handleRequestLocation}
           onOpenCheckout={(summary) => {
             setIsCartOpen(false);
-            onOpenCheckout(summary);
+            const isDelivery = summary.metodoEntrega === 'delivery';
+            // Delivery: ubicación y distancia reales cotizadas. Pickup/nacional: no hay ruta de reparto (distancia 0).
+            const point = isDelivery ? customerLocation : (customerLocation || merchant?.coords);
+            onOpenCheckout({
+              ...summary,
+              ...(isDelivery && customerLocation
+                ? { direccion: `${customerLocation.label}: ${customerLocation.lat.toFixed(5)}, ${customerLocation.lng.toFixed(5)}` }
+                : {}),
+              location: point ? { lat: Number(point.lat), lng: Number(point.lng) } : null,
+              distanceKm: isDelivery ? (quote.distanceKm ?? 0) : 0,
+              durationMin: isDelivery ? (quote.durationMin ?? 0) : 0,
+            });
           }}
           isNationalShippingEnabled={true}
         />

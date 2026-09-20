@@ -1,22 +1,28 @@
-// Gestor inteligente de Tasa BCV con persistencia en localStorage
-export async function getBCVRate(): Promise<number> {
-  const FALLBACK_TASA = 48.50;
+// Gestor de Tasa BCV (para Home/Navbar) con última tasa REAL persistida en localStorage.
+// Sin tasa fija de respaldo: si no hay tasa viva ni una tasa real guardada, devuelve null.
+// La clave es _v2 para descartar valores heredados de versiones anteriores que guardaban un 48.50 inventado.
+const STORAGE_KEY = 'duna_tasa_bcv_v2';
 
-  if (typeof window === 'undefined') return FALLBACK_TASA;
+export async function getBCVRate(): Promise<number | null> {
+  if (typeof window === 'undefined') return null;
 
   try {
     const response = await fetch('/api/bcv');
     const result = await response.json();
-    
-    if (result && result.tasa) {
-      localStorage.setItem('duna_tasa_bcv', result.tasa.toString());
-      return parseFloat(result.tasa);
+    const tasa = Number(result?.tasa);
+
+    if (result?.success && Number.isFinite(tasa) && tasa > 0) {
+      localStorage.setItem(STORAGE_KEY, String(tasa));
+      return tasa;
     }
   } catch (e) {
-    console.warn("Usando tasa almacenada en localStorage por fallo de red.");
+    console.warn('Usando última tasa real almacenada en localStorage por fallo de red.');
   }
 
-  // Si todo falla, revisamos el localStorage o tiramos del respaldo fijo
-  const stored = localStorage.getItem('duna_tasa_bcv');
-  return stored ? parseFloat(stored) : FALLBACK_TASA;
+  try {
+    const stored = Number(localStorage.getItem(STORAGE_KEY));
+    return Number.isFinite(stored) && stored > 0 ? stored : null;
+  } catch {
+    return null;
+  }
 }

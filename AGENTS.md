@@ -76,9 +76,9 @@
 
 | Componente | Rol |
 |---|---|
-| `CheckoutModal.tsx` | **Checkout real.** Métodos de pago desde `GET /store/{id}/payment/info`; datos del cliente, propina, **Cofre Recompensa D'una** (25% OFF flete), badge de vehículo + `vehicleType` (`MOTO`/`SEDAN`) del motor logístico, total en USD y Bs, y envío a `POST /delivery/request/purchase/web`. **Bloquea "Continuar" si `orderSummary.isOpen === false`** (ver §2.4). |
-| `OrderTrackingModal.tsx` | Modal post-compra con 3 pestañas: **Comanda POS** (ticket térmico), **Estatus**, **Recibo**. Lee el pedido de `localStorage['last_active_order']` (lo escribe `page.tsx` en `onFinalizeOrder`); su consulta a Firestore `orders` no tiene ningún escritor en el repo, así que en la práctica cae siempre al respaldo local. |
-| `MasterProductModal.tsx` | Modal maestro de producto. **Combos por ranuras** (`ComboSlot`, `slotGroups`, `slotsCount`). Grupos `SINGLE` (selección única) vs `MULTIPLE` (contadores); `pricingRole` `BASE` (reemplaza el precio) vs `ADDON` (suma); mínimos por `minItems`; precio inicial desde `metadata.price.basePrice` (`infoPrice` es solo referencial, arranca en $0); arma `variants` + `pricing` estructurados para el carrito. Recibe `nicheEngine` (un `ModalEngine`, ver §4) y `bcvRate` real. |
+| `CheckoutModal.tsx` | **Checkout real.** Métodos de pago desde `GET /store/{id}/payment/info`; datos del cliente, propina, **Cofre Recompensa D'una** (25% OFF flete), badge de vehículo + `vehicleType` (`MOTO`/`SEDAN`) del motor logístico, total en USD y Bs, y envío a `POST /delivery/request/purchase/web`. **Bloquea "Continuar" si `orderSummary.isOpen === false`** (ver §2.4). **Sin datos inventados:** el pedido no se envía (error controlado) si falta `merchantId`, el teléfono real del comercio (`merchantPhone`), la tasa oficial, la ubicación real, o si algún ítem no trae `id`/`code`/`price` reales; ya no hay `70`, `'04165675220'`, `101`, `'P001'` ni precio `1.0` de respaldo. `serviceAmount` y `tip` viajan como string con 2 decimales. |
+| `OrderTrackingModal.tsx` | Modal post-compra con 3 pestañas: **Comanda POS** (ticket térmico), **Estatus**, **Recibo**. **Tracking real:** consume `getOrderPublic(orderId)` (`GET /delivery/request/{id}/public?apiKey=`) al abrir y hace polling cada 9 s hasta estado final (`DELIVERED`/`CANCELLED`/`REJECTED`/`COMPLETED`). La pestaña Estatus dibuja `history[]` real; cliente, dirección, comercio, teléfono y `order_number || id` salen de `data`. Los ítems/totales (que `/public` no devuelve) vienen de `localStorage['last_active_order']`, solo si su `id` coincide. Sin `orderId` o con error de API muestra un estado vacío/mensaje, nunca datos inventados. Firestore fue eliminado. |
+| `MasterProductModal.tsx` | Modal maestro de producto. **Combos por ranuras** (`ComboSlot`, `slotGroups`, `slotsCount`). Grupos `SINGLE` (selección única) vs `MULTIPLE` (contadores); `pricingRole` `BASE` (reemplaza el precio) vs `ADDON` (suma); mínimos por `minItems`; precio inicial desde `metadata.price.basePrice` (`infoPrice` es solo referencial, arranca en $0); arma `variants` + `pricing` estructurados para el carrito. Las opciones se dibujan como **cápsulas táctiles** (`OptionCapsule`, con etiqueta de precio extra en $ y Bs vía `getOptionPriceLabels`): solo presentación, los handlers y cálculos no cambian. Recibe `nicheEngine` (un `ModalEngine`, ver §4) y `bcvRate` real. |
 | `CartModal.tsx` | **Carrito real.** Cada ítem se identifica por `cartItemId` (`productCode::JSON(variants)`), así sabores distintos del mismo producto no se fusionan. |
 | `MerchantStoreView.tsx` | **Vista de tienda real** (catálogo). Hero con badges de confianza y "Destacado de hoy", franja `PromotionsCarousel`, tabs de categoría reales, buscador, grilla. Ver §4.1. |
 | `PromotionsCarousel.tsx` | Franja "Promociones Imperdibles" (scroll horizontal). Recibe el array de promociones y un `onSelectPromotion`; no hace fetch propio; retorna `null` si el array está vacío. Usada en el Home y en cada tienda. |
@@ -97,7 +97,7 @@ uno, confirmar con el usuario.
 |---|---|
 | `logisticsEngine.ts` | **Motor logístico y de flota** (asignación de vehículo por peso/volumen/dimensión, cálculo de costo de envío, cálculo de distancia/duración haversine). Ver [§3](#3-logística-y-transporte-duna-delivery). |
 | `deliveryGps.ts` | Cálculo de tarifa de flete real vía GPS estricto (`calculateStrictGpsFare`): consulta distancia real, aplica límite de 12 km de servicio, y llama al endpoint del backend `deliveryRate` para el precio oficial. |
-| `bcvRate.ts` | Gestor de tasa BCV con caché en `localStorage` (`duna_tasa_bcv`) y fallback fijo `48.50`. |
+| `bcvRate.ts` | `getBCVRate()` → `number \| null`: consulta `/api/bcv` (solo Home/listados) y persiste la última tasa **real** en `localStorage['duna_tasa_bcv_v2']`. **Sin fallback fijo:** si no hay tasa viva ni guardada devuelve `null` y la UI oculta los Bs. (la clave `_v2` descarta el `48.50` inventado que guardaba la versión anterior). |
 | `nicheConfig.ts` | **Motor multi-nicho v2** (10 nichos + fallback). Ver §4. Reemplazó al detector viejo de 6 nichos (`BOUTIQUE`/`ABASTO`/`BODEGON`/`GENERAL`/`getNicheFeatures`, ya no existen). |
 | `nicheIcons.tsx` | Traduce los slugs de ícono de `nicheConfig` (estilo FontAwesome, ej. `fa-solid fa-snowflake`) a componentes de `lucide-react` (`getNicheIcon`) y los `colorToken` de los badges a clases Tailwind (`getBadgeColorClasses`). Slug no mapeado → `ShieldCheck` + `console.warn`. |
 | `shareUtils.ts` | Utilidades de compartir (ej. generación de texto/enlace de pedido). |
@@ -105,7 +105,7 @@ uno, confirmar con el usuario.
 ### 1.5 Servicios y tipos
 
 - `src/services/marketplaceService.ts` — cliente HTTP centralizado hacia el backend AdonisJS
-  (`apiFetch`, `submitPurchaseOrder`, `getStorePaymentInfo`, `getProductsByStore`, `getProduct`
+  (`apiFetch`, `submitPurchaseOrder`, `getDeliveryRate` → `GET /delivery/request/purchase/deliveryRate` (ver §3.2), `getOrderPublic` → `/delivery/request/{id}/public?apiKey=` (verificado con la orden #1620: `data` trae `order_number`, `customer_name`, `customer_address_text`, `food_store`, `status`, `history[{id,status,date}]`, `totalPaidDefaultAmount`/`totalPaidReferenceAmount`), `getStorePaymentInfo`, `getProductsByStore`, `getProduct`
   → `/product/{id}/web`, y `getStorePromotions(storeCode)` → `GET /promotion?store={code}`).
   Headers obligatorios: `apiKey`, `timeZone` (SIN prefijo `X-`).
 - **Promociones** (`GET /promotion`, verificado contra el backend real el 2026-09-16): filtra
@@ -160,19 +160,21 @@ propina.
 Bolívares** (`Bs.S`) son dos datos independientes y **jamás se combinan en una sola línea**.
 Siempre se muestran en renglones/celdas separadas.
 
-- Fuente de la tasa: `src/app/api/bcv/route.ts` → consulta `https://ve.dolarapi.com/v1/dolares/bcv`
-  (campo `promedio`) con timeout de 4s y caché de revalidación de 1h; si falla, usa el
-  **fallback corporativo fijo `48.50`**.
-- Cliente: `src/lib/bcvRate.ts` (`getBCVRate`) persiste la última tasa buena en
-  `localStorage` bajo la clave `duna_tasa_bcv` para resiliencia offline (crítico en
-  contexto venezolano de conectividad inestable).
+- **Fuente de verdad por pantalla (2026-09-20, sin tasas fijas en ningún archivo):**
+  - **Tienda (`MerchantStoreView`) y Checkout (`CheckoutModal`):** estrictamente
+    `store.referenceRateValue` de `GET /store/{id}/payment/info` (verificado: Papá Helado = 849.56).
+    Si no llega, la tasa queda `null`: la tienda no muestra Bs. y el Checkout **no deja continuar** ("No se
+    pudo obtener la tasa oficial del comercio") ni enviar el pedido.
+  - **Home, listados y `Navbar`:** `GET /api/bcv` → `getBCVRate()`. La ruta consulta
+    `https://ve.dolarapi.com/v1/dolares/oficial` (campo `promedio`, tasa BCV oficial; el endpoint
+    `/v1/dolares/bcv` que se usaba devuelve **404**, por eso antes siempre caía al 48.50 falso). Timeout 4 s,
+    revalidación 1 h. Si falla responde `{success:false, tasa:null}` con HTTP 503; **ya no existe el
+    fallback corporativo 48.50**. Sin tasa, el Home muestra "Tasa BCV: no disponible" y solo precios en USD.
+  - **Ticket (`OrderTrackingModal`):** tasa guardada en el pedido, o la deducida del backend
+    (`totalPaidReferenceAmount / totalPaidDefaultAmount`); sin ninguna, no dibuja las líneas Bs.
 - Fórmula: `Total Bs. = Total Final USD × Tasa Ref.` (única fuente de verdad en el ticket:
   `displayTotalBs = displayTotal * tasaRef` en `OrderTrackingModal.tsx`).
-- `MerchantStoreView.tsx` obtiene la tasa real con `getBCVRate()` (arranca en 48.50 mientras
-  carga) y se la pasa a `MasterProductModal`. **Deuda conocida:** `page.tsx` todavía tiene
-  `TASA_BCV_ACTUAL = 48.50` fijo, que usa para formatear precios del Home y como `tasaBcv`
-  inicial de `CheckoutModal` (este la sobrescribe con `store.referenceRateValue` si el
-  backend la trae).
+- `MasterProductModal` recibe `bcvRate: number | null` y omite los montos en Bs. cuando es `null`.
 - En el ticket (`OrderTrackingModal.tsx`, Comanda POS y Recibo) el bloque de cierre es una
   cuadrícula de 2 columnas con los montos alineados a la derecha:
   ```
@@ -265,6 +267,23 @@ hacia arriba en la tabla si se siguen excediendo los límites).
   para obtener la tarifa oficial — el cálculo local del motor logístico (`logisticsEngine.ts`)
   sirve de simulador/fallback y para asignación de tipo de vehículo, no reemplaza el precio
   oficial del backend.
+- **Flete dinámico real (2026-09-20):** `MerchantStoreView.tsx` cotiza cuando el carrito está
+  abierto en modo delivery: toma la ubicación del cliente (GPS vía el botón "Mi Ubicación" de
+  `CartModal`, o la ubicación ya elegida en el Home, guardada también en
+  `sessionStorage['duna_customer_location']`), calcula distancia/tiempo contra `merchant.coords`
+  (`getDistanceAndTime`, haversine a 30 km/h), **bloquea a más de 12 km** ("Servicio no disponible
+  a más de 12km") y llama a `getDeliveryRate({storeId, lat, lng, distance, duration})`
+  (`marketplaceService.ts`). Contrato verificado en DEV: hasta 12 km → `{code:1, data:{rate}}`
+  (Papá Helado: 1 km=$1, 3=$3, 6=$4.5, 8=$5.5, 12=$6, tope `deliveryMaximumRate`); desde 13 km →
+  `{code:1, data:{message:"Servicio de entrega no disponible para tu ubicación"}}`; `storeId`
+  inexistente o parámetros faltantes → HTTP 500 sin `code`. Sin cotización exitosa el botón
+  "PROCEDER AL PAGO" queda deshabilitado y el flete se muestra "—" (la tarifa mínima de la
+  tienda solo se usa como referencia interna, nunca se cobra). `distance` (km, 1 decimal) y
+  `duration` (minutos) viajan a `CheckoutModal` en `orderSummary` (`location`, `distanceKm`,
+  `durationMin`) y de ahí al `orderData` (`location`, `distance`, `duration`, textos y
+  `serviceAmount` con 2 decimales). Pickup/nacional: `distance=0`, `location` = cliente si se conoce, si no la
+  tienda. `CheckoutModal` no envía el pedido si falta `location`. `deliveryGps.ts` ahora delega en
+  `getDeliveryRate` (sigue sin importadores).
 - **Integración en el checkout:** `CheckoutModal.tsx` corre `calculateLogistics()` sobre los
   ítems del carrito, muestra el badge "Vehículo asignado" (solo en delivery) y envía
   `vehicleType` (`MOTO` si es `moto`, `SEDAN` para cualquier otro vehículo) dentro de
@@ -358,11 +377,13 @@ Orden visual de arriba hacia abajo:
 ### Deuda técnica conocida (a 2026-09-20)
 
 - `handleStoreClick` (`page.tsx`) no bloquea la entrada a tiendas cerradas; solo el checkout.
-- `TASA_BCV_ACTUAL = 48.50` fija en `page.tsx` (ver §2.2).
+- Pendiente de purga (no forman parte del flujo real): `tienda/demo-mostaza` pasa `bcvRate={40}` fijo y `nicheEngine="FOOD_FAST"`; `MerchantStoreView` usa `price || 1.5` como precio de respaldo del detalle de producto si el backend no lo trae; `CheckoutModal` envía `discountAmount: "0"`/`totalWithoutDiscount` iguales al total aunque el Cofre descuente flete (sin verificar contra el backend, posible causa de `code: 21`).
+- `page.tsx` ya no usa `phone: '584140000000'` de respaldo: si el comercio no trae teléfono, el checkout bloquea el pedido.
+- El botón de mapa (pin) de `CartModal` no tiene selector de mapa; la ubicación viene de GPS o del Home. La distancia es en línea recta (haversine), no por ruta.
+- Si el flete es gratis por umbral (`esEnvioGratis`), `serviceAmount` viaja en 0; no verificado contra el backend.
 - El Cofre Recompensa usa un contador simulado (ver §2.1).
 - Los flujos "Pago Express / Pago Directo (WhatsApp)" y "pagar ahora en la plataforma" no
   existen en el flujo real (solo en componentes huérfanos, y el tercero en ninguno).
-- `tienda/demo-mostaza` hardcodea `nicheEngine="FOOD_FAST"`.
 - `src/lib/deliveryGps.ts`, `src/app/page.tsx` y `src/services/marketplaceService.ts` son
   los únicos archivos con fallback de API key; los tres usan `bf8f1b64-…`.
 - Varios archivos tienen diffs previos sin commitear ajenos a estas tareas (p. ej. una

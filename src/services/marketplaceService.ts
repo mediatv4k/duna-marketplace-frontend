@@ -74,6 +74,41 @@ export async function getProduct(productId: number | string): Promise<ApiRespons
   return await apiFetch<any>(`/product/${productId}/web`);
 }
 
+// GET /delivery/request/purchase/deliveryRate — cotización oficial del flete (verificado en DEV):
+//  · hasta 12 km  → { code: 1, data: { rate: number } }
+//  · más de 12 km → { code: 1, data: { message: "Servicio de entrega no disponible para tu ubicación" } }
+//  · storeId inexistente / parámetros faltantes → HTTP 500 sin envelope { code } (solo { message, stack })
+export type DeliveryRateResult = { ok: true; rate: number } | { ok: false; message: string };
+
+export async function getDeliveryRate(params: {
+  storeId: number | string;
+  lat: number;
+  lng: number;
+  distance: number;
+  duration: number;
+}): Promise<DeliveryRateResult> {
+  const qs = new URLSearchParams({
+    storeId: String(params.storeId),
+    lat: String(params.lat),
+    lng: String(params.lng),
+    distance: String(params.distance),
+    duration: String(params.duration),
+  });
+  const res = await apiFetch<any>(`/delivery/request/purchase/deliveryRate?${qs.toString()}`);
+  const rate = res?.data?.rate;
+  if (res?.code === 1 && rate !== null && rate !== undefined && Number.isFinite(Number(rate))) {
+    return { ok: true, rate: Number(rate) };
+  }
+  const msg = res?.data?.message || res?.message;
+  return { ok: false, message: typeof msg === 'string' && msg && !msg.startsWith('E_') && !msg.includes('Expected a string') ? msg : 'No se pudo cotizar el flete. Intenta de nuevo.' };
+}
+
+// GET /delivery/request/{orderId}/public?apiKey= — tracking público del pedido (envelope { code, data, message }).
+// El contrato exige apiKey como query param. Verificado en DEV con la orden #1620.
+export async function getOrderPublic(orderId: number | string): Promise<ApiResponse<any>> {
+  return await apiFetch<any>(`/delivery/request/${encodeURIComponent(String(orderId))}/public?apiKey=${encodeURIComponent(API_KEY)}`);
+}
+
 // GET /promotion?store={code} — el backend filtra por el CÓDIGO/slug de la tienda (ej. "papa-helado"),
 // no por el id numérico. Verificado contra el backend real de DEV el 2026-09-16.
 export async function getStorePromotions(storeCode: string): Promise<ApiResponse<any>> {

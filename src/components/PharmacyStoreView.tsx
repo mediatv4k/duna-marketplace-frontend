@@ -1,9 +1,9 @@
 'use client';
 
-import React, { useState } from 'react';
+import React, { useState, useEffect } from 'react';
 import { ArrowLeft, Search, ShoppingBag, Store, ShieldCheck, Truck, Star } from 'lucide-react';
 
-const TASA_BCV = 48.50;
+import { getBCVRate } from '@/lib/bcvRate';
 
 const pharmacyCatalog = [
   {
@@ -56,9 +56,14 @@ export default function PharmacyStoreView() {
   const [selectedVariantCode, setSelectedVariantCode] = useState<string>('');
   const [cart, setCart] = useState<Array<any>>([]);
   const [searchFilter, setSearchFilter] = useState('');
+  const [tasaBcv, setTasaBcv] = useState<number | null>(null);
+  useEffect(() => {
+    getBCVRate().then(setTasaBcv).catch(() => setTasaBcv(null));
+  }, []);
 
   const formatPrice = (usd: number) => {
-    const ves = usd * TASA_BCV;
+    if (!tasaBcv) return '$' + usd.toFixed(2);
+    const ves = usd * tasaBcv;
     return '$' + usd.toFixed(2) + ' (Bs. ' + ves.toFixed(2) + ')';
   };
 
@@ -79,7 +84,7 @@ export default function PharmacyStoreView() {
             </div>
           </div>
           <div className='flex items-center gap-3'>
-            <span className='text-xs font-bold text-emerald-400 bg-emerald-950/60 border border-emerald-500/30 px-3 py-1.5 rounded-xl'>Tasa BCV: Bs. {TASA_BCV}</span>
+            <span className='text-xs font-bold text-emerald-400 bg-emerald-950/60 border border-emerald-500/30 px-3 py-1.5 rounded-xl'>Tasa BCV: Bs. {tasaBcv ? tasaBcv.toFixed(2) : 'no disponible'}</span>
           </div>
         </header>
         <main className='max-w-5xl mx-auto p-6 space-y-6'>

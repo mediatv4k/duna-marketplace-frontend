@@ -5,13 +5,13 @@ import React from 'react';
 interface NavbarProps {
   activeCategory?: string;
   onSelectCategory?: (cat: string) => void;
-  tasaBcv?: number;
+  tasaBcv?: number | null;
 }
 
 export default function Navbar({
   activeCategory = 'TODOS',
   onSelectCategory,
-  tasaBcv = 48.50,
+  tasaBcv,
 }: NavbarProps) {
   const categories = [
     { id: 'TODOS', label: '🔥 TODOS' },
@@ -19,7 +19,8 @@ export default function Navbar({
     { id: 'PROMOS', label: 'PROMOCIONES' },
   ];
 
-  const tasaFormateada = Number(tasaBcv || 48.50).toFixed(2);
+  // Sin tasa real (prop nula) no se muestra ningún valor inventado
+  const tasaFormateada = Number(tasaBcv) > 0 ? Number(tasaBcv).toFixed(2) : 'no disponible';
 
   return (
     <nav className="w-full bg-white border-b border-slate-100 py-2.5 px-4 shadow-2xs sticky top-[57px] z-30">
@@ -46,7 +47,7 @@ export default function Navbar({
           })}
         </div>
 
-        {/* Tasa BCV segura con valor de respaldo */}
+        {/* Tasa BCV real (viene de /api/bcv); sin tasa muestra "no disponible" */}
         <div className="hidden sm:flex items-center gap-1.5 text-[11px] font-bold text-slate-500 bg-slate-50 px-2.5 py-1 rounded-xl border border-slate-200/80 shrink-0">
           <span>Tasa BCV:</span>
           <span className="text-slate-900 font-black">Bs. {tasaFormateada}</span>

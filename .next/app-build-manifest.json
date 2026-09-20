@@ -1,58 +1,15 @@
 {
   "pages": {
-    "/_not-found/page": [
-      "static/chunks/webpack-32e44b8e05e24c54.js",
-      "static/chunks/fd9d1056-880e398eb8266174.js",
-      "static/chunks/23-32774d346ff0c276.js",
-      "static/chunks/main-app-0744285922492518.js",
-      "static/chunks/app/_not-found/page-519bf5eac38f62b0.js"
+    "/page": [
+      "static/chunks/webpack.js",
+      "static/chunks/main-app.js",
+      "static/chunks/app/page.js"
     ],
     "/layout": [
-      "static/chunks/webpack-32e44b8e05e24c54.js",
-      "static/chunks/fd9d1056-880e398eb8266174.js",
-      "static/chunks/23-32774d346ff0c276.js",
-      "static/chunks/main-app-0744285922492518.js",
-      "static/css/6ed881bd44d920de.css",
-      "static/chunks/app/layout-088d77c72d00a645.js"
-    ],
-    "/page": [
-      "static/chunks/webpack-32e44b8e05e24c54.js",
-      "static/chunks/fd9d1056-880e398eb8266174.js",
-      "static/chunks/23-32774d346ff0c276.js",
-      "static/chunks/main-app-0744285922492518.js",
-      "static/chunks/32f9209a-3c5ffaa5bab331f2.js",
-      "static/chunks/0e142730-86a8580263912db6.js",
-      "static/chunks/0-af51a6acfa9df144.js",
-      "static/chunks/146-0aa957dc67956d19.js",
-      "static/chunks/965-f634d03794011fb8.js",
-      "static/chunks/app/page-b702530ef825ab8c.js"
-    ],
-    "/tienda/demo-mostaza/page": [
-      "static/chunks/webpack-32e44b8e05e24c54.js",
-      "static/chunks/fd9d1056-880e398eb8266174.js",
-      "static/chunks/23-32774d346ff0c276.js",
-      "static/chunks/main-app-0744285922492518.js",
-      "static/chunks/146-0aa957dc67956d19.js",
-      "static/chunks/app/tienda/demo-mostaza/page-2dad367ed5aeecab.js"
-    ],
-    "/test-logistica/page": [
-      "static/chunks/webpack-32e44b8e05e24c54.js",
-      "static/chunks/fd9d1056-880e398eb8266174.js",
-      "static/chunks/23-32774d346ff0c276.js",
-      "static/chunks/main-app-0744285922492518.js",
-      "static/chunks/app/test-logistica/page-2f88560103b1d7a8.js"
-    ],
-    "/test-helado/page": [
-      "static/chunks/webpack-32e44b8e05e24c54.js",
-      "static/chunks/fd9d1056-880e398eb8266174.js",
-      "static/chunks/23-32774d346ff0c276.js",
-      "static/chunks/main-app-0744285922492518.js",
-      "static/chunks/32f9209a-3c5ffaa5bab331f2.js",
-      "static/chunks/0e142730-86a8580263912db6.js",
-      "static/chunks/0-af51a6acfa9df144.js",
-      "static/chunks/146-0aa957dc67956d19.js",
-      "static/chunks/965-f634d03794011fb8.js",
-      "static/chunks/app/test-helado/page-288af9d0c1799233.js"
+      "static/chunks/webpack.js",
+      "static/chunks/main-app.js",
+      "static/css/app/layout.css",
+      "static/chunks/app/layout.js"
     ]
   }
 }

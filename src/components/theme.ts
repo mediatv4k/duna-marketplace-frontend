@@ -9,8 +9,5 @@ export const DUNA_THEME = {
   },
   layout: {
     modalMaxHeight: '590px', // Altura estricta del Modal Sándwich
-  },
-  business: {
-    defaultBCVRate: 48.50,   // Tasa de resguardo por si falla la API
   }
 };

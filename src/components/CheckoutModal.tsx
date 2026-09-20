@@ -68,13 +68,16 @@ export interface OrderSummaryData {
   merchantPhone?: string;
   isOpen?: boolean;
   scheduleInfo?: string;
+  // Ubicación y ruta reales (cotizadas en el carrito con GPS + GET /deliveryRate)
+  location?: { lat: number; lng: number } | null;
+  distanceKm?: number;
+  durationMin?: number;
 }
 
 interface CheckoutModalProps {
   isOpen: boolean;
   onClose: () => void;
   orderSummary: OrderSummaryData;
-  tasaBcv: number;
   merchantName?: string;
   onFinalizeOrder: (orderData: SubmittedOrderPayload) => void;
   onBackToCart: () => void;
@@ -86,7 +89,6 @@ export default function CheckoutModal({
   isOpen,
   onClose,
   orderSummary,
-  tasaBcv: tasaBcvProp,
   merchantName = 'el aliado comercial',
   onFinalizeOrder,
   onBackToCart,
@@ -101,7 +103,8 @@ export default function CheckoutModal({
   const [paymentMethods, setPaymentMethods] = useState<PaymentConfigItem[]>([]);
   const [selectedMethod, setSelectedMethod] = useState<PaymentConfigItem | null>(null);
   const [loadingPaymentInfo, setLoadingPaymentInfo] = useState<boolean>(true);
-  const [liveRateBcv, setLiveRateBcv] = useState<number>(tasaBcvProp || 48.5);
+  // Tasa oficial: solo store.referenceRateValue de GET /store/{id}/payment/info (null = no disponible)
+  const [liveRateBcv, setLiveRateBcv] = useState<number | null>(null);
 
   const [nombre, setNombre] = useState('');
   const [tipoDocumento, setTipoDocumento] = useState('V-');
@@ -121,7 +124,13 @@ export default function CheckoutModal({
   useEffect(() => {
     if (!isOpen) return;
 
-    const storeId = orderSummary.merchantId || 70;
+    const storeId = orderSummary.merchantId;
+    setLiveRateBcv(null);
+    if (!storeId) {
+      // Sin id real de comercio no se consulta ni se inventa uno
+      setLoadingPaymentInfo(false);
+      return;
+    }
     setLoadingPaymentInfo(true);
 
     getStorePaymentInfo(storeId).then((res) => {
@@ -132,8 +141,9 @@ export default function CheckoutModal({
         if (methods.length > 0) {
           setSelectedMethod(methods[0]);
         }
-        if (res.data.store?.referenceRateValue) {
-          setLiveRateBcv(Number(res.data.store.referenceRateValue));
+        const officialRate = Number(res.data.store?.referenceRateValue);
+        if (Number.isFinite(officialRate) && officialRate > 0) {
+          setLiveRateBcv(officialRate);
         }
       }
     }).catch(() => {
@@ -154,7 +164,8 @@ export default function CheckoutModal({
   const totalFinalUSD = subtotalNeto + costoEnvio + propina - descuentoUSD;
 
   const cobraEnBs = selectedMethod?.field5 === 'REF';
-  const totalBolivares = totalFinalUSD * liveRateBcv;
+  const tasaRef = liveRateBcv ?? 0;
+  const totalBolivares = totalFinalUSD * tasaRef;
 
   // Motor logístico D'una: MOTO hasta 45x45cm y 15kg; si excede cualquiera de las dos, pasa a SEDÁN
   const logisticsItems: PhysicalItem[] = (orderSummary.items || []).map((item: CartItemOption) => ({
@@ -166,7 +177,7 @@ export default function CheckoutModal({
     anchoCm: (item as any).widthCm !== undefined ? Number((item as any).widthCm) : undefined,
     altoCm: (item as any).heightCm !== undefined ? Number((item as any).heightCm) : undefined,
   }));
-  const logisticsResult = calculateLogistics(logisticsItems, 0.6);
+  const logisticsResult = calculateLogistics(logisticsItems, Number(orderSummary.distanceKm || 0));
   const vehicleType: 'MOTO' | 'SEDAN' = logisticsResult.vehiculoAsignado.id === 'moto' ? 'MOTO' : 'SEDAN';
 
   const handleToggleTip = (monto: number) => setPropina((prev) => (prev === monto ? 0 : monto));
@@ -197,6 +208,10 @@ export default function CheckoutModal({
   };
 
   const handleProceedToInstructions = () => {
+    if (!(tasaRef > 0)) {
+      alert('No se pudo obtener la tasa oficial del comercio. Intenta de nuevo en unos momentos.');
+      return;
+    }
     if (!nombre.trim() || !cedula.trim() || !telefono.trim()) {
       alert('Por favor completa tu nombre, cédula y teléfono de contacto.');
       return;
@@ -209,6 +224,33 @@ export default function CheckoutModal({
   };
 
   const handleCompleteFinalOrder = async () => {
+    // Sin datos reales no se envía el pedido: nunca se inventan comercio, teléfono, tasa, ubicación ni productos
+    const storeIdNum = Number(orderSummary.merchantId);
+    const storePhoneStr = String(orderSummary.merchantPhone || '').trim();
+    if (!Number.isFinite(storeIdNum) || storeIdNum <= 0) {
+      setSubmitError('No se pudo identificar el comercio. Vuelve a la tienda e inténtalo de nuevo.');
+      return;
+    }
+    if (!storePhoneStr) {
+      setSubmitError('El comercio no tiene un teléfono registrado. No se puede enviar el pedido.');
+      return;
+    }
+    if (!(tasaRef > 0)) {
+      setSubmitError('No se pudo obtener la tasa oficial del comercio. Intenta de nuevo en unos momentos.');
+      return;
+    }
+    const cartLines = orderSummary.items || [];
+    const invalidLine = cartLines.find((item: CartItemOption) =>
+      !Number.isFinite(Number(item.id)) || Number(item.id) <= 0 || !String(item.code || '').trim() || !Number.isFinite(Number(item.price))
+    );
+    if (cartLines.length === 0 || invalidLine) {
+      setSubmitError('Un producto del carrito no tiene identificador válido. Vuelve a agregarlo desde la tienda.');
+      return;
+    }
+    if (!orderSummary.location || !Number.isFinite(Number(orderSummary.location.lat)) || !Number.isFinite(Number(orderSummary.location.lng))) {
+      setSubmitError('Falta tu ubicación de entrega. Vuelve al carrito y toca "Mi Ubicación".');
+      return;
+    }
     setSubmitting(true);
     setSubmitError(null);
 
@@ -218,17 +260,14 @@ export default function CheckoutModal({
       ? crypto.randomUUID()
       : `ord_${Date.now()}`;
 
-    const storeIdNum = Number(orderSummary.merchantId || 70);
-    const storePhoneStr = String(orderSummary.merchantPhone || '04165675220');
-
     const itemsAdonis = (orderSummary.items || []).map((item: CartItemOption) => {
-      const basePrice = Number(item.price || 1.0);
+      const basePrice = Number(item.price);
       const cantNum = Number(item.qty || item.quantity || item.cant || 1);
       const itemPricing = item.pricing as { unitBasePrice?: number; addonsTotal?: number; unitFinalPrice?: number } | undefined;
       const unitFinalPrice = itemPricing?.unitFinalPrice ?? basePrice;
       return {
-        id: item.id ? Number(item.id) : 101,
-        code: String(item.code || 'P001'),
+        id: Number(item.id),
+        code: String(item.code),
         name: String(item.name || 'Producto'),
         image: String(item.image || item.img || ''),
         cant: cantNum,
@@ -248,12 +287,12 @@ export default function CheckoutModal({
       data: itemsAdonis,
       vehicleType,
       service: orderSummary.metodoEntrega === 'pickup' ? 'PICKUP' : 'DELIVERY',
-      location: { lat: 10.3910, lng: -71.4423 },
-      duration: "15",
-      distance: "1.0",
-      durationText: '15 mins',
-      distanceText: '1.0 km',
-      serviceAmount: String(costoEnvio),
+      location: { lat: Number(orderSummary.location.lat), lng: Number(orderSummary.location.lng) },
+      duration: String(Math.round(Number(orderSummary.durationMin || 0))),
+      distance: Number(orderSummary.distanceKm || 0).toFixed(1),
+      durationText: `${Math.round(Number(orderSummary.durationMin || 0))} mins`,
+      distanceText: `${Number(orderSummary.distanceKm || 0).toFixed(1)} km`,
+      serviceAmount: costoEnvio.toFixed(2),
       address: String(orderSummary.direccion || 'Cabimas, Zulia'),
       phone: telefonoCompleto,
       customerName: nombre,
@@ -264,7 +303,7 @@ export default function CheckoutModal({
       totalPaidDefaultAmount: String(totalFinalUSD.toFixed(2)),
       totalWithoutDiscount: String(totalFinalUSD.toFixed(2)),
       paymentMethod: selectedMethod ? { code: selectedMethod.code, value: selectedMethod.value } : { code: 'PAGO', value: 'Banco' },
-      tip: String(propina),
+      tip: propina.toFixed(2),
       store: { id: storeIdNum, phone: storePhoneStr },
       foodStoreId: String(storeIdNum),
       couponId: null,
@@ -299,7 +338,7 @@ export default function CheckoutModal({
           bancoSeleccionado: selectedMethod?.value || 'Banco',
           totalUSD: totalFinalUSD,
           totalBolivares: cobraEnBs ? totalBolivares : null,
-          tasaBcv: liveRateBcv,
+          tasaBcv: tasaRef,
           referencia: referenciaPago,
           comprobante: nombreArchivo,
           createdAt: new Date(),
@@ -542,7 +581,7 @@ export default function CheckoutModal({
                   <Info className="h-3.5 w-3.5 text-[#fe6712]" />
                   <span className="text-[9.5px] font-black text-slate-700 uppercase">Tasa BCV</span>
                 </div>
-                <span className="text-[9.5px] font-black text-[#fe6712]">Bs.S {liveRateBcv.toFixed(2)} / $</span>
+                <span className="text-[9.5px] font-black text-[#fe6712]">Bs.S {tasaRef.toFixed(2)} / $</span>
               </div>
             )}
 

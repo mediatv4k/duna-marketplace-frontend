@@ -36,7 +36,7 @@ import {
 // ==========================================================
 // TASA OFICIAL Y CONFIGURACIÓN BIMONETARIA
 // ==========================================================
-const TASA_BCV_ACTUAL = 48.50; // Bs. por USD
+import { getBCVRate } from '@/lib/bcvRate';
 
 // ==========================================================
 // ÍCONOS VECTORIALES DE CATEGORÍAS (ARTE LINEAL CALIBRADO)
@@ -378,9 +378,15 @@ export default function MultitiendaHub() {
   const categoryRailRef = useRef<HTMLDivElement>(null);
   const [isPromoPaused, setIsPromoPaused] = useState<boolean>(false);
 
+  // Tasa BCV viva (GET /api/bcv); null = no disponible → sin Bs. inventados
+  const [bcvRate, setBcvRate] = useState<number | null>(null);
+  useEffect(() => {
+    getBCVRate().then(setBcvRate).catch(() => setBcvRate(null));
+  }, []);
+
   const formatPriceBimonetary = (amountUSD: number): string => {
-    const amountVES = amountUSD * TASA_BCV_ACTUAL;
-    if (currencyMode === 'USD') return `$${amountUSD.toFixed(2)}`;
+    if (currencyMode === 'USD' || !bcvRate) return `$${amountUSD.toFixed(2)}`;
+    const amountVES = amountUSD * bcvRate;
     if (currencyMode === 'VES') return `Bs. ${amountVES.toFixed(2)}`;
     return `$${amountUSD.toFixed(2)} (Bs. ${amountVES.toFixed(2)})`;
   };
@@ -515,7 +521,6 @@ export default function MultitiendaHub() {
           isOpen={isCheckoutOpen}
           onClose={handleCloseCheckout}
           orderSummary={orderSummaryData}
-          tasaBcv={TASA_BCV_ACTUAL}
           merchantName={merchantInfo.name}
           onFinalizeOrder={(orderData) => {
             setHasCompletedOrder(true);
@@ -558,7 +563,7 @@ export default function MultitiendaHub() {
             </div>
             <div className="flex items-center gap-1.5 bg-white/5 px-2.5 py-0.5 rounded-full border border-white/10 text-slate-300 text-[11px]">
               <Coins className="w-3 h-3 text-amber-400" />
-              <span>Tasa BCV: <strong className="text-white">Bs. {TASA_BCV_ACTUAL.toFixed(2)}</strong></span>
+              <span>Tasa BCV: <strong className="text-white">{bcvRate ? `Bs. ${bcvRate.toFixed(2)}` : 'no disponible'}</strong></span>
             </div>
           </div>
         </div>
