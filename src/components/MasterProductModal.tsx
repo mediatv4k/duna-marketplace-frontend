@@ -36,6 +36,8 @@ export interface VariantSelectionPayload {
   summaryText: string;
   breakdown: string[];
   slots?: ComboSlot[];
+  variants?: any[];
+  pricing?: { unitBasePrice: number; addonsTotal: number; unitFinalPrice: number };
 }
 
 interface MasterProductModalProps {
@@ -81,7 +83,7 @@ export default function MasterProductModal({
     if (product?.slotGroups && Array.isArray(product.slotGroups) && product.slotGroups.length > 0) {
       return product.slotGroups;
     }
-    if (nicheEngine === 'FOOD_FAST' || isCombo) {
+    if (['FOOD_FAST', 'FOOD_SWEET'].includes(nicheEngine) || isCombo) {
       return [
         {
           title: "Sabores / Variantes",
@@ -325,6 +327,19 @@ export default function MasterProductModal({
     });
   };
 
+  // Selección única para grupos SINGLE (ej. Tamaño): marca la opción elegida y desmarca el resto
+  const handleGlobalSingleSelect = (groupIdx: number, optionCode: string) => {
+    setSelectedVariants(prev => {
+      const grp = availableGroups[groupIdx];
+      const options = grp?.options || [];
+      const updatedList = options.map((o: any) => ({
+        ...o,
+        count: (o.code === optionCode || o.id === optionCode) ? 1 : 0
+      }));
+      return { ...prev, [groupIdx]: updatedList };
+    });
+  };
+
   const toggleUpsell = (upsellItem: any) => {
     setUpsellSelections(prev => {
       const copy = { ...prev };
@@ -336,7 +351,17 @@ export default function MasterProductModal({
 
   // Cálculo de Precios reactivo con soporte para conteos
   const { unitPrice, totalVariantsPrice, totalSlotVariantsPrice, totalUpsells } = useMemo(() => {
-    let base = product?.price || 0;
+    // Precio BASE (metadata.price.basePrice) es transaccional y se suma de entrada.
+    // Precio INFO (metadata.price.infoPrice) es solo referencial: el acumulador arranca en $0.
+    const priceMeta = product?.metadata?.price;
+    let base: number;
+    if (priceMeta?.basePrice !== undefined && priceMeta?.basePrice !== null) {
+      base = Number(priceMeta.basePrice);
+    } else if (priceMeta?.infoPrice !== undefined && priceMeta?.infoPrice !== null) {
+      base = 0;
+    } else {
+      base = product?.price || 0;
+    }
     let standardVariantsExtra = 0;
     let slotVariantsExtra = 0;
     let upsellsExtra = 0;
@@ -345,28 +370,30 @@ export default function MasterProductModal({
       Object.keys(selectedVariants).forEach(key => {
         const selection = selectedVariants[key];
         if (!selection) return;
+        const isBaseGroup = availableGroups[Number(key)]?.pricingRole === 'BASE';
         if (Array.isArray(selection)) {
           selection.forEach(item => {
             if ((item.count || 0) > 0 && (item.price || 0) > 0 && item.affects !== 'CAMBIA') {
-              standardVariantsExtra += (item.price * item.count);
+              standardVariantsExtra += isBaseGroup ? (item.price - base) : (item.price * item.count);
             }
           });
         } else if (selection.price > 0) {
-          standardVariantsExtra += selection.price;
+          standardVariantsExtra += isBaseGroup ? (selection.price - base) : selection.price;
         }
       });
     } else {
       slots.forEach(slot => {
-        Object.values(slot.selectedVariants).forEach((selection: any) => {
+        Object.entries(slot.selectedVariants).forEach(([groupIdx, selection]: [string, any]) => {
           if (!selection) return;
+          const isBaseGroup = availableGroups[Number(groupIdx)]?.pricingRole === 'BASE';
           if (Array.isArray(selection)) {
             selection.forEach(item => {
               if ((item.count || 0) > 0 && (item.price || 0) > 0 && item.affects !== 'CAMBIA') {
-                slotVariantsExtra += (item.price * item.count);
+                slotVariantsExtra += isBaseGroup ? (item.price - base) : (item.price * item.count);
               }
             });
           } else if (selection.price > 0 && selection.affects !== 'CAMBIA') {
-            slotVariantsExtra += selection.price;
+            slotVariantsExtra += isBaseGroup ? (selection.price - base) : selection.price;
           }
         });
       });
@@ -382,7 +409,7 @@ export default function MasterProductModal({
       totalSlotVariantsPrice: slotVariantsExtra,
       totalUpsells: upsellsExtra
     };
-  }, [product, selectedVariants, slots, isSlotMode, upsellSelections]);
+  }, [product, selectedVariants, slots, isSlotMode, upsellSelections, availableGroups]);
 
   const totalCalculated = useMemo(() => {
     if (isSlotMode) {
@@ -391,12 +418,24 @@ export default function MasterProductModal({
     return ((unitPrice + totalVariantsPrice) * qty) + totalUpsells;
   }, [isSlotMode, unitPrice, qty, totalSlotVariantsPrice, totalVariantsPrice, totalUpsells]);
 
+  // Valida que cada grupo con 'min' (ej. SABORES-6 → min:6) tenga esa cantidad de unidades seleccionadas
+  const isMinimumsMet = useMemo(() => {
+    if (isSlotMode) return true;
+    return availableGroups.every((group: any, gIdx: number) => {
+      const min = group.minItems || group.min || 0;
+      if (min <= 0) return true;
+      const selection = selectedVariants[gIdx];
+      const totalCount = Array.isArray(selection)
+        ? selection.reduce((sum: number, item: any) => sum + (item.count || 0), 0)
+        : 0;
+      return totalCount >= min;
+    });
+  }, [availableGroups, selectedVariants, isSlotMode]);
+
   const handleNextStep = () => {
-    if (['TECH_HARDWARE', 'PHARMACY'].includes(nicheEngine)) {
-      handleAddToCart();
-    } else {
-      setStep(2);
-    }
+    if (!isMinimumsMet) return;
+    // TEMPORAL: se apaga el paso de Upsells (step 2) para priorizar el flujo de selección de sabores/tamaños
+    handleAddToCart();
   };
 
   const handleAddToCart = () => {
@@ -462,6 +501,47 @@ export default function MasterProductModal({
       breakdown.push(`+ ${up.name} ($${up.price.toFixed(2)})`);
     });
 
+    // Estructura de variantes para el backend (pricingRole BASE reemplaza el precio, ADDON se suma)
+    let unitBasePrice = product.price || 0;
+    let addonsTotal = 0;
+    const variantsPayload: any[] = [];
+
+    if (!isSlotMode) {
+      availableGroups.forEach((group: any, gIdx: number) => {
+        const selection = selectedVariants[gIdx];
+        const chosenItems = Array.isArray(selection) ? selection.filter((i: any) => (i.count || 0) > 0) : [];
+        if (chosenItems.length === 0) return;
+
+        if (group.pricingRole === 'BASE') {
+          const chosen = chosenItems[0];
+          unitBasePrice = chosen.price;
+          variantsPayload.push({
+            name: group.name || group.title,
+            code: group.code,
+            type: group.selectType || 'SINGLE',
+            selected: { code: chosen.code || chosen.id, title: chosen.name || chosen.title, unitPrice: chosen.price }
+          });
+        } else {
+          const items = chosenItems.map((i: any) => ({
+            title: i.name || i.title,
+            code: i.code || i.id,
+            quantity: i.count,
+            unitPrice: i.price,
+            totalPrice: (i.price || 0) * i.count
+          }));
+          addonsTotal += items.reduce((sum: number, it: any) => sum + it.totalPrice, 0);
+          variantsPayload.push({
+            name: group.name || group.title,
+            code: group.code,
+            type: group.selectType || 'MULTIPLE',
+            items
+          });
+        }
+      });
+    }
+
+    const unitFinalPrice = unitBasePrice + addonsTotal;
+
     onAddToCart({
       productCode: product.code,
       productName: product.name,
@@ -471,7 +551,9 @@ export default function MasterProductModal({
       quantity: qty,
       summaryText: breakdown.join(' | '),
       breakdown: breakdown,
-      slots: isSlotMode ? slots : undefined
+      slots: isSlotMode ? slots : undefined,
+      variants: isSlotMode ? undefined : variantsPayload,
+      pricing: isSlotMode ? undefined : { unitBasePrice, addonsTotal, unitFinalPrice }
     });
     onClose();
   };
@@ -561,12 +643,12 @@ export default function MasterProductModal({
                 </div>
               </div>
 
-              {/* Variantes Globales con contadores (+ / -) */}
+              {/* Variantes Globales: selección única (SINGLE, ej. Tamaño) o contadores (MULTIPLE, ej. Sabores) */}
               {!isSlotMode && availableGroups.map((group: any, gIdx: number) => (
                 <div key={gIdx} className="bg-white p-4 rounded-2xl border border-slate-200 shadow-sm space-y-3">
                   <div>
                     <h4 className="text-xs font-black text-slate-900 uppercase tracking-wider">{group.title}</h4>
-                    <p className="text-[10px] text-slate-500 font-bold">{group.subtitle || 'Ajusta las cantidades por sabor u opción'}</p>
+                    <p className="text-[10px] text-slate-500 font-bold">{group.subtitle || (group.selectType === 'SINGLE' ? 'Elige una opción' : 'Ajusta las cantidades por sabor u opción')}</p>
                   </div>
 
                   <div className="grid grid-cols-1 sm:grid-cols-2 gap-2">
@@ -577,11 +659,41 @@ export default function MasterProductModal({
                         : null;
                       const currentCount = matchedItem ? (matchedItem.count || 0) : (opt.code === group.options[0]?.code ? 1 : 0);
 
+                      if (group.selectType === 'SINGLE') {
+                        const isSelected = currentCount > 0;
+                        return (
+                          <button
+                            type="button"
+                            key={opt.code}
+                            onClick={() => handleGlobalSingleSelect(gIdx, opt.code)}
+                            className={`p-3 rounded-xl border flex items-center justify-between gap-3 shadow-2xs text-left transition cursor-pointer ${
+                              isSelected ? 'border-[#fe6712] bg-[#fff5ed] ring-1 ring-[#fe6712]/30' : 'border-slate-200 bg-white hover:border-slate-300'
+                            }`}
+                          >
+                            <div className="flex items-center gap-2 min-w-0">
+                              {opt.image && (
+                                <img src={opt.image} alt={opt.name} className="w-8 h-8 rounded-lg object-cover border border-slate-200 shrink-0" />
+                              )}
+                              <div className="min-w-0">
+                                <span className="text-xs font-bold text-slate-800 block leading-tight truncate">{opt.name}</span>
+                                <span className="text-[10px] font-black text-[#fe6712]">{opt.price > 0 ? `$${opt.price.toFixed(2)}` : 'Incluido'}</span>
+                              </div>
+                            </div>
+                            {isSelected && <Check className="w-4 h-4 text-[#fe6712] shrink-0" />}
+                          </button>
+                        );
+                      }
+
                       return (
                         <div key={opt.code} className="p-3 rounded-xl border border-slate-200 bg-white flex items-center justify-between gap-3 shadow-2xs">
-                          <div>
-                            <span className="text-xs font-bold text-slate-800 block leading-tight">{opt.name}</span>
-                            <span className="text-[10px] font-black text-[#fe6712]">{opt.price > 0 ? `+$${opt.price.toFixed(2)}` : 'Incluido'}</span>
+                          <div className="flex items-center gap-2 min-w-0">
+                            {opt.image && (
+                              <img src={opt.image} alt={opt.name} className="w-8 h-8 rounded-lg object-cover border border-slate-200 shrink-0" />
+                            )}
+                            <div className="min-w-0">
+                              <span className="text-xs font-bold text-slate-800 block leading-tight truncate">{opt.name}</span>
+                              <span className="text-[10px] font-black text-[#fe6712]">{opt.price > 0 ? `+$${opt.price.toFixed(2)}` : 'Incluido'}</span>
+                            </div>
                           </div>
                           <div className="flex items-center gap-2 bg-slate-50 p-1 rounded-xl border border-slate-200 shrink-0">
                             <button
@@ -920,7 +1032,12 @@ export default function MasterProductModal({
             {step === 1 && currentUpsells.length > 0 ? (
               <button
                 onClick={handleNextStep}
-                className="flex-[2] max-w-[200px] bg-[#fe6712] hover:bg-[#e0580d] text-white font-black py-3.5 px-4 rounded-2xl transition shadow-md text-xs flex items-center justify-center gap-2 cursor-pointer active:scale-95"
+                disabled={!isMinimumsMet}
+                className={`flex-[2] max-w-[200px] font-black py-3.5 px-4 rounded-2xl transition shadow-md text-xs flex items-center justify-center gap-2 active:scale-95 ${
+                  isMinimumsMet
+                    ? 'bg-[#fe6712] hover:bg-[#e0580d] text-white cursor-pointer'
+                    : 'bg-slate-200 text-slate-400 cursor-not-allowed shadow-none'
+                }`}
               >
                 <span>Continuar</span> <ArrowRight className="w-4 h-4" />
               </button>
@@ -936,7 +1053,12 @@ export default function MasterProductModal({
                 )}
                 <button
                   onClick={handleAddToCart}
-                  className="flex-[2] max-w-[220px] bg-[#fe6712] hover:bg-[#e0580d] text-white font-black py-3.5 px-4 rounded-2xl transition shadow-md text-[11px] sm:text-xs flex items-center justify-center gap-2 cursor-pointer active:scale-95"
+                  disabled={!isMinimumsMet}
+                  className={`flex-[2] max-w-[220px] font-black py-3.5 px-4 rounded-2xl transition shadow-md text-[11px] sm:text-xs flex items-center justify-center gap-2 active:scale-95 ${
+                    isMinimumsMet
+                      ? 'bg-[#fe6712] hover:bg-[#e0580d] text-white cursor-pointer'
+                      : 'bg-slate-200 text-slate-400 cursor-not-allowed shadow-none'
+                  }`}
                 >
                   <ShoppingCart className="w-4 h-4 hidden sm:block" />
                   <span>Agregar al Pedido</span>

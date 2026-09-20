@@ -1,4 +1,4 @@
-﻿{
+{
   "compilerOptions": {
     "target": "es2020",
     "lib": [
@@ -35,6 +35,8 @@
     ".next/types/**/*.ts"
   ],
   "exclude": [
-    "node_modules"
+    "node_modules",
+    "Nextjs-Clean",
+    "_archive"
   ]
 }

@@ -18,6 +18,7 @@ import {
 
 export interface CartItem {
   code: string;
+  cartItemId?: string;
   category: string;
   name: string;
   desc: string;
@@ -45,7 +46,7 @@ interface CartModalProps {
   deliveryCost: number;
   discountDelivery: number;
   totalUSD: number;
-  onUpdateQty: (code: string, delta: number) => void;
+  onUpdateQty: (identifier: string, delta: number) => void;
   onOpenCheckout: (summary: any) => void;
   isNationalShippingEnabled?: boolean;
 }
@@ -107,15 +108,6 @@ export default function CartModal({
                 <div className="flex items-center gap-1.5">
                   <Gift className="h-3.5 w-3.5 text-[#fe6712]" />
                   <span className="text-[10px] font-black text-slate-800">Recompensa D&apos;una</span>
-
-                  <button
-                    type="button"
-                    onClick={() => setRewardMode(prev => prev === 'DYNAMIC' ? 'FIXED' : 'DYNAMIC')}
-                    title="Toca para alternar modelo"
-                    className="text-[7px] font-black px-1.5 py-0.2 rounded bg-orange-200/70 text-[#fe6712] uppercase tracking-wider ml-1 hover:bg-orange-300 transition cursor-pointer"
-                  >
-                    {rewardMode === 'DYNAMIC' ? 'Dinámico' : 'Fijo $15'}
-                  </button>
                 </div>
 
                 <span className="text-[9px] font-black text-[#fe6712]">
@@ -149,7 +141,7 @@ export default function CartModal({
             <div className="space-y-1 pb-2">
               {cartItems && cartItems.length > 0 ? (
                 cartItems.map((item, idx) => (
-                  <div key={item.code || idx} className="bg-white border border-slate-100 rounded-xl px-2.5 py-2 shadow-sm flex items-center gap-2">
+                  <div key={item.cartItemId || item.code || idx} className="bg-white border border-slate-100 rounded-xl px-2.5 py-2 shadow-sm flex items-center gap-2">
                     <div className="flex-1 min-w-0 flex flex-col justify-center">
                       <div className="flex items-center justify-between gap-2 w-full">
                         <h5 className="text-[12px] font-black text-slate-900 truncate flex-1" title={item.name || 'Producto'}>
@@ -183,7 +175,7 @@ export default function CartModal({
                         if (totalItems <= 1) {
                           onClose();
                         }
-                        onUpdateQty(item.code, -(item.qty || 1));
+                        onUpdateQty(item.cartItemId || item.code, -(item.qty || 1));
                       }}
                       className="w-6 h-6 rounded-md border border-slate-100 bg-slate-50 flex items-center justify-center text-slate-400 hover:text-red-500 hover:bg-red-50 transition cursor-pointer shrink-0"
                     >
@@ -343,7 +335,7 @@ export default function CartModal({
                 onOpenCheckout({
                   metodoEntrega: deliveryMode,
                   direccion: deliveryMode === 'national' ? `Agencia ${selectedAgency} (Cabimas)` : 'Cabimas Centro (Sector Av. Intercomunal)',
-                  costoEnvio: deliveryMode === 'national' ? 0 : deliveryCost,
+                  costoEnvio: deliveryMode === 'national' ? costoNacionalFijo : (esEnvioGratis ? 0 : deliveryCost),
                   subtotalUSD: subtotalUSD,
                   totalUSD: totalCalculadoFinal,
                   esEnvioNacional: deliveryMode === 'national',

@@ -4,8 +4,9 @@ import React, { useState, useRef, useEffect } from 'react';
 import MerchantStoreView from '@/components/MerchantStoreView';
 import CheckoutModal from '@/components/CheckoutModal';
 import OrderTrackingModal from '@/components/OrderTrackingModal';
+import PromotionsCarousel from '@/components/PromotionsCarousel';
 
-import { submitPurchaseOrder, getProductsByStore } from '@/services/marketplaceService';
+import { submitPurchaseOrder, getProductsByStore, getStorePromotions } from '@/services/marketplaceService';
 
 import {
   Clock, ChevronLeft, ChevronRight, Sparkles, MapPin, X, Navigation,
@@ -22,6 +23,16 @@ const cabimasSectores = [
   { id: 'ambrosio', name: 'Ambrosio / Miraflores', coords: { lat: 10.4020, lng: -71.4420 } },
 ];
 
+function parseSafeLocation(loc: any) {
+  if (!loc) return { lat: 10.3950, lng: -71.4450 };
+  if (typeof loc === 'object') return loc;
+  try {
+    return JSON.parse(loc);
+  } catch {
+    return { lat: 10.3950, lng: -71.4450 };
+  }
+}
+
 function getDistanceInKm(lat1: number, lon1: number, lat2: number, lon2: number): number {
   const R = 6371; const dLat = (lat2 - lat1) * (Math.PI / 180); const dLon = (lon2 - lon1) * (Math.PI / 180);
   const a = Math.sin(dLat / 2) * Math.sin(dLat / 2) + Math.cos(lat1 * (Math.PI / 180)) * Math.cos(lat2 * (Math.PI / 180)) * Math.sin(dLon / 2) * Math.sin(dLon / 2);
@@ -32,6 +43,7 @@ function getDistanceInKm(lat1: number, lon1: number, lat2: number, lon2: number)
 export default function MultitiendaHub() {
   const [realStores, setRealStores] = useState<any[]>([]);
   const [realCategories, setRealCategories] = useState<any[]>([]);
+  const [homePromotions, setHomePromotions] = useState<any[]>([]);
   const [loadingHome, setLoadingHome] = useState(true);
 
   const [activeMerchantInfo, setActiveMerchantInfo] = useState<any>(null);
@@ -67,6 +79,11 @@ export default function MultitiendaHub() {
         const storeData = await storeRes.json();
         if (storeData.code === 1) setRealStores(storeData.data || []);
 
+        // Promociones de TODO el marketplace (sin filtro de tienda) — reutiliza la misma
+        // función de la Fase 3, no se duplica lógica de fetch.
+        const promoRes = await getStorePromotions('');
+        if (promoRes.code === 1 && Array.isArray(promoRes.data)) setHomePromotions(promoRes.data);
+
       } catch (error) {
         console.error("Error cargando data real:", error);
       } finally {
@@ -88,7 +105,6 @@ export default function MultitiendaHub() {
     try {
       const storeIdStr = String(store.id);
       
-      // Verificar si el carrito guardado pertenece a otra tienda para limpiarlo preventivamente
       if (typeof window !== 'undefined') {
         const savedCartStore = localStorage.getItem('current_cart_store_id');
         if (savedCartStore && savedCartStore !== storeIdStr) {
@@ -98,30 +114,43 @@ export default function MultitiendaHub() {
       }
 
       const res = await getProductsByStore(store.id);
+      
+      let flatProducts: any[] = [];
       if (res.code === 1 && res.data) {
-        const flatProducts = res.data.products?.flatMap((cat: any) => cat.data) || [];
-        
-        const mappedInfo = {
-          id: store.id,
-          name: store.name,
-          phone: store.phone || '584140000000',
-          category: store.categoriesName || 'Comercio',
-          rating: store.storeScoring || 5.0,
-          deliveryTime: '15 - 30 min',
-          deliveryFee: store.deliveryMinimumRate ? `$${store.deliveryMinimumRate.toFixed(2)}` : 'Calculable',
-          baseRatePerKm: store.deliveryAmountRate || 0.75,
-          isNationalShippingEnabled: false,
-          coords: store.location ? JSON.parse(store.location) : { lat: 10.3950, lng: -71.4450 },
-          image: store.avatar || '/images/logo-duna.png',
-          badge: store.scheduleInfo || 'Abierto',
-          isOpen: store.status === 'OPEN',
-          weeklyHours: [{ day: 'Horario', hours: store.scheduleInfo || 'Ver disponibilidad' }]
-        };
-
-        setActiveMerchantInfo(mappedInfo);
-        setActiveMerchantProducts(flatProducts);
-        setActiveMerchantId(storeIdStr);
+        if (Array.isArray(res.data)) {
+          flatProducts = res.data;
+        } else if (res.data.products && Array.isArray(res.data.products)) {
+          flatProducts = res.data.products.flatMap((cat: any) => cat.data || cat);
+        } else if (res.data.data && Array.isArray(res.data.data)) {
+          flatProducts = res.data.data;
+        }
       }
+
+      const mappedInfo = {
+        id: store.id,
+        code: store.code,
+        categoriesName: store.categoriesName,
+        avatar: store.avatar,
+        banner: store.banner,
+        name: store.name,
+        phone: store.phone || '584140000000',
+        category: store.categoriesName || 'Comercio',
+        rating: store.storeScoring || 5.0,
+        deliveryTime: '15 - 30 min',
+        deliveryFee: store.deliveryMinimumRate ? `$${store.deliveryMinimumRate.toFixed(2)}` : 'Calculable',
+        baseRatePerKm: store.deliveryAmountRate || 0.75,
+        isNationalShippingEnabled: false,
+        coords: parseSafeLocation(store.location),
+        image: store.avatar || '/images/logo-duna.png',
+        badge: store.scheduleInfo || 'Abierto',
+        isOpen: store.status === 'OPEN',
+        weeklyHours: [{ day: 'Horario', hours: store.scheduleInfo || 'Ver disponibilidad' }]
+      };
+
+      setActiveMerchantInfo(mappedInfo);
+      setActiveMerchantProducts(flatProducts);
+      setActiveMerchantId(storeIdStr);
+
     } catch (e) {
       console.error("Error al cargar productos", e);
     }
@@ -177,6 +206,8 @@ export default function MultitiendaHub() {
               merchantName: activeMerchantInfo.name,
               merchantId: activeMerchantInfo.id,
               merchantPhone: activeMerchantInfo.phone,
+              isOpen: activeMerchantInfo.isOpen,
+              scheduleInfo: activeMerchantInfo.badge,
               esEnvioNacional: activeMerchantInfo.isNationalShippingEnabled || false,
               agenciaNacional: 'MRW', 
               costoEnvioNacional: 4.50
@@ -193,6 +224,10 @@ export default function MultitiendaHub() {
           tasaBcv={TASA_BCV_ACTUAL}
           merchantName={activeMerchantInfo.name}
           onFinalizeOrder={async (orderData) => {
+            if (typeof window !== 'undefined') {
+              localStorage.setItem('last_active_order', JSON.stringify(orderData));
+              localStorage.setItem('last_active_order_id', String(orderData.id));
+            }
             setHasCompletedOrder(true);
           }}
           onBackToCart={() => { setIsCheckoutOpen(false); setForceCartOpenCount(prev => prev + 1); }}
@@ -221,11 +256,23 @@ export default function MultitiendaHub() {
     }
   };
 
-  const filteredMerchants = realStores.filter(m => 
+  const filteredMerchants = realStores.filter(m =>
     (selectedCategory === 'ALL' || m.categories?.includes(selectedCategory)) &&
-    (m.name.toLowerCase().includes(searchQuery.toLowerCase()) || 
+    (m.name.toLowerCase().includes(searchQuery.toLowerCase()) ||
     (m.categoriesName || '').toLowerCase().includes(searchQuery.toLowerCase()))
   );
+
+  // Regla de negocio: solo promos de tiendas actualmente abiertas. Cruce limpio por
+  // storeCode contra realStores (que sí trae status crudo de GET /store/find).
+  const openStoreCodes = new Set(
+    realStores.filter((s: any) => s.status === 'OPEN').map((s: any) => s.code)
+  );
+  const homePromotionsOpenOnly = homePromotions.filter((p: any) => openStoreCodes.has(p.storeCode));
+
+  const handleHomePromotionClick = (promo: any) => {
+    const matchedStore = realStores.find((s: any) => s.code === promo.storeCode);
+    if (matchedStore) handleStoreClick(matchedStore);
+  };
 
   return (
     <div suppressHydrationWarning className="min-h-screen flex flex-col bg-slate-50 text-slate-900 font-sans pb-16 md:pb-0">
@@ -269,6 +316,11 @@ export default function MultitiendaHub() {
       </header>
 
       <main className="max-w-7xl mx-auto w-full px-4 md:px-8 py-4 flex-1 space-y-6">
+
+        <PromotionsCarousel
+          promotions={homePromotionsOpenOnly}
+          onSelectPromotion={handleHomePromotionClick}
+        />
 
         <section className="space-y-2.5 pt-0.5">
           <div className="flex justify-between items-center">
@@ -323,7 +375,7 @@ export default function MultitiendaHub() {
                 let calculatedFeeText: string | null = null;
 
                 if (userLocation) {
-                  const location = merchant.location ? JSON.parse(merchant.location) : {lat: 10.395, lng: -71.445};
+                  const location = parseSafeLocation(merchant.location);
                   distanceKm = getDistanceInKm(userLocation.lat, userLocation.lng, location.lat, location.lng);
                   const feeUSD = Math.max(1.00, Number((distanceKm * (merchant.deliveryAmountRate || 1.0)).toFixed(2)));
                   calculatedFeeText = formatPriceBimonetary(feeUSD);

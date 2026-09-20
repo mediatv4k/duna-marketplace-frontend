@@ -4,20 +4,26 @@ import React, { useState } from 'react';
 import { ShoppingBag, ChevronRight, Search, Star, Clock, MapPin, Sparkles } from 'lucide-react';
 import CartModal from './CartModal';
 import MasterProductModal from './MasterProductModal';
-import { getProduct } from '@/services/marketplaceService';
+import PromotionsCarousel from './PromotionsCarousel';
+import { getProduct, getStorePromotions } from '@/services/marketplaceService';
+import { detectStoreNiche, getModalEngine, getNicheConfig } from '@/lib/nicheConfig';
+import { getBCVRate } from '@/lib/bcvRate';
+import { getNicheIcon, getBadgeColorClasses } from '@/lib/nicheIcons';
 
 interface MerchantStoreViewProps {
   merchant: any;
   products: any[];
   onBack: () => void;
   onOpenCheckout: (summary: any) => void;
+  forceOpenCartTrigger?: number;
 }
 
 export default function MerchantStoreView({
   merchant,
   products,
   onBack,
-  onOpenCheckout
+  onOpenCheckout,
+  forceOpenCartTrigger,
 }: MerchantStoreViewProps) {
   const [cartItems, setCartItems] = useState<any[]>(() => {
     if (typeof window !== 'undefined') {
@@ -32,14 +38,101 @@ export default function MerchantStoreView({
   });
 
   const [isCartOpen, setIsCartOpen] = useState(false);
+  React.useEffect(() => {
+    if (forceOpenCartTrigger && forceOpenCartTrigger > 0) {
+      setIsCartOpen(true);
+    }
+  }, [forceOpenCartTrigger]);
+
   const [searchQuery, setSearchQuery] = useState('');
-  
+  const [selectedCategory, setSelectedCategory] = useState('ALL');
+
+  // Categorías reales de producto (CATEGORIA del Excel / product.category del API),
+  // en el orden en que aparecen los productos. Sin categoría definida → agrupa en "Otros".
+  const productCategories = React.useMemo(() => {
+    const seen = new Set<string>();
+    const list: string[] = [];
+    products.forEach((p: any) => {
+      const cat = (p.category && String(p.category).trim()) || 'Otros';
+      if (!seen.has(cat)) {
+        seen.add(cat);
+        list.push(cat);
+      }
+    });
+    return ['ALL', ...list];
+  }, [products]);
+
   const [selectedProductDetail, setSelectedProductDetail] = useState<any>(null);
   const [isMasterModalOpen, setIsMasterModalOpen] = useState(false);
   const [loadingProduct, setLoadingProduct] = useState(false);
 
   const [deliveryMode, setDeliveryMode] = useState<'delivery' | 'pickup' | 'national'>('delivery');
   const [rewardMode, setRewardMode] = useState<'DYNAMIC' | 'FIXED'>('DYNAMIC');
+
+  // Nicho real de la tienda (antes hardcodeado a "FOOD_SWEET" para todas las tiendas)
+  const storeNiche = detectStoreNiche(merchant);
+  const modalEngine = getModalEngine(storeNiche);
+  const nicheConfig = getNicheConfig(storeNiche);
+
+  // Promociones reales del backend (GET /promotion?store={code}).
+  // page.tsx ya pobla merchant.code (fix aplicado en una tarea posterior a esta sección).
+  const [promotions, setPromotions] = useState<any[]>([]);
+  React.useEffect(() => {
+    let cancelled = false;
+    const storeIdentifier = merchant?.code || merchant?.id;
+    if (!storeIdentifier) return;
+    getStorePromotions(String(storeIdentifier))
+      .then((res) => {
+        if (cancelled) return;
+        setPromotions(res && res.code === 1 && Array.isArray(res.data) ? res.data : []);
+      })
+      .catch(() => {
+        if (!cancelled) setPromotions([]);
+      });
+    return () => { cancelled = true; };
+  }, [merchant?.code, merchant?.id]);
+
+  // Verificado contra el backend real de DEV (2026-09-16): 'amount' viaja como STRING, no number.
+  // Solo confirmé el cálculo de precio para type === 'pricing' (amount = precio final de la promo,
+  // no un descuento a restar). No tengo muestras reales de 'gift'/'discount' — para esos casos no
+  // fuerzo ningún precio, según lo pedido.
+  const primaryPromo = promotions.find((p: any) => p?.role === 'primary') || promotions[0] || null;
+  const promoPrice = primaryPromo?.type === 'pricing' && primaryPromo?.amount != null
+    ? Number(primaryPromo.amount)
+    : null;
+
+  const featuredProduct = nicheConfig.heroVariant === 'PROMO_HERO'
+    ? (primaryPromo
+        ? {
+            name: primaryPromo.productName || primaryPromo.title || 'Promoción',
+            image: primaryPromo.productImage || primaryPromo.imageUrl || primaryPromo.storeLogo || null,
+            price: promoPrice ?? 0,
+          }
+        // Sin promociones reales para esta tienda: heurística de respaldo (Fase 1 original)
+        : (products.find((p: any) => p?.metadata?.price?.promoPrice != null) || products[0] || null))
+    : null;
+
+  // Regla de negocio compartida: promociones (destacado del hero Y franja completa) solo se
+  // muestran con la tienda abierta. Una sola condición para no duplicar la lógica.
+  const canShowPromotions = merchant.isOpen;
+
+  // Reabre el modal de producto reutilizando handleProductClick — el contrato de la API
+  // documenta que /product/{pid}/web acepta id O hash, así que pasamos productHash como id.
+  // Si la promoción no trae productHash, no hacemos nada (no inventamos un mapeo a otro producto).
+  const handlePromotionClick = (promo: any) => {
+    if (!promo?.productHash) return;
+    handleProductClick({
+      id: promo.productHash,
+      name: promo.productName || promo.title,
+      image: promo.productImage || promo.imageUrl,
+    });
+  };
+
+  // Tasa BCV real (antes hardcodeada a 827.74 para todas las tiendas)
+  const [bcvRate, setBcvRate] = useState<number>(48.50);
+  React.useEffect(() => {
+    getBCVRate().then(setBcvRate).catch(() => {});
+  }, []);
 
   const updateCartStorage = (newItems: any[]) => {
     setCartItems(newItems);
@@ -85,6 +178,13 @@ export default function MerchantStoreView({
             choices: normalizedList
           };
         }) : [];
+
+        console.log('[AUDITORIA VARIANTES]', {
+          producto: raw?.name,
+          rawMetadata: raw.metadata,
+          rawVariants,
+          normalizedGroups
+        });
 
         const adaptedProduct = {
           ...raw,
@@ -133,8 +233,10 @@ export default function MerchantStoreView({
   const handleAddToCartFromModal = (configuredItem: any) => {
     const rawId = configuredItem.productId || configuredItem.id || selectedProductDetail?.id;
     const realId = Number(rawId) || 101;
+    // Identidad única por producto + configuración de variantes: sabores distintos del mismo producto NO deben fusionarse
+    const cartItemId = `${configuredItem.productCode || realId}::${JSON.stringify(configuredItem.variants || [])}`;
 
-    const existingIndex = cartItems.findIndex(item => item.id === realId || item.code === configuredItem.productCode);
+    const existingIndex = cartItems.findIndex(item => item.cartItemId === cartItemId);
     let updated;
     if (existingIndex > -1) {
       updated = [...cartItems];
@@ -147,6 +249,7 @@ export default function MerchantStoreView({
     } else {
       const newItem = {
         id: realId,
+        cartItemId,
         code: configuredItem.productCode || selectedProductDetail?.code || 'P001',
         name: configuredItem.productName || selectedProductDetail?.name || 'Producto',
         price: configuredItem.totalPrice / (configuredItem.qty || 1),
@@ -154,6 +257,8 @@ export default function MerchantStoreView({
         quantity: configuredItem.qty || configuredItem.quantity || 1,
         totalPrice: configuredItem.totalPrice,
         breakdown: configuredItem.breakdown || [],
+        variants: configuredItem.variants || [],
+        pricing: configuredItem.pricing || null,
         image: selectedProductDetail?.image || '',
         category: selectedProductDetail?.category || 'General'
       };
@@ -164,9 +269,14 @@ export default function MerchantStoreView({
     setIsCartOpen(true);
   };
 
-  const handleUpdateQty = (code: string, delta: number) => {
+  const handleUpdateQty = (identifier: string, delta: number) => {
     const updated = cartItems.map(item => {
-      if (item.code === code || String(item.id) === code) {
+      // Si el ítem ya tiene cartItemId (variantes distinguibles), matchea solo por ahí;
+      // si es un ítem viejo sin cartItemId, cae al match legacy por code/id
+      const matches = item.cartItemId
+        ? item.cartItemId === identifier
+        : (item.code === identifier || String(item.id) === identifier);
+      if (matches) {
         const currentQty = item.qty || item.quantity || 1;
         const newQty = currentQty + delta;
         if (newQty <= 0) return null;
@@ -182,10 +292,14 @@ export default function MerchantStoreView({
     updateCartStorage(updated);
   };
 
-  const filteredProducts = products.filter(p => 
-    p.name.toLowerCase().includes(searchQuery.toLowerCase()) ||
-    (p.category && p.category.toLowerCase().includes(searchQuery.toLowerCase()))
-  );
+  const filteredProducts = products.filter(p => {
+    const cat = (p.category && String(p.category).trim()) || 'Otros';
+    const matchesCategory = selectedCategory === 'ALL' || cat === selectedCategory;
+    const matchesSearch =
+      p.name.toLowerCase().includes(searchQuery.toLowerCase()) ||
+      (p.category && p.category.toLowerCase().includes(searchQuery.toLowerCase()));
+    return matchesCategory && matchesSearch;
+  });
 
   const totalItems = cartItems.reduce((acc, item) => acc + (item.qty || item.quantity || 1), 0);
   const subtotalUSD = cartItems.reduce((acc, item) => acc + (item.totalPrice || (item.price * (item.qty || item.quantity || 1))), 0);
@@ -208,12 +322,29 @@ export default function MerchantStoreView({
           <div className="w-full h-full bg-gradient-to-r from-[#fe6712] to-amber-600" />
         )}
         <div className="absolute inset-0 bg-gradient-to-t from-slate-950/80 via-transparent to-black/30" />
-        <button 
-          onClick={onBack} 
+        <button
+          onClick={onBack}
           className="absolute top-4 left-4 bg-black/60 hover:bg-black/80 text-white px-4 py-2 rounded-2xl text-xs font-black backdrop-blur-md transition cursor-pointer shadow-lg border border-white/10"
         >
           ← Volver al inicio
         </button>
+
+        {canShowPromotions && nicheConfig.heroVariant === 'PROMO_HERO' && featuredProduct && (
+          <div className="absolute inset-x-0 bottom-0 px-4 pb-4 z-20">
+            <div className="max-w-4xl mx-auto flex items-center gap-3 bg-white/95 backdrop-blur-md rounded-2xl p-3 shadow-lg border border-white/40">
+              <img
+                src={featuredProduct.image || 'https://images.unsplash.com/photo-1560008511-11c63416e52d'}
+                alt={featuredProduct.name}
+                className="w-14 h-14 rounded-xl object-cover shrink-0 border border-slate-100 bg-slate-50"
+              />
+              <div className="min-w-0 flex-1">
+                <span className="text-[9px] font-black uppercase tracking-wider text-[#fe6712] block">Destacado de hoy</span>
+                <h3 className="text-sm font-black text-slate-900 truncate">{featuredProduct.name}</h3>
+              </div>
+              <span className="text-base font-black text-slate-900 shrink-0">${(featuredProduct.price || 0).toFixed(2)}</span>
+            </div>
+          </div>
+        )}
       </div>
 
       <div className="max-w-4xl mx-auto px-4 -mt-16 relative z-10">
@@ -245,6 +376,47 @@ export default function MerchantStoreView({
             </div>
           </div>
         </div>
+
+        {nicheConfig.trustBadges.length > 0 && (
+          <div className="mt-4 flex items-center gap-2 overflow-x-auto no-scrollbar pb-1">
+            {nicheConfig.trustBadges.map((badge, idx) => {
+              const BadgeIcon = getNicheIcon(badge.icon);
+              return (
+                <span
+                  key={idx}
+                  className={`flex items-center gap-1.5 shrink-0 px-3 py-1.5 rounded-xl border text-[11px] font-bold whitespace-nowrap ${getBadgeColorClasses(badge.colorToken)}`}
+                >
+                  <BadgeIcon className="w-3.5 h-3.5" />
+                  {badge.label}
+                </span>
+              );
+            })}
+          </div>
+        )}
+
+        <PromotionsCarousel
+          promotions={canShowPromotions ? promotions : []}
+          onSelectPromotion={handlePromotionClick}
+        />
+
+        {productCategories.length > 1 && (
+          <div className="mt-4 flex items-center gap-2 overflow-x-auto no-scrollbar pb-1">
+            {productCategories.map((cat) => (
+              <button
+                key={cat}
+                type="button"
+                onClick={() => setSelectedCategory(cat)}
+                className={`px-4 py-2 rounded-xl text-xs font-black transition cursor-pointer whitespace-nowrap shrink-0 ${
+                  selectedCategory === cat
+                    ? 'bg-[#fe6712] text-white shadow-md shadow-orange-500/20'
+                    : 'bg-slate-100 text-slate-600 hover:bg-slate-200'
+                }`}
+              >
+                {cat === 'ALL' ? '✨ Todos' : cat}
+              </button>
+            ))}
+          </div>
+        )}
 
         <div className="mt-6 relative">
           <Search className="absolute left-4 top-4 w-4 h-4 text-slate-400" />
@@ -325,8 +497,8 @@ export default function MerchantStoreView({
           isOpen={isMasterModalOpen}
           onClose={() => setIsMasterModalOpen(false)}
           onAddToCart={handleAddToCartFromModal}
-          nicheEngine="FOOD_SWEET"
-          bcvRate={827.74}
+          nicheEngine={modalEngine}
+          bcvRate={bcvRate}
         />
       )}
 

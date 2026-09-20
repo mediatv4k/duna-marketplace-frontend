@@ -73,12 +73,14 @@ export default function OrderTrackingModal({ isOpen, onClose, orderId, orderSumm
             nombre: savedOrder?.nombre || 'OSMER BENITO',
             documento: savedOrder?.cedula || '18634536',
             direccion: orderSummary?.direccion || savedOrder?.direccion || 'Cabimas, Estado Zulia',
-            totalUSD: orderSummary?.totalUSD || savedOrder?.totalUSD || 14.30,
+            telefono: savedOrder?.telefono ?? orderSummary?.telefono ?? '',
+            totalUSD: savedOrder?.totalUSD ?? ((orderSummary?.totalUSD ?? 13.80) + (orderSummary?.propina ?? savedOrder?.propina ?? 0.50)),
             tasa: savedOrder?.tasaBcv || 48.50,
             status: savedOrder?.status || 'pendiente',
             metodoPago: savedOrder?.metodoPago || 'pago_movil',
             merchantName: orderSummary?.merchantName || savedOrder?.merchantName || 'Mostaza Food Truck',
             costoEnvio: orderSummary?.costoEnvio ?? savedOrder?.costoEnvio ?? 1.50,
+            descuentoUSD: savedOrder?.descuentoUSD ?? 0,
             propina: orderSummary?.propina ?? savedOrder?.propina ?? 0.50,
             items: (orderSummary?.items && orderSummary.items.length > 0) ? orderSummary.items : (savedOrder?.items || []),
             createdAt: new Date()
@@ -100,6 +102,35 @@ export default function OrderTrackingModal({ isOpen, onClose, orderId, orderSumm
     ? orderData.items
     : (orderSummary?.items || []);
 
+  // Aplana item.variants (estructura anidada real) + exclusiones de item.breakdown en filas para la matriz
+  const getItemBreakdownRows = (item: any): { qty: number | null; name: string; price: number; isExclusion: boolean }[] => {
+    const rows: { qty: number | null; name: string; price: number; isExclusion: boolean }[] = [];
+    const groups = Array.isArray(item.variants) ? item.variants : [];
+
+    groups.forEach((g: any) => {
+      if (g.selected) {
+        rows.push({ qty: 1, name: g.selected.title || g.selected.name || g.name || 'Opción', price: Number(g.selected.unitPrice || 0), isExclusion: false });
+      } else if (Array.isArray(g.items)) {
+        g.items.forEach((it: any) => {
+          rows.push({ qty: Number(it.quantity || it.qty || 1), name: it.title || it.name || 'Opción', price: Number(it.unitPrice || it.price || 0), isExclusion: false });
+        });
+      }
+    });
+
+    const lines: string[] = Array.isArray(item.breakdown) ? item.breakdown : [];
+    lines.forEach((line: string) => {
+      const isExclusion = /sin\s/i.test(line);
+      if (isExclusion) {
+        rows.push({ qty: null, name: line, price: 0, isExclusion: true });
+      } else if (rows.length === 0) {
+        const match = line.match(/^(\d+)x\s+(.+)$/);
+        if (match) rows.push({ qty: Number(match[1]), name: match[2], price: 0, isExclusion: false });
+      }
+    });
+
+    return rows;
+  };
+
   const displayMerchant = orderData?.merchantName || orderSummary?.merchantName || 'Mostaza Food Truck';
   const displayId = orderData?.id || orderId || '1986';
   const displayClient = orderData?.nombre || 'Cliente D\'una';
@@ -107,8 +138,17 @@ export default function OrderTrackingModal({ isOpen, onClose, orderId, orderSumm
   const costoEnvio = orderData?.costoEnvio ?? orderSummary?.costoEnvio ?? 1.50;
   const propinaVal = orderData?.propina ?? orderSummary?.propina ?? 0.50;
   const displayTotal = orderData?.totalUSD ?? (orderSummary?.totalUSD ? (orderSummary.totalUSD + propinaVal) : 14.30);
-  const totalItemsCount = currentItems.reduce((acc: number, it: any) => acc + (it.qty || it.quantity || 1), 0);
   const subtotalNeto = currentItems.reduce((acc: number, it: any) => acc + ((it.price || 0) * (it.qty || it.quantity || 1)), 0);
+  // Fuente única de verdad para la tasa de referencia: Total Bs. = Total USD * Tasa REF
+  const tasaRef = orderData?.tasa || 48.50;
+  const displayTotalBs = displayTotal * tasaRef;
+  // Cofre Recompensa D'una: refleja el 25% OFF en flete si el cliente lo activó en el checkout
+  const descuentoFleteVal = orderData?.descuentoUSD ?? 0;
+  const costoEnvioFinal = Math.max(0, costoEnvio - descuentoFleteVal);
+  const displayPhone = orderData?.telefono || orderSummary?.telefono || '';
+  const metodoPagoLower = String(orderData?.metodoPago || '').toLowerCase();
+  const isPagoMethod = (keyword: string) => metodoPagoLower.includes(keyword);
+  const DIVIDER = '-'.repeat(40);
 
   return (
     <div className="fixed inset-0 z-[160] flex items-center justify-center bg-black/75 p-3 backdrop-blur-sm animate-in fade-in duration-150">
@@ -163,95 +203,137 @@ export default function OrderTrackingModal({ isOpen, onClose, orderId, orderSumm
                   <div className="bg-white p-5 shadow-sm border border-slate-300 font-mono text-[10px] sm:text-[11px] text-slate-900 mx-auto w-full max-w-[320px] relative">
                     <div className="absolute top-0 left-0 right-0 h-1.5 bg-[url('data:image/svg+xml;base64,PHN2ZyB4bWxucz0iaHR0cDovL3d3dy53My5vcmcvMjAwMC9zdmciIHdpZHRoPSI4IiBoZWlnaHQ9IjgiPjxwb2x5Z29uIHBvaW50cz0iMCwwIDQsOCA4LDAiIGZpbGw9IiNmMThmMWZhIi8+PC9zdmc+')] bg-repeat-x rotate-180"></div>
 
-                    <div className="text-center mb-4 mt-2">
+                    {/* CABECERA */}
+                    <div className="text-center mt-2">
                       <h3 className="font-black text-sm uppercase">{displayMerchant}</h3>
-                      <p>ORDEN DE COMPRA No. {displayId}</p>
+                      <p>COMANDA N° {displayId}</p>
                       <p>{new Date().toLocaleDateString('es-VE')} {new Date().toLocaleTimeString('es-VE', { hour: '2-digit', minute: '2-digit', second: '2-digit' })}</p>
+                      <p className="uppercase font-bold">{orderData?.metodoEntrega === 'pickup' ? 'Retiro en Tienda' : 'Delivery'}</p>
                     </div>
 
-                    <div className="mb-3">
-                      <p>Cliente: {displayClient.toLowerCase()}</p>
+                    <p className="text-slate-300 select-none overflow-hidden whitespace-nowrap my-1.5">{DIVIDER}</p>
+
+                    <div className="text-center text-[8.5px] text-slate-500 italic leading-tight px-1">
+                      Este documento es una Comanda / Orden de Compra interna y no constituye factura fiscal.
                     </div>
 
-                    <table className="w-full text-left mb-3 border-collapse">
-                      <thead>
-                        <tr className="border-y border-slate-800 border-dashed">
-                          <th className="py-1.5 w-8 font-normal">CANT</th>
-                          <th className="py-1.5 font-normal">PRODUCTO</th>
-                          <th className="py-1.5 text-right font-normal">PRECIO UNIT.</th>
-                          <th className="py-1.5 text-right font-normal">MONTO</th>
-                        </tr>
-                      </thead>
-                      <tbody>
-                        {currentItems.length > 0 ? (
-                          currentItems.map((item: any, idx: number) => {
-                            const qty = item.qty || item.quantity || 1;
-                            const price = item.price || 0;
-                            const total = price * qty;
-                            const lines: string[] = item.breakdown || (item.summaryText ? [item.summaryText] : []);
+                    <p className="text-slate-300 select-none overflow-hidden whitespace-nowrap my-1.5">{DIVIDER}</p>
 
+                    {/* DATOS DEL CLIENTE */}
+                    <div className="space-y-0.5">
+                      <p>Cliente: {displayClient}</p>
+                      <p>Teléfono: {displayPhone || 'N/D'}</p>
+                      <p>Dirección: {displayAddress}</p>
+                    </div>
+
+                    <p className="text-slate-300 select-none overflow-hidden whitespace-nowrap my-1.5">{DIVIDER}</p>
+
+                    {/* PRODUCTOS */}
+                    <div className="space-y-1.5">
+                      {currentItems.length > 0 ? (
+                        currentItems.map((item: any, idx: number) => {
+                          const qty = item.qty || item.quantity || 1;
+                          const price = item.price || 0;
+                          const total = price * qty;
+                          const variantRows = getItemBreakdownRows(item);
+
+                          if (variantRows.length > 0) {
                             return (
-                              <tr key={item.code || idx}>
-                                <td className="py-2 align-top font-bold">{qty}</td>
-                                <td className="py-2 align-top">
-                                  <span className="uppercase block font-bold">{item.name}</span>
-                                  {lines.map((line: string, lIdx: number) => {
-                                    const isExclusion = /sin\s/i.test(line);
-                                    return (
-                                      <span
-                                        key={lIdx}
-                                        className={`pl-1 block text-[9.5px] ${isExclusion ? 'text-red-600 font-bold' : 'text-slate-600 mt-0.5'}`}
-                                      >
-                                        {line.startsWith('🍔') || line.startsWith('Combo:') ? line : `- ${line}`}
-                                      </span>
-                                    );
-                                  })}
-                                </td>
-                                <td className="py-2 align-top text-right">${price.toFixed(2)}</td>
-                                <td className="py-2 align-top text-right font-bold">${total.toFixed(2)}</td>
-                              </tr>
+                              <div key={item.cartItemId || item.code || idx}>
+                                <p className="text-center text-slate-500 truncate">-------- {String(item.name || '').toUpperCase()} --------</p>
+                                {variantRows.map((v, vIdx) => (
+                                  <div key={vIdx} className={`flex justify-between gap-2 ${v.isExclusion ? 'text-red-600 font-bold' : ''}`}>
+                                    <span className="truncate">{v.qty ? `${v.qty} ` : ''}{v.name}</span>
+                                    <span className="shrink-0">{v.price > 0 && v.qty ? (v.price * v.qty).toFixed(2) : ''}</span>
+                                  </div>
+                                ))}
+                                <div className="flex justify-between font-bold">
+                                  <span>Subtotal</span>
+                                  <span>{total.toFixed(2)}</span>
+                                </div>
+                              </div>
                             );
-                          })
-                        ) : (
-                          <tr>
-                            <td colSpan={4} className="py-3 text-center text-slate-400 italic">
-                              No hay productos registrados en esta orden.
-                            </td>
-                          </tr>
-                        )}
-                        <tr>
-                          <td></td>
-                          <td className="py-1">{orderData?.metodoEntrega === 'pickup' ? 'Retiro en Tienda' : 'Domicilio'}</td>
-                          <td></td>
-                          <td className="py-1 text-right">${costoEnvio.toFixed(2)}</td>
-                        </tr>
-                        {propinaVal > 0 && (
-                          <tr>
-                            <td></td>
-                            <td className="py-1">Propina</td>
-                            <td></td>
-                            <td className="py-1 text-right">${propinaVal.toFixed(2)}</td>
-                          </tr>
-                        )}
-                      </tbody>
-                    </table>
-
-                    <div className="border-t border-slate-800 border-dashed pt-2 flex justify-between font-black text-sm uppercase">
-                      <span>Total:</span>
-                      <span>${displayTotal.toFixed(2)}</span>
+                          }
+                          return (
+                            <div key={item.cartItemId || item.code || idx} className="flex justify-between gap-2 font-bold">
+                              <span className="truncate">{qty} {item.name}</span>
+                              <span className="shrink-0">{total.toFixed(2)}</span>
+                            </div>
+                          );
+                        })
+                      ) : (
+                        <p className="text-center text-slate-400 italic">No hay productos registrados en esta orden.</p>
+                      )}
                     </div>
 
-                    <div className="mt-4 text-center font-bold">
-                      <p>REF. Bs. {(displayTotal * (orderData?.tasa || 48.50)).toFixed(2)}</p>
+                    <p className="text-slate-300 select-none overflow-hidden whitespace-nowrap my-1.5">{DIVIDER}</p>
+
+                    {/* CIERRE Y PAGOS */}
+                    <div className="space-y-0.5">
+                      <div className="flex justify-between">
+                        <span>Subtotal general</span>
+                        <span>{subtotalNeto.toFixed(2)}</span>
+                      </div>
+                      <div className="flex justify-between">
+                        <span>
+                          {orderData?.metodoEntrega === 'pickup' ? 'Retiro en Tienda' : 'Domicilio'}
+                          {descuentoFleteVal > 0 && <span className="text-emerald-600"> (Cofre -25%)</span>}
+                        </span>
+                        <span>
+                          {descuentoFleteVal > 0 ? (
+                            <>
+                              <span className="line-through text-slate-400 mr-1">{costoEnvio.toFixed(2)}</span>
+                              <span className="text-emerald-600 font-black">{costoEnvioFinal.toFixed(2)}</span>
+                            </>
+                          ) : (
+                            costoEnvio.toFixed(2)
+                          )}
+                        </span>
+                      </div>
+                      {propinaVal > 0 && (
+                        <div className="flex justify-between">
+                          <span>Propina</span>
+                          <span>{propinaVal.toFixed(2)}</span>
+                        </div>
+                      )}
                     </div>
 
-                    <div className="mt-4 text-center">
-                      <p>Gracias por su compra!</p>
+                    <p className="text-slate-300 select-none overflow-hidden whitespace-nowrap my-1.5">{DIVIDER}</p>
+
+                    <div className="grid grid-cols-[1fr_auto] gap-x-2 font-black text-sm uppercase">
+                      <span>Total</span>
+                      <span className="text-right">${displayTotal.toFixed(2)}</span>
+                      <span className="truncate">Ref Bs.S {tasaRef.toLocaleString('es-VE', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}</span>
+                      <span className="text-right">Bs.S {displayTotalBs.toLocaleString('es-VE', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}</span>
                     </div>
 
-                    <div className="mt-4 flex justify-between uppercase">
-                      <p>ITEMS {totalItemsCount > 0 ? totalItemsCount : 1}</p>
-                      <p>Doc: {orderData?.documento || orderData?.cedula || '18634536'}</p>
+                    <p className="text-slate-300 select-none overflow-hidden whitespace-nowrap my-1.5">{DIVIDER}</p>
+
+                    {/* FORMA DE PAGO */}
+                    <div>
+                      <p className="font-bold mb-0.5">Forma de pago:</p>
+                      <div className="flex flex-wrap gap-x-3 gap-y-0.5">
+                        <span>{isPagoMethod('efectivo') ? '☑' : '☐'} Efectivo</span>
+                        <span>{isPagoMethod('movil') || isPagoMethod('móvil') ? '☑' : '☐'} Pago móvil</span>
+                        <span>{isPagoMethod('transfer') ? '☑' : '☐'} Transferencia</span>
+                        <span>{isPagoMethod('divisa') || isPagoMethod('usd') || isPagoMethod('dolar') || isPagoMethod('dólar') ? '☑' : '☐'} Divisas</span>
+                      </div>
+                    </div>
+
+                    <p className="text-slate-300 select-none overflow-hidden whitespace-nowrap my-1.5">{DIVIDER}</p>
+
+                    {/* NOTAS */}
+                    <div>
+                      <p className="font-bold">Notas:</p>
+                      <p className="text-slate-400">{orderData?.observaciones || '(Sin observaciones)'}</p>
+                    </div>
+
+                    <p className="text-slate-300 select-none overflow-hidden whitespace-nowrap my-1.5">{DIVIDER}</p>
+
+                    <div className="text-center space-y-0.5">
+                      <p className="font-bold">¡Gracias por tu pedido!</p>
+                      <p>Preparado por: ______________</p>
+                      <p className="text-[9px] text-slate-500 uppercase tracking-wide mt-1">D&apos;una Group · Soporte 24/7</p>
                     </div>
 
                     <div className="absolute bottom-0 left-0 right-0 h-1.5 bg-[url('data:image/svg+xml;base64,PHN2ZyB4bWxucz0iaHR0cDovL3d3dy53My5vcmcvMjAwMC9zdmciIHdpZHRoPSI4IiBoZWlnaHQ9IjgiPjxwb2x5Z29uIHBvaW50cz0iMCwwIDQsOCA4LDAiIGZpbGw9IiNmMThmMWZhIi8+PC9zdmc+')] bg-repeat-x"></div>
@@ -326,10 +408,18 @@ export default function OrderTrackingModal({ isOpen, onClose, orderId, orderSumm
                       </div>
                     </div>
 
+                    <p className="text-[9px] text-slate-400 italic leading-tight">
+                      Este documento es una Comanda / Orden de Compra interna y no constituye factura fiscal.
+                    </p>
+
                     <div className="flex items-center gap-2 text-xs text-slate-600">
                       <MapPin className="w-4 h-4 text-slate-400 shrink-0" />
                       <p className="truncate"><strong>Entrega:</strong> {displayAddress}</p>
                     </div>
+
+                    {displayPhone && (
+                      <p className="text-xs text-slate-600"><strong>Teléfono:</strong> {displayPhone}</p>
+                    )}
 
                     <div className="flex items-center gap-2 text-xs text-emerald-700 bg-emerald-50 p-2.5 rounded-xl border border-emerald-100">
                       <DollarSign className="w-4 h-4 shrink-0 text-emerald-600" />
@@ -337,55 +427,115 @@ export default function OrderTrackingModal({ isOpen, onClose, orderId, orderSumm
                     </div>
                   </div>
 
-                  <div className="bg-white p-4 rounded-2xl border border-slate-200 shadow-sm">
-                    <h4 className="font-black text-slate-900 flex items-center gap-2 mb-3 text-sm">
+                  <div className="bg-white p-4 rounded-2xl border border-slate-200 shadow-sm font-mono text-[11px] text-slate-900">
+                    <h4 className="font-black flex items-center gap-2 mb-2 text-xs uppercase">
                       <FileText className="w-4 h-4 text-[#fe6712]" /> Resumen de Compra
                     </h4>
 
-                    <div className="space-y-2 mb-3">
+                    <p className="text-slate-300 select-none overflow-hidden whitespace-nowrap my-1">{DIVIDER}</p>
+
+                    <div className="space-y-1.5">
                       {currentItems.length > 0 ? (
                         currentItems.map((item: any, idx: number) => {
                           const qty = item.qty || item.quantity || 1;
                           const price = item.price || 0;
+                          const itemTotal = price * qty;
+                          const variantRows = getItemBreakdownRows(item);
+
+                          if (variantRows.length > 0) {
+                            return (
+                              <div key={item.cartItemId || item.code || idx}>
+                                <p className="text-center text-slate-500 truncate">-------- {String(item.name || '').toUpperCase()} --------</p>
+                                {variantRows.map((v, vIdx) => (
+                                  <div key={vIdx} className={`flex justify-between gap-2 ${v.isExclusion ? 'text-red-600 font-bold' : ''}`}>
+                                    <span className="truncate">{v.qty ? `${v.qty} ` : ''}{v.name}</span>
+                                    <span className="shrink-0">{v.price > 0 && v.qty ? (v.price * v.qty).toFixed(2) : ''}</span>
+                                  </div>
+                                ))}
+                                <div className="flex justify-between font-bold">
+                                  <span>Subtotal</span>
+                                  <span>{itemTotal.toFixed(2)}</span>
+                                </div>
+                              </div>
+                            );
+                          }
                           return (
-                            <div key={item.code || idx} className="flex justify-between text-xs">
-                              <span className="text-slate-600 font-medium">
-                                {qty}x {item.name}
-                              </span>
-                              <span className="font-bold text-slate-900">${(price * qty).toFixed(2)}</span>
+                            <div key={item.cartItemId || item.code || idx} className="flex justify-between gap-2 font-bold">
+                              <span className="truncate">{qty} {item.name}</span>
+                              <span className="shrink-0">{itemTotal.toFixed(2)}</span>
                             </div>
                           );
                         })
                       ) : (
-                        <div className="flex justify-between text-xs">
-                          <span className="text-slate-600 font-medium">1x Orden General</span>
-                          <span className="font-bold text-slate-900">${(subtotalNeto || 12.30).toFixed(2)}</span>
-                        </div>
+                        <p className="text-center text-slate-400 italic">No hay productos registrados en esta orden.</p>
                       )}
                     </div>
 
-                    <div className="border-t border-slate-100 pt-3 space-y-2">
-                      <div className="flex justify-between text-xs">
-                        <span className="text-slate-500">Subtotal</span>
-                        <span className="font-bold text-slate-700">${(subtotalNeto || orderData?.subtotalUSD || 12.30).toFixed(2)}</span>
+                    <p className="text-slate-300 select-none overflow-hidden whitespace-nowrap my-1.5">{DIVIDER}</p>
+
+                    <div className="space-y-0.5">
+                      <div className="flex justify-between">
+                        <span>Subtotal general</span>
+                        <span>{subtotalNeto.toFixed(2)}</span>
                       </div>
-                      <div className="flex justify-between text-xs">
-                        <span className="text-slate-500">Delivery D'una</span>
-                        <span className="font-bold text-slate-700">${costoEnvio.toFixed(2)}</span>
+                      <div className="flex justify-between">
+                        <span>
+                          Domicilio
+                          {descuentoFleteVal > 0 && <span className="text-emerald-600"> (Cofre -25%)</span>}
+                        </span>
+                        <span>
+                          {descuentoFleteVal > 0 ? (
+                            <>
+                              <span className="line-through text-slate-400 mr-1">{costoEnvio.toFixed(2)}</span>
+                              <span className="text-emerald-600 font-black">{costoEnvioFinal.toFixed(2)}</span>
+                            </>
+                          ) : (
+                            costoEnvio.toFixed(2)
+                          )}
+                        </span>
                       </div>
                       {propinaVal > 0 && (
-                        <div className="flex justify-between text-xs">
-                          <span className="text-slate-500">Propina</span>
-                          <span className="font-bold text-slate-700">${propinaVal.toFixed(2)}</span>
+                        <div className="flex justify-between">
+                          <span>Propina</span>
+                          <span>{propinaVal.toFixed(2)}</span>
                         </div>
                       )}
                     </div>
 
-                    <div className="border-t border-slate-200 pt-3 mt-3 flex justify-between items-end">
-                      <div>
-                        <span className="text-[10px] font-bold text-slate-400 uppercase">Total</span>
+                    <p className="text-slate-300 select-none overflow-hidden whitespace-nowrap my-1.5">{DIVIDER}</p>
+
+                    <div className="grid grid-cols-[1fr_auto] gap-x-2 font-black text-sm uppercase">
+                      <span>Total</span>
+                      <span className="text-right">${displayTotal.toFixed(2)}</span>
+                      <span className="truncate">Ref Bs.S {tasaRef.toLocaleString('es-VE', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}</span>
+                      <span className="text-right">Bs.S {displayTotalBs.toLocaleString('es-VE', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}</span>
+                    </div>
+
+                    <p className="text-slate-300 select-none overflow-hidden whitespace-nowrap my-1.5">{DIVIDER}</p>
+
+                    <div>
+                      <p className="font-bold mb-0.5">Forma de pago:</p>
+                      <div className="flex flex-wrap gap-x-3 gap-y-0.5">
+                        <span>{isPagoMethod('efectivo') ? '☑' : '☐'} Efectivo</span>
+                        <span>{isPagoMethod('movil') || isPagoMethod('móvil') ? '☑' : '☐'} Pago móvil</span>
+                        <span>{isPagoMethod('transfer') ? '☑' : '☐'} Transferencia</span>
+                        <span>{isPagoMethod('divisa') || isPagoMethod('usd') || isPagoMethod('dolar') || isPagoMethod('dólar') ? '☑' : '☐'} Divisas</span>
                       </div>
-                      <span className="text-xl font-black text-slate-900">${displayTotal.toFixed(2)}</span>
+                    </div>
+
+                    <p className="text-slate-300 select-none overflow-hidden whitespace-nowrap my-1.5">{DIVIDER}</p>
+
+                    <div>
+                      <p className="font-bold">Notas:</p>
+                      <p className="text-slate-400">{orderData?.observaciones || '(Sin observaciones)'}</p>
+                    </div>
+
+                    <p className="text-slate-300 select-none overflow-hidden whitespace-nowrap my-1.5">{DIVIDER}</p>
+
+                    <div className="text-center space-y-0.5">
+                      <p className="font-bold">¡Gracias por tu pedido!</p>
+                      <p>Preparado por: ______________</p>
+                      <p className="text-[9px] text-slate-500 uppercase tracking-wide mt-1 font-sans">D&apos;una Group · Soporte 24/7</p>
                     </div>
                   </div>
                 </div>
