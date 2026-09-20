@@ -758,7 +758,7 @@ export default function CheckoutModal({
         {pasoVista === 'exito' && pagoPendiente && (
           <div className="flex-1 overflow-y-auto no-scrollbar flex flex-col items-center text-center px-5 bg-white py-4">
             <div className="w-14 h-14 bg-orange-50 rounded-full flex items-center justify-center mb-2 shrink-0">
-              <Clock className="w-7 h-7 text-[#fe6712]" />
+              <Check className="w-7 h-7 text-[#fe6712] stroke-[3]" />
             </div>
             <h3 className="text-lg font-black text-slate-900 leading-tight mb-1">¡Tu pedido ya está en la cocina! 🚀</h3>
             <p className="text-[12px] text-slate-500 font-medium mb-3">

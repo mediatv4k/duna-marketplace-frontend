@@ -4,7 +4,8 @@ import React, { useEffect, useState } from 'react';
 import { useParams } from 'next/navigation';
 import { RefreshCw, Clock } from 'lucide-react';
 import { getOrderPublic } from '@/services/marketplaceService';
-import { isFinalStatus } from '@/lib/orderTracking';
+import { isFinalStatus, getTrackingState } from '@/lib/orderTracking';
+import { useArrivalAlert } from '@/lib/useArrivalAlert';
 import OrderTimelinePanel from '@/components/OrderTimelinePanel';
 
 const POLL_INTERVAL_MS = 9000;
@@ -50,6 +51,9 @@ export default function OrderTimelinePage() {
     };
   }, [orderId]);
 
+  // Alerta sonora/háptica al detectar la transición a "Llega a sitio"
+  useArrivalAlert(getTrackingState(remote).phase, !!remote);
+
   const displayId = remote?.order_number || remote?.id || orderId || '';
 
   return (
@@ -81,12 +85,7 @@ export default function OrderTimelinePage() {
             <p className="text-[10px] text-slate-400">Reintentando automáticamente…</p>
           </div>
         ) : (
-          <OrderTimelinePanel
-            remote={remote}
-            trackingError={error}
-            displayClient={remote.customer_name || ''}
-            displayAddress={remote.customer_address_text || ''}
-          />
+          <OrderTimelinePanel remote={remote} trackingError={error} />
         )}
       </main>
 

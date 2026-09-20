@@ -46,3 +46,35 @@ export function toWhatsAppNumber(raw: unknown): string {
   if (!digits) return '';
   return digits.startsWith('0') ? `58${digits.slice(1)}` : digits;
 }
+
+// ---- Fase actual del pedido (a partir de history[] y status de GET /delivery/request/{id}/public) ----
+export type TrackingPhase = 'driver_assigned' | 'on_route' | 'arrived' | 'delivered' | 'other';
+
+// Historial con el evento más reciente primero (empate de fecha → id mayor primero)
+export function sortHistoryDesc(history: unknown): any[] {
+  if (!Array.isArray(history)) return [];
+  return [...history].sort((x: any, y: any) =>
+    (new Date(y.date).getTime() - new Date(x.date).getTime()) || (Number(y.id || 0) - Number(x.id || 0)));
+}
+
+// Fase según el evento más reciente del historial (vocabulario real del backend: DRIVER_ASSIGNED, Recogido,
+// Entregando, Llega a sitio, Entregado, "(2x)"…). Entregado también se reconoce por el status final de la orden.
+export function trackingPhase(currentRaw: unknown, orderStatus: unknown): TrackingPhase {
+  const cur = String(currentRaw ?? '').trim().toLowerCase();
+  const status = String(orderStatus ?? '').trim().toUpperCase();
+  if (['DELIVERED', 'COMPLETED', 'DOUBLE_DELIVERED'].includes(status) || /^entregado/.test(cur)) return 'delivered';
+  if (/^(llega a sitio|lleg[oó])/.test(cur)) return 'arrived';
+  if (/^(taken|recogido|entregando|en camino)/.test(cur)) return 'on_route';
+  if (cur === 'driver_assigned') return 'driver_assigned';
+  return 'other';
+}
+
+export function getTrackingState(remote: any) {
+  const history = sortHistoryDesc(remote?.history);
+  const currentRaw = history.length > 0 ? history[0].status : remote?.status;
+  const phase = trackingPhase(currentRaw, remote?.status);
+  // Código de entrega: delivery_code (verificado en DEV); se aceptan alias por si el backend los expone
+  const deliveryCode = [remote?.delivery_code, remote?.code, remote?.pin, remote?.confirmation_code]
+    .map((v: unknown) => String(v ?? '').trim()).find(Boolean) || '';
+  return { history, currentRaw, phase, isFinal: isFinalStatus(remote?.status), deliveryCode };
+}

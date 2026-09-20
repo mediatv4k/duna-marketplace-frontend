@@ -6,7 +6,8 @@ import {
   Bike, PackageCheck, Receipt, Printer, DollarSign, FileText
 } from 'lucide-react';
 import { getOrderPublic } from '@/services/marketplaceService';
-import { FINAL_STATUSES } from '@/lib/orderTracking';
+import { FINAL_STATUSES, getTrackingState } from '@/lib/orderTracking';
+import { useArrivalAlert } from '@/lib/useArrivalAlert';
 import OrderTimelinePanel from './OrderTimelinePanel';
 
 const POLL_INTERVAL_MS = 9000;
@@ -86,6 +87,14 @@ export default function OrderTrackingModal({ isOpen, onClose, orderId, orderSumm
       if (timer) clearTimeout(timer);
     };
   }, [isOpen, orderId, orderSummary]);
+
+  // Alerta sonora/háptica al detectar la transición a "Llega a sitio" (aunque la pestaña visible no sea Estatus)
+  const { phase: trackingPhaseNow } = getTrackingState(remote);
+  useArrivalAlert(trackingPhaseNow, !!remote);
+  useEffect(() => {
+    // Al llegar o entregarse, se muestra la pestaña Estatus (código de entrega / cierre)
+    if (trackingPhaseNow === 'arrived' || trackingPhaseNow === 'delivered') setActiveTab('TRACKING');
+  }, [trackingPhaseNow]);
 
   if (!isOpen) return null;
 
@@ -342,12 +351,7 @@ export default function OrderTrackingModal({ isOpen, onClose, orderId, orderSumm
 
               {/* VISTA 2: SEGUIMIENTO ORIGINAL (TIMELINE) */}
               {activeTab === 'TRACKING' && (
-                <OrderTimelinePanel
-                  remote={remote}
-                  trackingError={trackingError}
-                  displayClient={displayClient}
-                  displayAddress={displayAddress}
-                />
+                <OrderTimelinePanel remote={remote} trackingError={trackingError} />
               )}
 
               {/* VISTA 3: RECIBO DEL CLIENTE */}

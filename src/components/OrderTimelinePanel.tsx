@@ -1,35 +1,40 @@
 'use client';
 
-import React from 'react';
-import { MapPin, Bike } from 'lucide-react';
-import { friendlyStatus, isFinalStatus, parseCoords, toWhatsAppNumber } from '@/lib/orderTracking';
+import React, { useEffect, useState } from 'react';
+import { Star, X } from 'lucide-react';
+import { friendlyStatus, getTrackingState, parseCoords, toWhatsAppNumber } from '@/lib/orderTracking';
 
 interface OrderTimelinePanelProps {
   remote: any; // data de GET /delivery/request/{id}/public (null mientras no hay respuesta)
   trackingError?: string | null;
-  displayClient: string;
-  displayAddress: string;
 }
 
 // Vista de seguimiento compartida por el modal (pestaña Estatus) y la página pública /order/[orderId]/timeline:
-// cliente + estado actual, ficha del repartidor, botón Google Maps y timeline descendente.
-export default function OrderTimelinePanel({ remote, trackingError, displayClient, displayAddress }: OrderTimelinePanelProps) {
-  // Timeline descendente: el evento más reciente arriba (empate de fecha → id mayor primero)
-  const trackingHistory: any[] = Array.isArray(remote?.history)
-    ? [...remote.history].sort((x: any, y: any) =>
-        (new Date(y.date).getTime() - new Date(x.date).getTime()) || (Number(y.id || 0) - Number(x.id || 0)))
-    : [];
-  const remoteStatusUpper = String(remote?.status || '').toUpperCase();
-  const isFinal = isFinalStatus(remoteStatusUpper);
+// código de entrega (solo al llegar), ficha compacta del repartidor, botón Google Maps y timeline descendente.
+// Al entregarse muestra el cierre con calificación. La alerta sonora/háptica vive en useArrivalAlert (la llama el contenedor).
+export default function OrderTimelinePanel({ remote, trackingError }: OrderTimelinePanelProps) {
+  const { history: trackingHistory, phase, isFinal, deliveryCode } = getTrackingState(remote);
+  const orderKey = remote?.id !== undefined && remote?.id !== null ? String(remote.id) : '';
 
   // Repartidor (campos reales de GET /delivery/request/{id}/public)
   const driverName = String(remote?.delivery_driver_name || '').trim();
   const driverPhoneRaw = String(remote?.delivery_driver_phone || '').trim();
   const driverWa = toWhatsAppNumber(driverPhoneRaw);
-  const vehicleDesc = [remote?.delivery_vehicle_type, remote?.delivery_vehicle_brand, remote?.delivery_vehicle_color]
-    .map((v: unknown) => String(v || '').trim()).filter(Boolean).join(' · ');
+  const avatarUrl = String(remote?.delivery_avatar || '').trim();
+  const vehicleDesc = [remote?.delivery_vehicle_type, remote?.delivery_vehicle_brand]
+    .map((v: unknown) => String(v || '').trim()).filter(Boolean).join(' ');
+  const vehicleColor = String(remote?.delivery_vehicle_color || '').trim();
   const vehiclePlate = String(remote?.delivery_vehicle_license || '').trim();
   const hasDriver = !!(driverName || driverPhoneRaw);
+  const initials = driverName.split(/\s+/).filter(Boolean).slice(0, 2).map((w) => w[0]?.toUpperCase()).join('') || '🛵';
+
+  // El bloque del repartidor solo existe mientras el pedido está en curso (se oculta al entregarse/cancelarse)
+  const showDriver = hasDriver && !isFinal && phase !== 'delivered';
+  // WhatsApp habilitado solo con la carrera confirmada (TAKEN/Recogido/Entregando/Llega a sitio); en DRIVER_ASSIGNED (turno) no
+  const whatsappEnabled = phase === 'on_route' || phase === 'arrived';
+
+  const [avatarFailed, setAvatarFailed] = useState(false);
+  useEffect(() => { setAvatarFailed(false); }, [avatarUrl]);
 
   // Google Maps: posición viva del repartidor; si no viene, coordenadas o texto de la dirección de entrega
   const driverPos = parseCoords(remote?.current_location);
@@ -43,78 +48,150 @@ export default function OrderTimelinePanel({ remote, trackingError, displayClien
         ? `https://www.google.com/maps?q=${encodeURIComponent(customerText)}`
         : null;
 
+  // ---- Cierre al entregar: calificación 1–5 (servicio y comercio) ----
+  const [showClosure, setShowClosure] = useState(false);
+  const [serviceRating, setServiceRating] = useState(0);
+  const [storeRating, setStoreRating] = useState(0);
+
+  useEffect(() => {
+    if (phase !== 'delivered' || !orderKey) return;
+    try {
+      // Una orden ya cerrada/calificada no vuelve a mostrar el cierre (p. ej. al reabrir el link público)
+      if (!localStorage.getItem(`duna_order_closed_${orderKey}`)) setShowClosure(true);
+    } catch {
+      setShowClosure(true);
+    }
+  }, [phase, orderKey]);
+
+  const closeOrder = (saveRating: boolean) => {
+    try {
+      // La calificación se guarda localmente: el backend no expone (todavía) un endpoint de calificación
+      if (saveRating && (serviceRating > 0 || storeRating > 0)) {
+        localStorage.setItem(`duna_order_rating_${orderKey}`, JSON.stringify({ service: serviceRating, store: storeRating, at: new Date().toISOString() }));
+      }
+      localStorage.setItem(`duna_order_closed_${orderKey}`, '1');
+      // Limpia la orden activa (solo si es esta orden) para ocultar el FAB del Home
+      const activeId = localStorage.getItem('last_active_order_id');
+      if (!activeId || activeId === orderKey) {
+        localStorage.removeItem('last_active_order');
+        localStorage.removeItem('last_active_order_id');
+      }
+    } catch {
+      /* sin localStorage */
+    }
+    window.dispatchEvent(new CustomEvent('duna:order-closed', { detail: { orderId: orderKey } }));
+    setShowClosure(false);
+  };
+
+  const renderStars = (value: number, onChange: (n: number) => void, label: string) => (
+    <div className="space-y-1">
+      <p className="text-[11px] font-black text-slate-700">{label}</p>
+      <div className="flex items-center justify-center gap-1.5">
+        {[1, 2, 3, 4, 5].map((n) => (
+          <button key={n} type="button" onClick={() => onChange(n)} aria-label={`${n} de 5 estrellas`} className="p-0.5 cursor-pointer">
+            <Star className={`w-7 h-7 ${n <= value ? 'fill-amber-400 text-amber-400' : 'text-slate-300'}`} />
+          </button>
+        ))}
+      </div>
+    </div>
+  );
+
   return (
-    <div className="space-y-4 animate-in fade-in slide-in-from-right-4 duration-300">
+    <div className="space-y-3 animate-in fade-in slide-in-from-right-4 duration-300">
       {trackingError && (
         <div className="bg-red-50 border border-red-200 text-red-700 text-[10px] font-bold p-2.5 rounded-xl">{trackingError}</div>
       )}
-      <div className="bg-orange-50/70 border border-orange-200/60 p-4 rounded-2xl space-y-2">
-        <div className="flex justify-between items-center">
-          <span className="text-[10px] font-black text-slate-400 uppercase tracking-wider">Cliente</span>
-          {remote && (
-            <span className={`text-[10px] font-black px-2.5 py-0.5 rounded-full uppercase flex items-center gap-1 ${remoteStatusUpper === 'CANCELLED' ? 'bg-red-100 text-red-800' : 'bg-emerald-100 text-emerald-800'}`}>
-              {!isFinal && <span className="h-1.5 w-1.5 rounded-full bg-emerald-500 animate-pulse"></span>}
-              {trackingHistory.length > 0 ? friendlyStatus(trackingHistory[0].status) : friendlyStatus(remote.status)}
-            </span>
-          )}
-        </div>
-        <h3 className="text-base font-black text-slate-900 leading-tight">{displayClient}</h3>
-        <p className="text-[11px] text-slate-600 font-medium flex items-center gap-1">
-          <MapPin className="w-3.5 h-3.5 text-[#fe6712] shrink-0" />
-          <span className="truncate">{displayAddress}</span>
-        </p>
-      </div>
 
-      {hasDriver && (
-        <div className="bg-white p-4 rounded-2xl border border-slate-100 shadow-sm space-y-2">
-          <h4 className="text-xs font-black text-slate-800 uppercase tracking-wide flex items-center gap-1.5">
-            <Bike className="w-4 h-4 text-[#fe6712]" /> Tu repartidor
-          </h4>
-          {driverName && <p className="text-sm font-black text-slate-900 leading-tight">{driverName}</p>}
-          {driverPhoneRaw && <p className="text-[11px] text-slate-600 font-medium">Teléfono: {driverPhoneRaw}</p>}
-          {(vehicleDesc || vehiclePlate) && (
-            <p className="text-[11px] text-slate-600 font-medium">
-              Vehículo: {vehicleDesc}{vehicleDesc && vehiclePlate ? ' · ' : ''}{vehiclePlate && <span>Placa <strong>{vehiclePlate}</strong></span>}
+      {/* Código de entrega: 100% oculto hasta que el repartidor llega a sitio */}
+      {phase === 'arrived' && !isFinal && (
+        <div className="rounded-2xl border-2 border-amber-400 bg-amber-50 p-3.5 text-center space-y-1 animate-pulse shadow-md shadow-amber-200/60">
+          <p className="text-[13px] font-black text-amber-900 leading-tight">🔑 ¡TU REPARTIDOR ESTÁ EN LA PUERTA!</p>
+          {deliveryCode && (
+            <p className="text-[15px] font-black text-slate-900">
+              Código de entrega: <span className="font-mono tracking-widest text-[#fe6712]">[ {deliveryCode} ]</span>
             </p>
           )}
-          {driverWa && (
-            <a
-              href={`https://wa.me/${driverWa}`}
-              target="_blank"
-              rel="noopener noreferrer"
-              className="w-full flex items-center justify-center gap-1.5 rounded-full bg-[#25D366] hover:bg-[#1ebe5b] py-1.5 text-[11px] font-black text-white shadow-sm"
-            >
-              Escribir al repartidor por WhatsApp
-            </a>
+          <p className="text-[10px] font-bold text-amber-800">Dicta este código de entrega al repartidor para recibir tu pedido.</p>
+        </div>
+      )}
+
+      {showDriver && (
+        <div className="bg-white p-3 rounded-2xl border border-slate-100 shadow-sm space-y-2">
+          <h4 className="text-[10px] font-black text-slate-500 uppercase tracking-wider">
+            {whatsappEnabled ? 'Tu repartidor' : 'Repartidor de turno'}
+          </h4>
+          <div className="flex items-center gap-3">
+            {avatarUrl && !avatarFailed ? (
+              <img
+                src={avatarUrl}
+                alt={driverName || 'Repartidor'}
+                onError={() => setAvatarFailed(true)}
+                className="w-11 h-11 rounded-full object-cover border border-slate-200 bg-slate-100 shrink-0"
+              />
+            ) : (
+              <div className="w-11 h-11 rounded-full bg-orange-100 text-[#fe6712] flex items-center justify-center text-sm font-black shrink-0">
+                {initials}
+              </div>
+            )}
+            <div className="min-w-0">
+              {driverName && <p className="text-sm font-black text-slate-900 leading-tight truncate">{driverName}</p>}
+              {(vehicleDesc || vehicleColor) && (
+                <p className="text-[11px] text-slate-600 font-medium leading-tight truncate">{[vehicleDesc, vehicleColor].filter(Boolean).join(' · ')}</p>
+              )}
+              {vehiclePlate && (
+                <span className="inline-block mt-0.5 text-[10px] font-black text-slate-700 bg-slate-100 border border-slate-200 rounded px-1.5 py-0.5">
+                  Placa {vehiclePlate}
+                </span>
+              )}
+            </div>
+          </div>
+          {whatsappEnabled ? (
+            driverWa && (
+              <a
+                href={`https://wa.me/${driverWa}`}
+                target="_blank"
+                rel="noopener noreferrer"
+                className="w-full flex items-center justify-center gap-1.5 rounded-full bg-[#25D366] hover:bg-[#1ebe5b] py-1.5 text-[11px] font-black text-white shadow-sm"
+              >
+                Escribir por WhatsApp
+              </a>
+            )
+          ) : (
+            <div className="space-y-1">
+              <button
+                type="button"
+                disabled
+                className="w-full flex items-center justify-center gap-1.5 rounded-full bg-slate-200 py-1.5 text-[11px] font-black text-slate-400 cursor-not-allowed"
+              >
+                Escribir por WhatsApp
+              </button>
+              <p className="text-[9px] text-slate-400 text-center">Contacto por WhatsApp disponible al confirmar la carrera</p>
+            </div>
           )}
         </div>
       )}
 
-      {mapsUrl && (
-        <div className="space-y-1">
-          <a
-            href={mapsUrl}
-            target="_blank"
-            rel="noopener noreferrer"
-            className="w-full flex items-center justify-center gap-1.5 rounded-full border border-[#fe6712] bg-white hover:bg-orange-50 py-1.5 text-[11px] font-black text-[#fe6712]"
-          >
-            📍 Ver en Google Maps
-          </a>
-          {!driverPos && (
-            <p className="text-[9px] text-slate-400 text-center">Aún no hay posición del repartidor: se abrirá la dirección de entrega.</p>
-          )}
-        </div>
+      {mapsUrl && !isFinal && (
+        <a
+          href={mapsUrl}
+          target="_blank"
+          rel="noopener noreferrer"
+          title={driverPos ? 'Posición del repartidor' : 'Aún no hay posición del repartidor: se abrirá la dirección de entrega'}
+          className="w-full flex items-center justify-center gap-1.5 rounded-full border border-[#fe6712] bg-white hover:bg-orange-50 py-1 text-[11px] font-black text-[#fe6712]"
+        >
+          📍 Ver en Google Maps
+        </a>
       )}
 
-      <div className="space-y-3 bg-white p-4 rounded-2xl border border-slate-100 shadow-sm">
-        <h4 className="text-xs font-black text-slate-800 uppercase tracking-wide mb-4">Estatus del pedido</h4>
+      <div className="space-y-3 bg-white p-3.5 rounded-2xl border border-slate-100 shadow-sm">
+        <h4 className="text-xs font-black text-slate-800 uppercase tracking-wide mb-3">Estatus del pedido</h4>
         {trackingHistory.length === 0 ? (
           <p className="text-[10px] text-slate-400">Sin movimientos registrados todavía.</p>
         ) : (
-          <div className="space-y-4 relative before:absolute before:inset-y-2 before:left-3 before:w-0.5 before:bg-slate-200">
+          <div className="space-y-3 relative before:absolute before:inset-y-2 before:left-3 before:w-0.5 before:bg-slate-200">
             {trackingHistory.map((h: any, hIdx: number) => {
               const isCurrent = hIdx === 0;
-              const isCancel = isCurrent && remoteStatusUpper === 'CANCELLED';
+              const isCancel = isCurrent && String(remote?.status || '').toUpperCase() === 'CANCELLED';
               const dotClass = isCancel
                 ? 'bg-red-500'
                 : isCurrent && !isFinal
@@ -136,6 +213,33 @@ export default function OrderTimelinePanel({ remote, trackingError, displayClien
           </div>
         )}
       </div>
+
+      {showClosure && (
+        <div className="fixed inset-0 z-[180] flex items-center justify-center bg-black/75 p-4 backdrop-blur-sm">
+          <div className="relative w-full max-w-[380px] rounded-[28px] bg-white shadow-2xl border border-slate-100 p-6 text-center space-y-4">
+            <button
+              type="button"
+              onClick={() => closeOrder(false)}
+              aria-label="Cerrar"
+              className="absolute top-3 right-3 w-7 h-7 rounded-full bg-slate-100 hover:bg-slate-200 text-slate-500 flex items-center justify-center cursor-pointer"
+            >
+              <X className="w-4 h-4" />
+            </button>
+            <div className="w-14 h-14 mx-auto rounded-full bg-[#10b981] flex items-center justify-center shadow-[0_8px_30px_rgba(16,185,129,0.3)] text-white text-2xl font-black">✓</div>
+            <h3 className="text-xl font-black text-slate-900 leading-tight">¡Orden entregada con éxito!</h3>
+            <p className="text-[12px] text-slate-500 font-medium">Cuéntanos cómo te fue:</p>
+            {renderStars(serviceRating, setServiceRating, 'Califica el servicio de entrega')}
+            {renderStars(storeRating, setStoreRating, `Califica a ${remote?.food_store || 'el comercio'}`)}
+            <button
+              type="button"
+              onClick={() => closeOrder(true)}
+              className="w-full rounded-full bg-[#fe6712] hover:bg-[#e0580d] py-2 text-xs font-black text-white shadow-md cursor-pointer"
+            >
+              {serviceRating > 0 || storeRating > 0 ? 'Enviar calificación' : 'Cerrar'}
+            </button>
+          </div>
+        </div>
+      )}
     </div>
   );
 }

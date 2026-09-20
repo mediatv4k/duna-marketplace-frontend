@@ -85,6 +85,15 @@ export default function MultitiendaHub() {
     }
   }, []);
   useEffect(() => {
+    // Evento emitido por OrderTimelinePanel al cerrar una orden entregada: oculta el FAB sin esperar al polling
+    const onOrderClosed = (e: Event) => {
+      const closedId = String((e as CustomEvent).detail?.orderId ?? '');
+      setSavedOrderId((prev) => (!closedId || prev === closedId ? '' : prev));
+    };
+    window.addEventListener('duna:order-closed', onOrderClosed);
+    return () => window.removeEventListener('duna:order-closed', onOrderClosed);
+  }, []);
+  useEffect(() => {
     if (!savedOrderId) return;
     let cancelled = false;
     let timer: ReturnType<typeof setTimeout> | null = null;
