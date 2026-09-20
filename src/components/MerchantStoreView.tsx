@@ -388,7 +388,7 @@ export default function MerchantStoreView({
     }
     updateCartStorage(updated);
     setIsMasterModalOpen(false);
-    setIsCartOpen(true);
+    // El carrito ya no se abre solo al agregar: el cliente sigue comprando (se abre desde la barra "Productos en bolsa")
   };
 
   const handleUpdateQty = (identifier: string, delta: number) => {

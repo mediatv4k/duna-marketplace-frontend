@@ -118,7 +118,7 @@ export default function CheckoutModal({
   const [codigoPais, setCodigoPais] = useState('+58');
   const [telefono, setTelefono] = useState('');
 
-  const [propina, setPropina] = useState<number>(0.50);
+  const [propinaElegida, setPropina] = useState<number>(0.50);
   const [referenciaPago, setReferenciaPago] = useState('');
   const [archivoComprobante, setArchivoComprobante] = useState<File | null>(null);
   const [nombreArchivo, setNombreArchivo] = useState<string | null>(null);
@@ -141,7 +141,7 @@ export default function CheckoutModal({
 
     getStorePaymentInfo(storeId).then((res) => {
       setLoadingPaymentInfo(false);
-      if (res && res.code === 1 && res.data) {
+      if (res && res?.code === 1 && res?.data) {
         const methods: PaymentConfigItem[] = res.data.paymentConfig || [];
         setPaymentMethods(methods);
         if (methods.length > 0) {
@@ -204,6 +204,8 @@ export default function CheckoutModal({
   const aplicaDescuentoDelivery = esElegibleParaCofre && usarRecompensa;
   const descuentoUSD = aplicaDescuentoDelivery ? costoEnvio * 0.25 : 0;
 
+  // Retiro en tienda (pickup): sin propina, sin importar lo elegido antes
+  const propina = orderSummary.metodoEntrega === 'pickup' ? 0 : propinaElegida;
   const totalFinalUSD = subtotalNeto + costoEnvio + propina - descuentoUSD;
 
   const cobraEnBs = selectedMethod?.field5 === 'REF';
@@ -287,7 +289,7 @@ export default function CheckoutModal({
     }
     const cartLines = orderSummary.items || [];
     const invalidLine = cartLines.find((item: CartItemOption) =>
-      !Number.isFinite(Number(item.id)) || Number(item.id) <= 0 || !String(item.code || '').trim() || !Number.isFinite(Number(item.price))
+      !Number.isFinite(Number(item.id)) || Number(item.id) <= 0 || !String(item?.code || '').trim() || !Number.isFinite(Number(item.price))
     );
     if (cartLines.length === 0 || invalidLine) {
       setSubmitError('Un producto del carrito no tiene identificador válido. Vuelve a agregarlo desde la tienda.');
@@ -313,7 +315,7 @@ export default function CheckoutModal({
       const unitFinalPrice = itemPricing?.unitFinalPrice ?? basePrice;
       return {
         id: Number(item.id),
-        code: String(item.code),
+        code: String(item?.code),
         name: String(item.name || 'Producto'),
         image: String(item.image || item.img || ''),
         cant: cantNum,
@@ -348,7 +350,7 @@ export default function CheckoutModal({
       totalPaidReferenceAmount: String(totalBolivares.toFixed(2)),
       totalPaidDefaultAmount: String(totalFinalUSD.toFixed(2)),
       totalWithoutDiscount: String(totalFinalUSD.toFixed(2)),
-      paymentMethod: selectedMethod ? { code: selectedMethod.code, value: selectedMethod.value } : { code: 'PAGO', value: 'Banco' },
+      paymentMethod: selectedMethod ? { code: selectedMethod?.code, value: selectedMethod?.value } : { code: 'PAGO', value: 'Banco' },
       tip: propina.toFixed(2),
       store: { id: storeIdNum, phone: storePhoneStr },
       foodStoreId: String(storeIdNum),
@@ -362,7 +364,7 @@ export default function CheckoutModal({
     try {
       const response = await submitPurchaseOrder(osvaldoPayload, archivoComprobante);
 
-      if (response && (response.code === 1 || response.code === 200 || response.code === 201)) {
+      if (response && (response?.code === 1 || response?.code === 200 || response?.code === 201)) {
         const resolvedId = (response.data as { id?: string | number } | undefined)?.id
           ? String((response.data as { id?: string | number }).id)
           : generatedOrderId;
@@ -439,7 +441,7 @@ export default function CheckoutModal({
     setSubmitError(null);
     const res = await uploadPaymentReference({ orderId: ordenId, file: archivoComprobante, referenceText: referenciaPago });
     setUploading(false);
-    if (res && (res.code === 1 || res.code === 200 || res.code === 201)) {
+    if (res && (res?.code === 1 || res?.code === 200 || res?.code === 201)) {
       setPagoPendiente(false);
       setPasoVista('exito');
     } else {
@@ -555,6 +557,7 @@ export default function CheckoutModal({
               </div>
             </div>
 
+            {orderSummary.metodoEntrega !== 'pickup' && (
             <div className="shrink-0 bg-slate-50/70 p-2 rounded-xl border border-slate-100 flex items-center justify-between gap-2">
               <span className="text-[10px] font-bold text-slate-700 flex items-center gap-1 shrink-0">
                 <HeartHandshake className="h-3.5 w-3.5 text-[#fe6712]" /> Propina:
@@ -574,6 +577,7 @@ export default function CheckoutModal({
                 ))}
               </div>
             </div>
+            )}
 
             <div className="shrink-0 flex-1">
               <label className="text-[9px] font-bold text-slate-700 block mb-1">
@@ -592,10 +596,10 @@ export default function CheckoutModal({
               ) : (
                 <div className="grid grid-cols-2 gap-1.5">
                   {paymentMethods.map((metodo, idx) => {
-                    const isSelected = selectedMethod?.code === metodo.code && selectedMethod?.value === metodo.value;
+                    const isSelected = selectedMethod?.code === metodo?.code && selectedMethod?.value === metodo?.value;
                     return (
                       <div
-                        key={`${metodo.code}-${idx}`}
+                        key={`${metodo?.code}-${idx}`}
                         onClick={() => setSelectedMethod(metodo)}
                         className={`flex items-center gap-2 p-2 rounded-xl border transition cursor-pointer ${
                           isSelected ? 'border-[#fe6712] bg-orange-50/50 shadow-xs ring-1 ring-[#fe6712]/30' : 'border-slate-200 bg-white hover:bg-orange-50/20'

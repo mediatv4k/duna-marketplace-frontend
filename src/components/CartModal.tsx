@@ -122,7 +122,8 @@ export default function CartModal({
             </button>
           </div>
 
-          {/* Barra de Recompensa Inteligente */}
+          {/* Barra de Recompensa Inteligente (solo delivery local) */}
+          {deliveryMode === 'delivery' && (
           <div className="px-4 pt-2 pb-1 shrink-0">
             <div className="bg-orange-50/70 border border-orange-200/60 px-3 py-2 rounded-[14px] space-y-1">
               <div className="flex items-center justify-between">
@@ -149,6 +150,7 @@ export default function CartModal({
               </p>
             </div>
           </div>
+          )}
 
           {/* Título de Sección Fijo */}
           <div className="px-4 pt-1 pb-0.5 shrink-0 flex justify-between items-center">
