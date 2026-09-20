@@ -436,7 +436,7 @@ export default function MerchantStoreView({
     ? quote.rate
     : (Number.isFinite(staticDeliveryFee) ? staticDeliveryFee : 1.50);
   const discountDelivery = esEnvioGratis ? deliveryCost : 0;
-  const fleteActivo = deliveryMode === 'national' ? 4.50 : (esEnvioGratis ? 0 : deliveryCost);
+  const fleteActivo = deliveryMode === 'pickup' ? 0 : (deliveryMode === 'national' ? 4.50 : (esEnvioGratis ? 0 : deliveryCost));
   const totalUSD = subtotalUSD + fleteActivo;
 
   return (

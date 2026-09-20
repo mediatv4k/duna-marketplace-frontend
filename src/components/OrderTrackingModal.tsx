@@ -383,9 +383,9 @@ export default function OrderTrackingModal({ isOpen, onClose, orderId, orderSumm
                       <p className="text-xs text-slate-600"><strong>Teléfono:</strong> {displayPhone}</p>
                     )}
 
-                    <div className="flex items-center gap-2 text-xs text-emerald-700 bg-emerald-50 p-2.5 rounded-xl border border-emerald-100">
-                      <DollarSign className="w-4 h-4 shrink-0 text-emerald-600" />
-                      <p><strong>Pago verificado:</strong> {orderData?.metodoPago === 'efectivo' ? 'Efectivo en Entrega' : 'Pago Móvil'}</p>
+                    <div className="flex items-center gap-2 text-xs text-amber-700 bg-amber-50 p-2.5 rounded-xl border border-amber-100">
+                      <DollarSign className="w-4 h-4 shrink-0 text-amber-600" />
+                      <p><strong>Pago en verificación:</strong> {orderData?.metodoPago === 'efectivo' ? 'Efectivo en Entrega' : 'Pago Móvil'}</p>
                     </div>
                   </div>
 

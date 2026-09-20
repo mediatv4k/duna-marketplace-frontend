@@ -98,7 +98,7 @@ export default function CartModal({
 
   // En delivery no se muestra ni se cobra flete hasta tener la cotización oficial
   const deliveryBlocked = deliveryMode === 'delivery' && quoteStatus !== 'ok';
-  const fleteFinalMostrado = deliveryMode === 'national' ? costoNacionalFijo : (deliveryBlocked ? 0 : (esEnvioGratis ? 0 : deliveryCost));
+  const fleteFinalMostrado = deliveryMode === 'pickup' ? 0 : (deliveryMode === 'national' ? costoNacionalFijo : (deliveryBlocked ? 0 : (esEnvioGratis ? 0 : deliveryCost)));
   const totalCalculadoFinal = subtotalUSD + fleteFinalMostrado;
 
   return (

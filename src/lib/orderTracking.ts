@@ -15,7 +15,8 @@ const STATUS_LABELS: Record<string, string> = {
   'solicitud completa': 'Orden confirmada',
   'aceptado': 'Aceptado por el comercio',
   'listo': 'Orden lista para entrega',
-  'recogido': 'Pedido en camino',
+  'recogido': 'Pedido entregado al repartidor',
+  'entregando': 'Pedido en camino',
 };
 
 // Estado no mapeado → texto limpio (sin guiones bajos, primera letra en mayúscula). Ej: "FORWARDED" → "Forwarded"
