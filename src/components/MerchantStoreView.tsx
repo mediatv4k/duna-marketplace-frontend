@@ -445,13 +445,13 @@ export default function MerchantStoreView({
 
   return (
     <div className="min-h-screen bg-slate-50 pb-28">
-      <div className="relative h-56 bg-slate-900">
+      <div className="relative w-full h-52 bg-slate-900 overflow-hidden">
         {merchant.banner ? (
-          <img src={merchant.banner} alt={merchant.name} className="w-full h-full object-cover opacity-85" />
+          <img src={merchant.banner} alt={merchant.name} className="w-full h-full object-cover" />
         ) : (
           <div className="w-full h-full bg-gradient-to-r from-[#fe6712] to-amber-600" />
         )}
-        <div className="absolute inset-0 bg-gradient-to-t from-slate-950/80 via-transparent to-black/30" />
+        <div className="absolute inset-0 bg-gradient-to-t from-black/80 via-black/20 to-transparent" />
         <button
           onClick={onBack}
           className="absolute top-4 left-4 bg-black/60 hover:bg-black/80 text-white px-4 py-2 rounded-2xl text-xs font-black backdrop-blur-md transition cursor-pointer shadow-lg border border-white/10"
@@ -459,9 +459,27 @@ export default function MerchantStoreView({
           ← Volver al inicio
         </button>
 
+        <div className="absolute bottom-0 left-0 right-0 p-4 flex items-end gap-3">
+          <img
+            src={merchant.avatar || 'https://images.unsplash.com/photo-1541658016709-82535e94bc69'}
+            alt={merchant.name}
+            className="w-16 h-16 rounded-2xl object-cover shadow-md border-2 border-white shrink-0 bg-slate-100"
+          />
+          <div className="min-w-0 flex-1">
+            <h1 className="text-2xl font-bold text-white tracking-tight truncate">{merchant.name}</h1>
+            <div className="mt-2 flex flex-wrap items-center gap-2">
+              <span className="bg-white/20 backdrop-blur-md text-white text-xs font-semibold px-3 py-1.5 rounded-full flex items-center gap-1">⭐ {merchant.rating || '5.0'}</span>
+              {merchant.deliveryFee && <span className="bg-white/20 backdrop-blur-md text-white text-xs font-semibold px-3 py-1.5 rounded-full flex items-center gap-1">🛵 {merchant.deliveryFee}</span>}
+              {merchant.badge && <span className="bg-white/20 backdrop-blur-md text-white text-xs font-semibold px-3 py-1.5 rounded-full flex items-center gap-1">🕒 {merchant.badge}</span>}
+            </div>
+          </div>
+        </div>
+      </div>
+
+      <div className="max-w-4xl mx-auto px-4 mt-4 relative z-10">
         {canShowPromotions && nicheConfig.heroVariant === 'PROMO_HERO' && featuredProduct && (
-          <div className="absolute inset-x-0 bottom-0 px-4 pb-4 z-20">
-            <div className="max-w-4xl mx-auto flex items-center gap-3 bg-white/95 backdrop-blur-md rounded-2xl p-3 shadow-lg border border-white/40">
+          <div className="mb-4">
+            <div className="flex items-center gap-3 bg-white rounded-2xl p-3 shadow-md border border-slate-100">
               <img
                 src={featuredProduct.image || 'https://images.unsplash.com/photo-1560008511-11c63416e52d'}
                 alt={featuredProduct.name}
@@ -475,37 +493,6 @@ export default function MerchantStoreView({
             </div>
           </div>
         )}
-      </div>
-
-      <div className="max-w-4xl mx-auto px-4 -mt-16 relative z-10">
-        <div className="bg-white rounded-3xl p-6 shadow-xl border border-slate-100 flex flex-col sm:flex-row items-center sm:items-start gap-5 text-center sm:text-left">
-          <img 
-            src={merchant.avatar || 'https://images.unsplash.com/photo-1541658016709-82535e94bc69'} 
-            alt={merchant.name} 
-            className="w-24 h-24 rounded-2xl object-cover shadow-md border-4 border-white shrink-0 bg-slate-100" 
-          />
-          <div className="flex-1">
-            <div className="flex flex-wrap items-center justify-center sm:justify-start gap-2 mb-1">
-              <span className="bg-orange-100 text-[#fe6712] text-[10px] font-black uppercase tracking-wider px-2.5 py-1 rounded-xl">
-                {merchant.category || 'Comercio Verificado'}
-              </span>
-            </div>
-            <h1 className="text-2xl font-black text-slate-900 tracking-tight">{merchant.name}</h1>
-            <p className="text-xs text-slate-500 font-medium mt-0.5">Cabimas, Zulia State, Venezuela</p>
-            
-            <div className="flex flex-wrap items-center justify-center sm:justify-start gap-3 mt-4 text-xs font-bold text-slate-700 bg-slate-50 p-3 rounded-2xl border border-slate-100">
-              <span className="flex items-center gap-1 text-amber-600">
-                <Star className="w-4 h-4 fill-amber-400 text-amber-400" /> {merchant.rating || '5.0'}
-              </span>
-              <span className="text-slate-300">•</span>
-              <span className="flex items-center gap-1 text-emerald-600">
-                <Clock className="w-4 h-4" /> {merchant.deliveryTime || '25-35 min'}
-              </span>
-              <span className="text-slate-300">•</span>
-              <span className="text-slate-600">Delivery: <strong className="text-slate-900">{merchant.deliveryFee || '$1.50'}</strong></span>
-            </div>
-          </div>
-        </div>
 
         {nicheConfig.trustBadges.length > 0 && (
           <div className="mt-4 flex items-center gap-2 overflow-x-auto no-scrollbar pb-1">
@@ -548,15 +535,17 @@ export default function MerchantStoreView({
           </div>
         )}
 
-        <div className="mt-6 relative">
-          <Search className="absolute left-4 top-4 w-4 h-4 text-slate-400" />
-          <input
-            type="text"
-            placeholder="Buscar productos, sabores, combos o especialidades..."
-            value={searchQuery}
-            onChange={(e) => setSearchQuery(e.target.value)}
-            className="w-full pl-12 pr-4 py-3.5 rounded-2xl bg-white border border-slate-200 text-sm font-bold text-slate-800 shadow-sm focus:outline-none focus:border-[#fe6712] focus:ring-2 focus:ring-orange-100 transition"
-          />
+        <div className="mt-6 sticky top-0 z-40 -mx-4 px-4 bg-white/95 backdrop-blur-md border-b border-gray-100 py-3 shadow-sm">
+          <div className="relative">
+            <Search className="absolute left-4 top-4 w-4 h-4 text-slate-400" />
+            <input
+              type="text"
+              placeholder="Buscar productos, sabores, combos o especialidades..."
+              value={searchQuery}
+              onChange={(e) => setSearchQuery(e.target.value)}
+              className="w-full pl-12 pr-4 py-3.5 rounded-2xl bg-white border border-slate-200 text-sm font-bold text-slate-800 shadow-sm focus:outline-none focus:border-[#fe6712] focus:ring-2 focus:ring-orange-100 transition"
+            />
+          </div>
         </div>
 
         <div className="mt-8">
