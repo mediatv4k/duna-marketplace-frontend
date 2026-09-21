@@ -5,6 +5,7 @@ import { ShoppingBag, ChevronRight, Search, Star, Clock, MapPin, Sparkles, FileT
 import CartModal from './CartModal';
 import LocationPickerModal from './LocationPickerModal';
 import MasterProductModal from './MasterProductModal';
+import VoiceSearchButton from './VoiceSearchButton';
 import PromotionsCarousel from './PromotionsCarousel';
 import { getProduct, getStorePromotions, getDeliveryRate, getStorePaymentInfo } from '@/services/marketplaceService';
 import { getDistanceAndTime } from '@/lib/logisticsEngine';
@@ -547,8 +548,9 @@ export default function MerchantStoreView({
                 placeholder="Buscar productos, sabores, combos o especialidades..."
                 value={searchQuery}
                 onChange={(e) => setSearchQuery(e.target.value)}
-                className="w-full pl-12 pr-4 py-3.5 rounded-2xl bg-white border border-slate-200 text-sm font-bold text-slate-800 shadow-sm focus:outline-none focus:border-[#fe6712] focus:ring-2 focus:ring-orange-100 transition"
+                className="w-full pl-12 pr-14 py-3.5 rounded-2xl bg-white border border-slate-200 text-sm font-bold text-slate-800 shadow-sm focus:outline-none focus:border-[#fe6712] focus:ring-2 focus:ring-orange-100 transition"
               />
+              <VoiceSearchButton onResult={setSearchQuery} className="absolute right-2 top-1/2 -translate-y-1/2" />
             </div>
           </div>
 

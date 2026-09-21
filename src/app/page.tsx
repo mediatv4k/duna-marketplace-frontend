@@ -53,6 +53,34 @@ export default function MultitiendaHub() {
   const [activeMerchantId, setActiveMerchantId] = useState<string | null>(null);
   const [isLoadingMoreProducts, setIsLoadingMoreProducts] = useState(false);
   const activeStoreRef = useRef<string | null>(null);
+  const storeHistoryRef = useRef(false); // hay una entrada de historial propia ('merchant-store') mientras se ve una tienda
+
+  // Botón "Atrás" (navegador/teléfono): al entrar a una tienda se registra un punto de retorno en el historial; "Atrás" lo consume
+  // y cierra la tienda (mismo cierre que `onBack`) en vez de salir del sitio. Si la tienda se cierra por la UI, la entrada se retira.
+  useEffect(() => {
+    const onPopState = () => {
+      if (!storeHistoryRef.current) return;
+      storeHistoryRef.current = false;
+      setActiveMerchantId(null);
+      try { localStorage.removeItem('current_cart_store_id'); } catch { /* sin storage */ }
+    };
+    window.addEventListener('popstate', onPopState);
+    return () => window.removeEventListener('popstate', onPopState);
+  }, []);
+
+  useEffect(() => {
+    try {
+      if (activeMerchantId) {
+        if (!storeHistoryRef.current) {
+          window.history.pushState({ view: 'merchant-store' }, '', window.location.href);
+          storeHistoryRef.current = true;
+        }
+      } else if (storeHistoryRef.current) {
+        storeHistoryRef.current = false;
+        if (window.history.state?.view === 'merchant-store') window.history.back();
+      }
+    } catch { /* historial no disponible */ }
+  }, [activeMerchantId]);
 
   const [selectedCategory, setSelectedCategory] = useState<string>('ALL');
   const [searchQuery, setSearchQuery] = useState('');
