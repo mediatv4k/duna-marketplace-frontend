@@ -325,7 +325,17 @@ export default function CheckoutModal({
           unitFinalPrice
         },
         totalPrice: unitFinalPrice * cantNum,
-        variants: Array.isArray(item.variants) ? item.variants : [],
+        // Contrato: variantes SINGLE/SIMPLE viajan con objeto `selected` (sin arreglo `items`); MULTIPLE conserva `items`
+        variants: Array.isArray(item.variants)
+          ? item.variants.map((v: any) => {
+              if ((v?.type === 'SINGLE' || v?.type === 'SIMPLE') && Array.isArray(v?.items) && v.items.length > 0) {
+                const rest = { ...v };
+                delete rest.items;
+                return { ...rest, selected: { code: v.items[0]?.code, title: v.items[0]?.title, unitPrice: v.items[0]?.unitPrice } };
+              }
+              return v;
+            })
+          : [],
         promo: null
       };
     });
