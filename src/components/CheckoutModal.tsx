@@ -330,6 +330,10 @@ export default function CheckoutModal({
       };
     });
 
+    // Método de pago reconstruido desde la lista real del backend (no se envía el estado tal cual: solo code, value, field4, field5)
+    const metodoPagoReal = paymentMethods.find((m) => m === selectedMethod)
+      || paymentMethods.find((m) => m.code === selectedMethod?.code && m.value === selectedMethod?.value)
+      || selectedMethod;
     const osvaldoPayload = {
       id: null,
       data: itemsAdonis,
@@ -346,16 +350,16 @@ export default function CheckoutModal({
       customerName: nombre,
       customerDocument: `${tipoDocumento}${cedula}`,
       ftoken: '',
-      paymentRef: referenciaPago || null,
+      paymentRef: referenciaPago || "",
       totalPaidReferenceAmount: String(totalBolivares.toFixed(2)),
       totalPaidDefaultAmount: String(totalFinalUSD.toFixed(2)),
-      totalWithoutDiscount: String(totalFinalUSD.toFixed(2)),
-      paymentMethod: selectedMethod ? { code: selectedMethod?.code, value: selectedMethod?.value } : { code: 'PAGO', value: 'Banco' },
+      totalWithoutDiscount: (totalFinalUSD || (subtotalNeto + costoEnvio + propina)).toFixed(2),
+      paymentMethod: metodoPagoReal ? { code: metodoPagoReal.code, value: metodoPagoReal.value, field4: metodoPagoReal.field4, field5: metodoPagoReal.field5 } : { code: 'PAGO', value: 'Banco' },
       tip: propina.toFixed(2),
       store: { id: storeIdNum, phone: storePhoneStr },
       foodStoreId: String(storeIdNum),
-      couponId: null,
-      couponCode: null,
+      couponId: "",
+      couponCode: "",
       discountAmount: "0"
     };
 
