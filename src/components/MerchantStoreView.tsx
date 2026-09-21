@@ -447,8 +447,10 @@ export default function MerchantStoreView({
 
   // Piezas de la vista: se montan dentro del motor multiplantilla (nichos con plantilla) o directo (sin plantilla)
   const templateNiche = templateNicheFromStoreNiche(storeNiche);
+  // Diseño corporativo de escritorio (barra lateral + productos): solo plantilla farmacia
+  const sidebarLayout = templateNiche === 'farma';
   const heroNode = (
-        <div className="relative w-full h-52 lg:h-44 bg-slate-900 overflow-hidden">
+        <div className={`${sidebarLayout ? 'lg:hidden' : ''} relative w-full h-52 lg:h-44 bg-slate-900 overflow-hidden`}>
           {merchant.banner ? (
             <img src={merchant.banner} alt={merchant.name} className="w-full h-full object-cover" />
           ) : (
@@ -456,10 +458,12 @@ export default function MerchantStoreView({
           )}
           <div className="absolute inset-0 bg-gradient-to-t from-black/80 via-black/20 to-transparent" />
           <button
+            type="button"
             onClick={onBack}
-            className="absolute top-4 left-4 bg-black/60 hover:bg-black/80 text-white px-4 py-2 rounded-2xl text-xs font-black backdrop-blur-md transition cursor-pointer shadow-lg border border-white/10"
+            aria-label="Volver al inicio"
+            className="absolute top-4 right-4 z-20 bg-white/95 backdrop-blur-sm p-1.5 rounded-2xl shadow-md hover:scale-105 transition-transform duration-200 cursor-pointer"
           >
-            ← Volver al inicio
+            <img src="/images/duna-isologo.png" alt="D'una Marketplace" className="w-8 h-8 md:w-10 md:h-10 object-contain" />
           </button>
 
           <div className="absolute bottom-0 left-0 right-0 p-4 flex items-end gap-3">
@@ -479,8 +483,7 @@ export default function MerchantStoreView({
           </div>
         </div>
   );
-  // Diseño corporativo de escritorio (barra lateral + productos): solo plantilla farmacia. Todo con datos reales de la tienda.
-  const sidebarLayout = templateNiche === 'farma';
+  // Datos reales de la tienda para el diseño con barra lateral
   const storeWa = toWhatsAppNumber(merchant?.phone);
   const waHref = (text: string) => (storeWa ? `https://wa.me/${storeWa}?text=${encodeURIComponent(text)}` : null);
   const recipeHref = waHref(`Hola ${merchant.name}, quiero enviarles mi récipe médico.`);
@@ -846,6 +849,7 @@ export default function MerchantStoreView({
         subtotalUSD={subtotalUSD}
         onOpenCart={() => setIsCartOpen(true)}
         desktopSidebarLayout={sidebarLayout}
+        onBack={sidebarLayout ? onBack : undefined}
         selectedProduct={selectedProductDetail}
         isProductModalOpen={isMasterModalOpen}
         onCloseProductModal={() => setIsMasterModalOpen(false)}
