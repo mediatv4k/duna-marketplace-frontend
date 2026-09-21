@@ -43,6 +43,10 @@ export interface VariantSelectionPayload {
 // Etiquetas de precio extra para una cápsula. Solo presentación: no participa en ningún cálculo.
 // `isReplacement` = el precio de la opción reemplaza el precio base (pricingRole BASE), así que
 // se muestra sin el prefijo "+".
+// Grupo de casillas independientes (0/1): tipo CHECKIN del backend o marcado `checkbox` por la normalización. Único criterio en todo el modal,
+// sin depender de la pantalla ni del comercio. El contador (- 0 +) queda solo para los grupos MULTIPLE.
+const isCheckinGroup = (g: any): boolean => !!g?.checkbox || g?.selectType === 'CHECKIN';
+
 function getOptionPriceLabels(price: number, isReplacement: boolean, bcvRate: number | null) {
   if (!(price > 0)) return { priceLabel: null as string | null, bsLabel: null as string | null };
   return {
@@ -242,7 +246,7 @@ export default function MasterProductModal({
         // Inicializamos con soporte de cantidades o selección por defecto
         initialVars[gIndex] = g.options.map((opt: any, oIdx: number) => ({
           ...opt,
-          count: oIdx === 0 && !g.checkbox ? 1 : 0
+          count: oIdx === 0 && !isCheckinGroup(g) ? 1 : 0
         }));
       }
     });
@@ -270,7 +274,7 @@ export default function MasterProductModal({
           if (group.options?.length > 0) {
             initialVars[idx] = group.options.map((opt: any, oIdx: number) => ({
               ...opt,
-              count: oIdx === 0 && !group.checkbox ? 1 : 0
+              count: oIdx === 0 && !isCheckinGroup(group) ? 1 : 0
             }));
           }
         });
@@ -684,7 +688,7 @@ export default function MasterProductModal({
           variantsPayload.push({
             name: group.name || group.title,
             code: group.code,
-            type: (group.checkbox || group.selectType === 'CHECKIN') ? 'CHECKIN' : (group.selectType || 'MULTIPLE'),
+            type: isCheckinGroup(group) ? 'CHECKIN' : (group.selectType || 'MULTIPLE'),
             items
           });
         }
@@ -810,7 +814,7 @@ export default function MasterProductModal({
                         : null;
                       const currentCount = matchedItem ? (matchedItem.count || 0) : (opt.code === group.options[0]?.code ? 1 : 0);
 
-                      if (group.checkbox) {
+                      if (isCheckinGroup(group)) {
                         const { priceLabel, bsLabel } = getOptionPriceLabels(opt.price, false, bcvRate);
                         return (
                           <OptionCapsule
@@ -971,7 +975,7 @@ export default function MasterProductModal({
                                 const countVal = matched ? (matched.count || 0) : 0;
 
                                 const { priceLabel, bsLabel } = getOptionPriceLabels(opt.price, false, bcvRate);
-                                if (group.checkbox || group.selectType === 'CHECKIN') {
+                                if (isCheckinGroup(group)) {
                                   return (
                                     <OptionCapsule
                                       key={opt.code}
