@@ -77,6 +77,8 @@ export interface MerchantTemplateEngineProps {
   onOpenCart?: () => void;
   // Escritorio con barra lateral: contenedores max-w-7xl y los chips de categoría pasan solo a móvil (el padre dibuja "Departamentos")
   desktopSidebarLayout?: boolean;
+  // Botón "Volver" del navbar (solo escritorio): reemplaza al de la portada cuando ésta se oculta
+  onBack?: () => void;
 
   // Navbar corporativo (valores reales; si no hay dato, la píldora no se muestra)
   bcvRate?: number | null;
@@ -148,6 +150,7 @@ export default function MerchantTemplateEngine({
   children,
   onOpenCart,
   desktopSidebarLayout = false,
+  onBack,
   bcvRate,
   walletBalanceUSD,
   products,
@@ -302,7 +305,18 @@ export default function MerchantTemplateEngine({
       {/* ── Núcleo universal: Navbar corporativo (Wallet / BCV / carrito) ── */}
       <header className="sticky top-0 z-40 bg-white/95 backdrop-blur-md border-b border-gray-100 shadow-sm">
         <div className={`${desktopSidebarLayout ? 'max-w-7xl md:px-8' : 'max-w-4xl'} mx-auto px-4 py-3 flex items-center justify-between gap-3`}>
-          <h1 className="text-sm font-black text-slate-900 truncate">{merchantName || nicheConfig.label}</h1>
+          <div className="flex min-w-0 items-center gap-3">
+            {onBack && (
+              <button
+                type="button"
+                onClick={onBack}
+                className="hidden lg:flex shrink-0 items-center gap-1 rounded-full bg-slate-100 px-3 py-1.5 text-[11px] font-black text-slate-700 hover:bg-slate-200 transition cursor-pointer"
+              >
+                ← Volver al inicio
+              </button>
+            )}
+            <h1 className="text-sm font-black text-slate-900 truncate">{merchantName || nicheConfig.label}</h1>
+          </div>
           <div className="flex items-center gap-2 shrink-0">
             {!!bcvRate && bcvRate > 0 && (
               <span className="hidden sm:flex items-center gap-1.5 rounded-full bg-slate-100 px-3 py-1.5 text-[11px] font-bold text-slate-600">
@@ -334,7 +348,7 @@ export default function MerchantTemplateEngine({
       {hero}
 
       {/* ── Cabecera / filtros específicos del nicho + badges de confianza ── */}
-      <div className={`${desktopSidebarLayout ? 'max-w-7xl md:px-8' : 'max-w-4xl'} mx-auto px-4 pt-4 space-y-3`}>
+      <div className={`${desktopSidebarLayout ? 'max-w-7xl md:px-8 lg:hidden' : 'max-w-4xl'} mx-auto px-4 pt-4 space-y-3`}>
         {renderNicheHeader()}
         {nicheConfig.trustBadges.length > 0 && (
           <div className="flex items-center gap-2 overflow-x-auto no-scrollbar pb-1">
