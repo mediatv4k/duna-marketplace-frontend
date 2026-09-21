@@ -558,34 +558,54 @@ export default function MerchantStoreView({
               </h2>
             </div>
             
-            <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
-              {filteredProducts.map((product) => (
-                <div
-                  key={product.id || product.code}
-                  onClick={() => handleProductClick(product)}
-                  className="bg-white rounded-3xl p-4 border border-slate-100 shadow-sm hover:shadow-md hover:border-orange-200 transition-all duration-200 cursor-pointer flex gap-4 items-center group"
-                >
-                  <img
-                    src={product.image || 'https://images.unsplash.com/photo-1560008511-11c63416e52d'}
-                    alt={product.name}
-                    className="w-24 h-24 rounded-2xl object-cover shrink-0 group-hover:scale-105 transition duration-300 shadow-xs"
-                  />
-                  <div className="flex-1 min-w-0">
-                    <span className="text-[9px] font-black uppercase tracking-wider text-[#fe6712] bg-orange-50 px-2 py-0.5 rounded-md inline-block mb-1">
-                      {product.category || 'GENERAL'}
-                    </span>
-                    <h3 className="text-sm font-black text-slate-900 truncate group-hover:text-[#fe6712] transition">{product.name}</h3>
-                    <p className="text-[11px] text-slate-500 line-clamp-1 mt-0.5">{product.description || 'Producto verificado de calidad garantizada.'}</p>
-                    
-                    <div className="flex items-center justify-between mt-3">
-                      <span className="text-sm font-black text-slate-950">${(product.price || 1.5).toFixed(2)}</span>
-                      <span className="text-[10px] font-black text-[#fe6712] bg-orange-50 px-3 py-1.5 rounded-xl group-hover:bg-[#fe6712] group-hover:text-white transition shadow-2xs">
-                        Personalizar →
-                      </span>
+            <div className="grid grid-cols-2 sm:grid-cols-2 md:grid-cols-3 lg:grid-cols-4 gap-3 md:gap-4">
+              {filteredProducts.map((product) => {
+                // Insignia solo si el backend trae el dato (hoy los productos no incluyen marca oficial / genérico)
+                const badge = product.isOfficialBrand
+                  ? { label: 'MARCA OFICIAL', className: 'bg-blue-100 text-blue-700' }
+                  : product.isGeneric
+                    ? { label: 'GENÉRICO', className: 'bg-emerald-100 text-emerald-700' }
+                    : null;
+                return (
+                  <div
+                    key={product.id || product.code}
+                    onClick={() => handleProductClick(product)}
+                    className="relative bg-white rounded-2xl p-3 border border-slate-100 shadow-sm flex flex-col justify-between cursor-pointer"
+                  >
+                    <div>
+                      {badge && (
+                        <span className={`absolute top-2 left-2 px-2 py-0.5 rounded-md text-[8px] font-bold ${badge.className}`}>{badge.label}</span>
+                      )}
+                      <div className="w-full h-24 md:h-32 flex items-center justify-center mb-2 mt-4">
+                        <img
+                          src={product.image || 'https://images.unsplash.com/photo-1560008511-11c63416e52d'}
+                          alt={product.name}
+                          className="max-h-full max-w-full object-contain"
+                        />
+                      </div>
+                      <p className="text-[8px] text-slate-400 uppercase tracking-wide mb-0.5">
+                        {product.brand || product.laboratory || product.category || 'GENERAL'}
+                      </p>
+                      <h3 className="text-xs md:text-sm font-bold text-slate-800 line-clamp-2 leading-tight">{product.name}</h3>
+                      {product.internalCategory && (
+                        <p className="text-[9px] font-semibold text-brand-orange mt-0.5">{product.internalCategory}</p>
+                      )}
+                    </div>
+                    <div>
+                      <div className="flex justify-between items-end mt-2">
+                        <span className="text-base md:text-lg font-black text-slate-900">${(product.price || 1.5).toFixed(2)}</span>
+                        <span className="text-[9px] text-slate-400 hover:text-brand-orange cursor-pointer">Ver Ficha</span>
+                      </div>
+                      <button
+                        type="button"
+                        className="w-full mt-3 bg-slate-50 hover:bg-slate-100 text-slate-700 text-xs font-bold py-2.5 rounded-xl transition flex items-center justify-center gap-1"
+                      >
+                        + Agregar
+                      </button>
                     </div>
                   </div>
-                </div>
-              ))}
+                );
+              })}
             </div>
           </div>
     </>

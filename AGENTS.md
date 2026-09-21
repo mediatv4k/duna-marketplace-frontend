@@ -353,7 +353,7 @@ Orden visual de arriba hacia abajo:
    si la promo no trae `productHash`, no hace nada.
 5. **Tabs de categoría** derivados de `products.map(p => p.category)` (únicos, en orden de
    aparición, "Otros" si falta la categoría). Se combinan (AND) con el buscador de texto.
-6. **Buscador** y grilla de productos.
+6. **Buscador** y grilla de productos. **Tarjeta de producto (2026-09-21):** grilla `grid-cols-2 md:grid-cols-3 lg:grid-cols-4` con tarjeta vertical (imagen `object-contain`, etiqueta superior = `brand`/`laboratory` si existen, si no `category`; título; subcategoría = `internalCategory` en `text-brand-orange`; precio; "Ver Ficha"; botón "+ Agregar"). El `onClick` del contenedor sigue siendo `handleProductClick` (abre el modal maestro): "Ver Ficha" y "+ Agregar" no tienen handler propio, disparan ese mismo clic por propagación. La insignia (Marca Oficial azul / Genérico verde) solo se dibuja si el producto trae `isOfficialBrand` / `isGeneric`: hoy el backend no envía esos datos, por eso no aparece. `tailwind.config.js` define el color `brand-orange` (`#fe6712`).
 - `src/components/MasterProductModal.tsx` implementa **combos por ranuras estilo Mostaza**:
   - `ComboSlot`, `slotGroups`, `slotsCount`/`slots` definen cuántas "ranuras" tiene un combo
     y qué grupos de variantes puede tener cada ranura.
