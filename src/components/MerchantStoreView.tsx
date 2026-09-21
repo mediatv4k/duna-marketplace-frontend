@@ -652,7 +652,7 @@ export default function MerchantStoreView({
 
       {/* Catálogo: barra lateral + productos */}
       <div className="grid grid-cols-1 lg:grid-cols-4 gap-8">
-        <aside className="hidden lg:block lg:col-span-1 space-y-6">
+        <aside className="hidden lg:block lg:col-span-1 space-y-6 sticky top-24 self-start max-h-[calc(100vh-6rem)] overflow-y-auto no-scrollbar">
           {recipeHref && (
             <a
               href={recipeHref}

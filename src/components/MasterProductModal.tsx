@@ -72,7 +72,7 @@ function OptionCapsule({ name, image, priceLabel, bsLabel, count, mode, onSelect
   const isActive = count > 0;
   const shell = `w-full rounded-2xl border p-2.5 transition-all duration-150 ${
     isActive
-      ? 'border-[#fe6712] bg-[#fff5ed] ring-1 ring-[#fe6712]/30 shadow-sm'
+      ? 'border-[#fe6712] bg-white ring-1 ring-[#fe6712]/30 shadow-sm'
       : 'border-slate-200 bg-white hover:border-slate-300'
   }`;
 
@@ -84,9 +84,9 @@ function OptionCapsule({ name, image, priceLabel, bsLabel, count, mode, onSelect
       <div className="min-w-0 flex-1">
         <span className="block text-xs font-bold text-slate-800 leading-tight line-clamp-2">{name}</span>
         {priceLabel ? (
-          <span className="mt-1 inline-flex items-center gap-1 rounded-full bg-orange-100/80 px-2 py-0.5 text-[10px] font-black text-[#fe6712]">
+          <span className="mt-1 inline-flex items-baseline gap-1.5 text-sm font-black text-[#fe6712]">
             {priceLabel}
-            {bsLabel && <span className="font-bold text-slate-500">· {bsLabel}</span>}
+            {bsLabel && <span className="text-xs font-bold text-slate-500">· {bsLabel}</span>}
           </span>
         ) : (
           <span className="mt-1 block text-[10px] font-black text-emerald-600">Incluido</span>
