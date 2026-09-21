@@ -6,11 +6,29 @@ import {
   Bike, PackageCheck, Receipt, Printer, DollarSign, FileText
 } from 'lucide-react';
 import { getOrderPublic } from '@/services/marketplaceService';
-import { FINAL_STATUSES, getTrackingState } from '@/lib/orderTracking';
+import { FINAL_STATUSES, getTrackingState, sortHistoryDesc } from '@/lib/orderTracking';
 import { useArrivalAlert } from '@/lib/useArrivalAlert';
 import OrderTimelinePanel from './OrderTimelinePanel';
 
 const POLL_INTERVAL_MS = 10000; // refresco automático cada 10 s (el ciclo ya existente en el efecto de fetchOrder, con limpieza en el return)
+
+// Historial derivado SOLO para la vista: agrega el paso sintético "Pago verificado exitosamente" justo después de los estados
+// iniciales (Inicia / Solicitud completa), con la fecha del paso siguiente y un id intermedio para que el orden (desc) sea coherente.
+function withPaymentVerifiedStep(history: any[]): any[] {
+  const asc = sortHistoryDesc(history).reverse();
+  if (asc.length === 0 || asc.some((h) => h?.synthetic)) return history;
+  let anchorIdx = -1;
+  asc.forEach((h, i) => { if (/^(inicia|solicitud completa)/i.test(String(h?.status ?? '').trim())) anchorIdx = i; });
+  const prev = asc[anchorIdx];
+  const next = asc[anchorIdx + 1];
+  const step = {
+    id: next ? Number(next.id || 0) - 0.5 : Number(prev?.id || 0) + 0.5,
+    status: 'Pago verificado exitosamente',
+    date: next?.date || prev?.date || asc[0].date,
+    synthetic: true,
+  };
+  return [...asc.slice(0, anchorIdx + 1), step, ...asc.slice(anchorIdx + 1)];
+}
 
 interface OrderTrackingModalProps {
   isOpen: boolean;
@@ -154,6 +172,8 @@ export default function OrderTrackingModal({ isOpen, onClose, orderId, orderSumm
   // Inferencia de pago: status/paid REALES del backend (remote), no el estado local del checkout. Si el comercio avanza el pedido
   // (status distinto de los iniciales) se infiere pago validado; cancelado/rechazado/error NO cuentan como pago verificado.
   const isPaymentVerified = remote?.paid === true || (!!remote?.status && !['REQUESTED_BEGIN', 'REQUESTED_END', 'CANCELLED', 'REJECTED', 'ERROR'].includes(String(remote.status).toUpperCase()));
+  // Vista del timeline: con el pago inferido como verificado se agrega el escalón "Pago verificado exitosamente"
+  const remoteView = (remote && isPaymentVerified && Array.isArray(remote.history)) ? { ...remote, history: withPaymentVerifiedStep(remote.history) } : remote;
   const DIVIDER = '-'.repeat(40);
 
   return (
@@ -355,7 +375,7 @@ export default function OrderTrackingModal({ isOpen, onClose, orderId, orderSumm
 
               {/* VISTA 2: SEGUIMIENTO ORIGINAL (TIMELINE) */}
               {activeTab === 'TRACKING' && (
-                <OrderTimelinePanel remote={remote} trackingError={trackingError} />
+                <OrderTimelinePanel remote={remoteView} trackingError={trackingError} />
               )}
 
               {/* VISTA 3: RECIBO DEL CLIENTE */}
