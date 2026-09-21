@@ -7,6 +7,8 @@ export const runtime = 'nodejs';
 export const dynamic = 'force-dynamic';
 
 const MAX_INPUT_CHARS = 500;
+const MAX_MENU_CONTEXT_CHARS = 1500; // el catálogo y el carrito vienen del navegador: se acotan para no saturar tokens
+const MAX_CART_CONTEXT_CHARS = 700;
 
 const SYSTEM_INSTRUCTION =
   "Eres Mercedes, la vendedora estrella del ecosistema D'una en Cabimas. Tu único objetivo es guiar al usuario a comprar de forma rápida, persuasiva y sin fricciones.\n" +
@@ -16,6 +18,8 @@ const SYSTEM_INSTRUCTION =
   '3. Si te piden sugerencias, recomienda los productos con entusiasmo.\n' +
   '4. MANEJO DE OBJECIONES: Si el cliente hace preguntas médicas (ej. dolores de estómago) o temas fuera de contexto, NUNCA te niegues de forma robótica. Usa el humor comercial para redirigir. ' +
   "(Ejemplo: '¡Uy, no soy doctora, pero te aseguro que algo rico de nuestro menú te alegrará el alma! ¿Qué te provoca hoy?').\n" +
+  '5. MODO SILENCIOSO: Si el usuario expresa frustración, te pide que te calles, que lo dejes en paz, o indica explícitamente que prefiere comprar sin asistencia manual, despídete de forma muy cortés y respetuosa, e incluye EXACTAMENTE al final de tu respuesta la etiqueta `[MUTE_ASSISTANT]`. ' +
+  "Ejemplo: 'Entendido, te dejo hacer tu pedido a tu ritmo. ¡Buen provecho! [MUTE_ASSISTANT]'\n" +
   'Jamás rompas tu personaje de vendedora Mercedes.';
 
 // Filtros relajados: el asistente es de ventas y no debe devolver 502 por preguntas cotidianas que el filtro por defecto marca como sensibles
@@ -33,9 +37,14 @@ export async function POST(request: Request) {
   }
 
   let message = '';
+  let menuContext = '';
+  let cartContext = '';
   try {
     const body = await request.json();
-    message = typeof body?.message === 'string' ? body.message.trim() : '';
+    const raw = typeof body?.prompt === 'string' ? body.prompt : body?.message;
+    message = typeof raw === 'string' ? raw.trim() : '';
+    menuContext = typeof body?.menuContext === 'string' ? body.menuContext.trim().slice(0, MAX_MENU_CONTEXT_CHARS) : '';
+    cartContext = typeof body?.cartContext === 'string' ? body.cartContext.trim().slice(0, MAX_CART_CONTEXT_CHARS) : '';
   } catch {
     return NextResponse.json({ success: false, error: 'Solicitud inválida' }, { status: 400 });
   }
@@ -52,7 +61,9 @@ export async function POST(request: Request) {
       safetySettings: safetySettings,
       generationConfig: { maxOutputTokens: 300, temperature: 0.6 },
     });
-    const result = await model.generateContent(message);
+    // Visión periférica: el catálogo y el carrito viajan pegados al mensaje, sin que el usuario los vea
+    const finalPrompt = `[CONTEXTO INVISIBLE PARA MERCEDES: Catálogo disponible: ${menuContext || 'No especificado'}. Carrito actual del usuario: ${cartContext || 'Vacío'}]. Mensaje del usuario: ${message}`;
+    const result = await model.generateContent(finalPrompt);
     const reply = result.response.text().trim();
     if (!reply) {
       return NextResponse.json({ success: false, error: 'Sin respuesta del asistente' }, { status: 502 });

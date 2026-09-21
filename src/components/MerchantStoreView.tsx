@@ -713,6 +713,22 @@ export default function MerchantStoreView({
       {catalogNode}
     </>
   );
+  // Contexto para el asistente (solo lectura, texto corto): catálogo "Nombre ($precio), ..." y carrito "2x Nombre ($total), ... Total: $X".
+  const assistantMenuContext = products
+    .filter((p: any) => p?.name && Number(p?.price) > 0)
+    .slice(0, 25)
+    .map((p: any) => `${String(p.name).trim().slice(0, 40)} ($${Number(p.price).toFixed(2)})`)
+    .join(', ');
+  const assistantCartContext = cartItems.length === 0
+    ? ''
+    : cartItems
+        .map((item: any) => {
+          const qty = item.qty || item.quantity || 1;
+          const line = item.totalPrice || (item.price || 0) * qty;
+          return `${qty}x ${String(item.name || 'Producto').trim().slice(0, 40)} ($${Number(line).toFixed(2)})`;
+        })
+        .join(', ') + `. Total: $${subtotalUSD.toFixed(2)}`;
+
   const overlaysNode = (
     <>
         {cartItems.length > 0 && (
@@ -809,7 +825,7 @@ export default function MerchantStoreView({
         />
 
         {/* Asistente de recuperación (aislado): vigila la inactividad de toda la tienda */}
-        <SalesRecoveryAssistant />
+        <SalesRecoveryAssistant menuContext={assistantMenuContext} cartContext={assistantCartContext} />
     </>
   );
 

@@ -13,6 +13,9 @@ const IDLE_MS = 15000;
 const ACTIVITY_EVENTS: (keyof WindowEventMap)[] = ['mousemove', 'touchstart', 'keydown', 'scroll'];
 const GREETING = 'Hola, ¿te puedo ayudar con esta fase y dirigirte en el proceso hasta que hagas tu compra?';
 
+const MUTE_TAG = '[MUTE_ASSISTANT]';
+const MUTE_STORAGE_KEY = 'duna_assistant_muted'; // silencio para el resto de la sesión (sessionStorage)
+
 type Phase = 'idle' | 'listening' | 'thinking' | 'speaking';
 
 const PHASE_LABEL: Record<Phase, string> = {
@@ -25,6 +28,8 @@ const PHASE_LABEL: Record<Phase, string> = {
 interface SalesRecoveryAssistantProps {
   idleMs?: number;
   onAccept?: () => void; // acción extra opcional al aceptar la ayuda
+  menuContext?: string; // catálogo resumido de la tienda actual (lo arma el padre; el asistente no lee el catálogo)
+  cartContext?: string; // carrito actual resumido (lo arma el padre; el asistente no lee ni toca el carrito)
 }
 
 function speak(text: string, onEnd: () => void): boolean {
@@ -44,18 +49,23 @@ function speak(text: string, onEnd: () => void): boolean {
   }
 }
 
-export default function SalesRecoveryAssistant({ idleMs = IDLE_MS, onAccept }: SalesRecoveryAssistantProps) {
+export default function SalesRecoveryAssistant({ idleMs = IDLE_MS, onAccept, menuContext, cartContext }: SalesRecoveryAssistantProps) {
   const [isIdle, setIsIdle] = useState(false);
   const [chatOpen, setChatOpen] = useState(false);
   const [phase, setPhase] = useState<Phase>('idle');
   const [bubble, setBubble] = useState('');
   const [notice, setNotice] = useState('');
   const [canListen, setCanListen] = useState(false);
+  const [muted, setMuted] = useState(false); // el cliente prefiere comprar solo: el asistente desaparece el resto de la sesión
+  const [farewell, setFarewell] = useState(false); // despedida en curso: micrófono deshabilitado hasta que se oculte
   const timerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
   const hasSpokenRef = useRef(false);
   const recognitionRef = useRef<any>(null);
   const abortRef = useRef<AbortController | null>(null);
   const aliveRef = useRef(true);
+  // El último contexto siempre disponible para `ask` sin recrear el callback en cada cambio del carrito
+  const contextRef = useRef({ menuContext, cartContext });
+  contextRef.current = { menuContext, cartContext };
 
   const restartTimer = useCallback(() => {
     if (timerRef.current) clearTimeout(timerRef.current);
@@ -65,13 +75,22 @@ export default function SalesRecoveryAssistant({ idleMs = IDLE_MS, onAccept }: S
   // Inactividad: cualquier actividad reinicia la cuenta. El widget, una vez visible, solo se cierra con la X
   // (si se ocultara al mover el mouse, el usuario no podría alcanzar el botón).
   useEffect(() => {
+    if (muted) return;
     restartTimer();
     ACTIVITY_EVENTS.forEach((ev) => window.addEventListener(ev, restartTimer, { passive: true }));
     return () => {
       ACTIVITY_EVENTS.forEach((ev) => window.removeEventListener(ev, restartTimer));
       if (timerRef.current) clearTimeout(timerRef.current);
     };
-  }, [restartTimer]);
+  }, [restartTimer, muted]);
+
+  useEffect(() => {
+    try {
+      if (sessionStorage.getItem(MUTE_STORAGE_KEY) === '1') setMuted(true);
+    } catch {
+      /* sin sessionStorage */
+    }
+  }, []);
 
   useEffect(() => {
     try {
@@ -84,7 +103,7 @@ export default function SalesRecoveryAssistant({ idleMs = IDLE_MS, onAccept }: S
 
   // Voz nativa: solo la primera vez que el usuario queda inactivo
   useEffect(() => {
-    if (!isIdle || hasSpokenRef.current) return;
+    if (muted || !isIdle || hasSpokenRef.current) return;
     hasSpokenRef.current = true;
     try {
       if (typeof window === 'undefined' || !('speechSynthesis' in window)) return;
@@ -96,7 +115,7 @@ export default function SalesRecoveryAssistant({ idleMs = IDLE_MS, onAccept }: S
     } catch {
       /* el navegador bloqueó la síntesis de voz */
     }
-  }, [isIdle]);
+  }, [isIdle, muted]);
 
   const stopEverything = useCallback(() => {
     try { recognitionRef.current?.abort(); } catch { /* sin reconocimiento activo */ }
@@ -119,6 +138,12 @@ export default function SalesRecoveryAssistant({ idleMs = IDLE_MS, onAccept }: S
     };
   }, [stopEverything]);
 
+  // Silencio definitivo (resto de la sesión): corta voz/escucha/petición y oculta toda la interfaz
+  const muteNow = useCallback(() => {
+    stopEverything();
+    setMuted(true);
+  }, [stopEverything]);
+
   const ask = useCallback(async (text: string) => {
     setPhase('thinking');
     setNotice('');
@@ -128,12 +153,22 @@ export default function SalesRecoveryAssistant({ idleMs = IDLE_MS, onAccept }: S
       const res = await fetch('/api/assistant', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ message: text }),
+        body: JSON.stringify({ message: text, menuContext: contextRef.current.menuContext, cartContext: contextRef.current.cartContext }),
         signal: controller.signal,
       });
       const data = await res.json().catch(() => null);
       if (!aliveRef.current) return;
-      const reply = typeof data?.reply === 'string' ? data.reply.trim() : '';
+      const rawReply = typeof data?.reply === 'string' ? data.reply : '';
+      const wantsMute = res.ok && rawReply.includes(MUTE_TAG);
+      // La etiqueta es una señal interna: nunca se muestra ni se lee en voz alta
+      const reply = rawReply.split(MUTE_TAG).join('').trim();
+      if (wantsMute) {
+        try { sessionStorage.setItem(MUTE_STORAGE_KEY, '1'); } catch { /* sin sessionStorage */ }
+      }
+      if (wantsMute && !reply) {
+        muteNow();
+        return;
+      }
       if (!res.ok || !reply) {
         setBubble('');
         setNotice(data?.error || 'No pude responder ahora. Intenta de nuevo.');
@@ -141,18 +176,28 @@ export default function SalesRecoveryAssistant({ idleMs = IDLE_MS, onAccept }: S
         return;
       }
       setBubble(reply);
+      if (wantsMute) setFarewell(true);
       setPhase('speaking');
-      const started = speak(reply, () => { if (aliveRef.current) setPhase('idle'); });
-      if (!started) setPhase('idle');
+      // Con despedida, la interfaz se oculta cuando termina de hablar (o a los 4 s si el navegador no tiene voz)
+      const started = speak(reply, () => {
+        if (!aliveRef.current) return;
+        setPhase('idle');
+        if (wantsMute) muteNow();
+      });
+      if (!started) {
+        setPhase('idle');
+        if (wantsMute) setTimeout(() => { if (aliveRef.current) muteNow(); }, 4000);
+      }
     } catch (e: any) {
       if (!aliveRef.current || e?.name === 'AbortError') return;
       setBubble('');
       setNotice('No pude conectarme. Intenta de nuevo.');
       setPhase('idle');
     }
-  }, []);
+  }, [muteNow]);
 
   const toggleMic = () => {
+    if (farewell) return;
     try {
       if (phase === 'listening') {
         recognitionRef.current?.stop();
@@ -219,7 +264,7 @@ export default function SalesRecoveryAssistant({ idleMs = IDLE_MS, onAccept }: S
     restartTimer();
   };
 
-  if (!isIdle) return null;
+  if (muted || !isIdle) return null;
 
   return (
     <div
@@ -266,7 +311,8 @@ export default function SalesRecoveryAssistant({ idleMs = IDLE_MS, onAccept }: S
                 onClick={toggleMic}
                 aria-label={phase === 'listening' ? 'Dejar de escuchar' : phase === 'idle' ? 'Hablar con el asistente' : 'Detener'}
                 aria-pressed={phase === 'listening'}
-                className={`flex h-11 w-11 shrink-0 items-center justify-center rounded-full transition cursor-pointer ${
+                disabled={farewell}
+                className={`flex h-11 w-11 shrink-0 items-center justify-center rounded-full transition cursor-pointer disabled:cursor-default disabled:opacity-60 ${
                   phase === 'listening'
                     ? 'bg-[#fe6712] text-white animate-pulse shadow-md shadow-orange-500/30'
                     : phase === 'idle'
