@@ -12,6 +12,7 @@ import { detectStoreNiche, getModalEngine, getNicheConfig } from '@/lib/nicheCon
 import { getNicheIcon, getBadgeColorClasses } from '@/lib/nicheIcons';
 import MerchantTemplateEngine, { templateNicheFromStoreNiche } from './MerchantTemplateEngine';
 import { toWhatsAppNumber } from '@/lib/orderTracking';
+import SalesRecoveryAssistant from './SalesRecoveryAssistant';
 
 // Regla del contrato: el backend no presta servicio de delivery a más de 12 km
 const MAX_DELIVERY_KM = 12;
@@ -830,6 +831,9 @@ export default function MerchantStoreView({
             setIsPickerOpen(false);
           }}
         />
+
+        {/* Asistente de recuperación (aislado): vigila la inactividad de toda la tienda */}
+        <SalesRecoveryAssistant />
     </>
   );
 
