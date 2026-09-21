@@ -713,12 +713,35 @@ export default function MerchantStoreView({
       {catalogNode}
     </>
   );
-  // Contexto para el asistente (solo lectura, texto corto): catálogo "Nombre ($precio), ..." y carrito "2x Nombre ($total), ... Total: $X".
-  const assistantMenuContext = products
-    .filter((p: any) => p?.name && Number(p?.price) > 0)
-    .slice(0, 25)
-    .map((p: any) => `${String(p.name).trim().slice(0, 40)} ($${Number(p.price).toFixed(2)})`)
-    .join(', ');
+  // Contexto para el asistente (solo lectura, texto corto): catálogo (ver abajo) y carrito "2x Nombre ($total), ... Total: $X".
+  // Menú para el asistente: "Nombre (detalle) ($precio)", solo productos con stock, sin recortes a la mitad: se agregan entradas completas
+  // hasta llenar ~1500 caracteres (el tope del backend). El detalle sale de las variantes/opciones si el producto las trae y, si no, de `description`
+  // (p. ej. "1 Litro"); los sabores de cada producto solo vienen en su detalle (`getProduct`), que no se consulta aquí para no hacer decenas de peticiones.
+  const assistantMenuContext = (() => {
+    const MAX_CHARS = 1500;
+    const parts: string[] = [];
+    let total = 0;
+    for (const p of products as any[]) {
+      if (!p?.name || !(Number(p?.price) > 0) || p?.outOfStock === true) continue;
+      const name = String(p.name).trim(); // sin corte por nombre: el tope es el total del texto
+      // `metadata.variants` (grupos con `items[].title`); se omiten las opciones INACTIVE (sin stock)
+      const groups = Array.isArray(p.metadata?.variants) ? p.metadata.variants : Array.isArray(p.variants) ? p.variants : [];
+      const flavors = groups
+        .flatMap((g: any) => g?.items || g?.options || g?.values || [])
+        .filter((it: any) => it?.status !== 'INACTIVE')
+        .map((it: any) => String(it?.title || it?.name || it?.label || '').trim())
+        .filter(Boolean)
+        .slice(0, 8);
+      const desc = String(p.description || '').replace(/\s+/g, ' ').trim().slice(0, 60);
+      const detail = flavors.length > 0 ? `Opciones: ${flavors.join(', ')}` : desc && desc.toLowerCase() !== name.toLowerCase() ? desc : '';
+      const entry = `${name}${detail ? ` (${detail})` : ''} ($${Number(p.price).toFixed(2)})`;
+      if (total + entry.length + 2 > MAX_CHARS) break;
+      parts.push(entry);
+      total += entry.length + 2;
+    }
+    return parts.join(', ');
+  })();
+
   const assistantCartContext = cartItems.length === 0
     ? ''
     : cartItems
