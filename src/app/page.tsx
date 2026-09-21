@@ -293,7 +293,20 @@ export default function MultitiendaHub() {
           }}
         />
 
-        <OrderTrackingModal isOpen={isTrackingOpen} onClose={() => setIsTrackingOpen(false)} orderId={activeOrderId} orderSummary={orderSummaryData} />
+        {/* Botón flotante persistente en la tienda: recupera el seguimiento cuando el modal está cerrado (el id de la orden vive en savedOrderId) */}
+        {savedOrderId && !savedOrderFinal && !isTrackingOpen && (
+          <div className="fixed bottom-24 right-4 md:bottom-6 md:right-6 z-50">
+            <button
+              type="button"
+              onClick={() => setIsTrackingOpen(true)}
+              className="bg-[#fe6712] hover:bg-amber-600 text-white font-black px-5 py-3 rounded-full shadow-2xl flex items-center gap-2 animate-bounce border-2 border-white cursor-pointer"
+            >
+              🛵 Ver mi Pedido
+            </button>
+          </div>
+        )}
+
+        <OrderTrackingModal isOpen={isTrackingOpen} onClose={() => setIsTrackingOpen(false)} orderId={savedOrderId || activeOrderId} orderSummary={orderSummaryData} />
       </>
     );
   }
