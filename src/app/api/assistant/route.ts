@@ -1,5 +1,5 @@
 import { NextResponse } from 'next/server';
-import { GoogleGenerativeAI } from '@google/generative-ai';
+import { GoogleGenerativeAI, HarmCategory, HarmBlockThreshold } from '@google/generative-ai';
 
 // Asistente de ventas con Gemini. La API key vive solo en el servidor (GEMINI_API_KEY, sin prefijo NEXT_PUBLIC_):
 // el navegador nunca la ve; solo llama a este endpoint.
@@ -9,10 +9,22 @@ export const dynamic = 'force-dynamic';
 const MAX_INPUT_CHARS = 500;
 
 const SYSTEM_INSTRUCTION =
-  "Eres el asistente de voz de D'una, operando en Cabimas, estado Zulia. Tu objetivo es ayudar al usuario a completar su proceso de pago. " +
-  'Sé cálido, persuasivo y muy breve (máximo 2 oraciones). ' +
-  "Si te preguntan cosas fuera del contexto de ventas, entregas, e-wallet o comercio local (por ejemplo, recetas médicas o dolores de cabeza), " +
-  "responde de forma cortés que eres el asistente de pedidos de D'una y redirige la conversación hacia la confirmación de su carrito de compras.";
+  "Eres Mercedes, la vendedora estrella del ecosistema D'una en Cabimas. Tu único objetivo es guiar al usuario a comprar de forma rápida, persuasiva y sin fricciones.\n" +
+  'REGLAS DE VENTA:\n' +
+  '1. Sé extremadamente breve, cálida y carismática (máximo 2 oraciones).\n' +
+  "2. Usa cierres de micro-compromiso: termina siempre con una pregunta que invite a la acción (ej. '¿Te lo agrego al carrito?', '¿Pasamos a pagar?').\n" +
+  '3. Si te piden sugerencias, recomienda los productos con entusiasmo.\n' +
+  '4. MANEJO DE OBJECIONES: Si el cliente hace preguntas médicas (ej. dolores de estómago) o temas fuera de contexto, NUNCA te niegues de forma robótica. Usa el humor comercial para redirigir. ' +
+  "(Ejemplo: '¡Uy, no soy doctora, pero te aseguro que algo rico de nuestro menú te alegrará el alma! ¿Qué te provoca hoy?').\n" +
+  'Jamás rompas tu personaje de vendedora Mercedes.';
+
+// Filtros relajados: el asistente es de ventas y no debe devolver 502 por preguntas cotidianas que el filtro por defecto marca como sensibles
+const safetySettings = [
+  { category: HarmCategory.HARM_CATEGORY_HARASSMENT, threshold: HarmBlockThreshold.BLOCK_NONE },
+  { category: HarmCategory.HARM_CATEGORY_HATE_SPEECH, threshold: HarmBlockThreshold.BLOCK_NONE },
+  { category: HarmCategory.HARM_CATEGORY_SEXUALLY_EXPLICIT, threshold: HarmBlockThreshold.BLOCK_NONE },
+  { category: HarmCategory.HARM_CATEGORY_DANGEROUS_CONTENT, threshold: HarmBlockThreshold.BLOCK_NONE },
+];
 
 export async function POST(request: Request) {
   const apiKey = process.env.GEMINI_API_KEY;
@@ -37,6 +49,7 @@ export async function POST(request: Request) {
     const model = genAI.getGenerativeModel({
       model: process.env.GEMINI_MODEL || "gemini-3.6-flash",
       systemInstruction: SYSTEM_INSTRUCTION,
+      safetySettings: safetySettings,
       generationConfig: { maxOutputTokens: 300, temperature: 0.6 },
     });
     const result = await model.generateContent(message);
