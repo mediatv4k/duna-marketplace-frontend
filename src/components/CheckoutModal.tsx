@@ -142,12 +142,12 @@ export default function CheckoutModal({
     getStorePaymentInfo(storeId).then((res) => {
       setLoadingPaymentInfo(false);
       if (res && res?.code === 1 && res?.data) {
-        const methods: PaymentConfigItem[] = res.data.paymentConfig || [];
+        const methods: PaymentConfigItem[] = res?.data?.paymentConfig || [];
         setPaymentMethods(methods);
         if (methods.length > 0) {
           setSelectedMethod(methods[0]);
         }
-        const officialRate = Number(res.data.store?.referenceRateValue);
+        const officialRate = Number(res?.data?.store?.referenceRateValue);
         if (Number.isFinite(officialRate) && officialRate > 0) {
           setLiveRateBcv(officialRate);
         }
@@ -354,7 +354,7 @@ export default function CheckoutModal({
       totalPaidReferenceAmount: String(totalBolivares.toFixed(2)),
       totalPaidDefaultAmount: String(totalFinalUSD.toFixed(2)),
       totalWithoutDiscount: (totalFinalUSD || (subtotalNeto + costoEnvio + propina)).toFixed(2),
-      paymentMethod: metodoPagoReal ? { code: metodoPagoReal.code, value: metodoPagoReal.value, field4: metodoPagoReal.field4, field5: metodoPagoReal.field5 } : { code: 'PAGO', value: 'Banco' },
+      paymentMethod: metodoPagoReal ? { code: metodoPagoReal.code, value: metodoPagoReal.value } : { code: 'PAGO', value: 'Banco' },
       tip: propina.toFixed(2),
       store: { id: storeIdNum, phone: storePhoneStr },
       foodStoreId: String(storeIdNum),
@@ -369,8 +369,8 @@ export default function CheckoutModal({
       const response = await submitPurchaseOrder(osvaldoPayload, archivoComprobante);
 
       if (response && (response?.code === 1 || response?.code === 200 || response?.code === 201)) {
-        const resolvedId = (response.data as { id?: string | number } | undefined)?.id
-          ? String((response.data as { id?: string | number }).id)
+        const resolvedId = (response?.data as { id?: string | number } | undefined)?.id
+          ? String((response?.data as { id?: string | number }).id)
           : generatedOrderId;
 
         onFinalizeOrder({
@@ -397,7 +397,7 @@ export default function CheckoutModal({
           status: 'pendiente'
         });
 
-        const created = response.data as { id?: string | number; order_number?: string | number; orderNumber?: string | number } | undefined;
+        const created = response?.data as { id?: string | number; order_number?: string | number; orderNumber?: string | number } | undefined;
         setNumeroOrden(String(created?.order_number ?? created?.orderNumber ?? created?.id ?? ''));
         setOrdenCreada(true);
         // Compra registrada: la bolsa se vacía de inmediato (localStorage + estado de la tienda vía evento)
