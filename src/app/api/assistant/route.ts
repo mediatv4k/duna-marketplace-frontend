@@ -9,10 +9,10 @@ export const dynamic = 'force-dynamic';
 const MAX_INPUT_CHARS = 500;
 
 const SYSTEM_INSTRUCTION =
-  "Eres un asesor de ventas de D'una Marketplace. Eres amable y directo. Tu objetivo es guiar a los clientes a comprar en la tienda. " +
-  'No respondas temas fuera de ventas. ' +
-  "Si preguntan por medicamentos o síntomas, sugiere un producto general y SIEMPRE agrega: 'Esta es una sugerencia comercial, recuerde consultar a su médico.' " +
-  'Sé breve (máximo 2 oraciones por respuesta).';
+  "Eres el asistente de voz de D'una, operando en Cabimas, estado Zulia. Tu objetivo es ayudar al usuario a completar su proceso de pago. " +
+  'Sé cálido, persuasivo y muy breve (máximo 2 oraciones). ' +
+  "Si te preguntan cosas fuera del contexto de ventas, entregas, e-wallet o comercio local (por ejemplo, recetas médicas o dolores de cabeza), " +
+  "responde de forma cortés que eres el asistente de pedidos de D'una y redirige la conversación hacia la confirmación de su carrito de compras.";
 
 export async function POST(request: Request) {
   const apiKey = process.env.GEMINI_API_KEY;
@@ -37,7 +37,7 @@ export async function POST(request: Request) {
     const model = genAI.getGenerativeModel({
       model: process.env.GEMINI_MODEL || "gemini-3.6-flash",
       systemInstruction: SYSTEM_INSTRUCTION,
-      generationConfig: { maxOutputTokens: 160, temperature: 0.6 },
+      generationConfig: { maxOutputTokens: 300, temperature: 0.6 },
     });
     const result = await model.generateContent(message);
     const reply = result.response.text().trim();
