@@ -6,7 +6,6 @@ import { GoogleGenerativeAI } from '@google/generative-ai';
 export const runtime = 'nodejs';
 export const dynamic = 'force-dynamic';
 
-const MODEL = process.env.GEMINI_MODEL || 'gemini-1.5-flash';
 const MAX_INPUT_CHARS = 500;
 
 const SYSTEM_INSTRUCTION =
@@ -36,7 +35,7 @@ export async function POST(request: Request) {
   try {
     const genAI = new GoogleGenerativeAI(apiKey);
     const model = genAI.getGenerativeModel({
-      model: MODEL,
+      model: process.env.GEMINI_MODEL || "gemini-1.5-pro",
       systemInstruction: SYSTEM_INSTRUCTION,
       generationConfig: { maxOutputTokens: 160, temperature: 0.6 },
     });

@@ -498,7 +498,7 @@ export default function CheckoutModal({
 
   return (
     <div className="fixed inset-0 z-[140] flex items-center justify-center bg-black/75 p-3 backdrop-blur-sm">
-      <div className="w-full max-w-[420px] h-[610px] overflow-hidden rounded-[28px] bg-white shadow-2xl border border-slate-100 flex flex-col justify-between">
+      <div className="w-[95%] max-w-lg h-[610px] overflow-hidden rounded-[28px] bg-white shadow-2xl border border-slate-100 flex flex-col justify-between">
 
         {pasoVista === 'exito' && pagoPendiente ? (
           <div className="bg-[#fe6712] px-5 py-3 text-white flex items-center justify-between shrink-0">
@@ -553,7 +553,7 @@ export default function CheckoutModal({
                   placeholder="Ej. Juan Pérez"
                   value={nombre}
                   onChange={(e) => setNombre(e.target.value)}
-                  className="w-full rounded-xl border border-slate-200 bg-white px-3 py-1 text-[11px] font-bold text-slate-800 focus:border-[#fe6712] focus:outline-none"
+                  className="w-full rounded-xl border border-slate-200 bg-white px-3 py-1 text-sm font-bold text-slate-800 focus:border-[#fe6712] focus:outline-none"
                 />
               </div>
               <div className="grid grid-cols-2 gap-2">
@@ -563,7 +563,7 @@ export default function CheckoutModal({
                     <select
                       value={tipoDocumento}
                       onChange={(e) => setTipoDocumento(e.target.value)}
-                      className="rounded-xl border border-slate-200 bg-white px-1 py-1 text-[10px] font-bold text-slate-700 focus:outline-none"
+                      className="rounded-xl border border-slate-200 bg-white px-1 py-1 text-xs font-bold text-slate-700 focus:outline-none"
                     >
                       <option value="V-">V-</option>
                       <option value="E-">E-</option>
@@ -575,7 +575,7 @@ export default function CheckoutModal({
                       placeholder="12345678"
                       value={cedula}
                       onChange={(e) => setCedula(e.target.value)}
-                      className="w-full rounded-xl border border-slate-200 bg-white px-2 py-1 text-[11px] font-bold text-slate-800 focus:outline-none"
+                      className="w-full rounded-xl border border-slate-200 bg-white px-2 py-1 text-sm font-bold text-slate-800 focus:outline-none"
                     />
                   </div>
                 </div>
@@ -585,7 +585,7 @@ export default function CheckoutModal({
                     <select
                       value={codigoPais}
                       onChange={(e) => setCodigoPais(e.target.value)}
-                      className="rounded-xl border border-slate-200 bg-white px-1 py-1 text-[10px] font-bold text-slate-700 focus:outline-none"
+                      className="rounded-xl border border-slate-200 bg-white px-1 py-1 text-xs font-bold text-slate-700 focus:outline-none"
                     >
                       <option value="+58">🇻🇪 +58</option>
                       <option value="+1">🇺🇸 +1</option>
@@ -597,7 +597,7 @@ export default function CheckoutModal({
                       placeholder="4121234567"
                       value={telefono}
                       onChange={(e) => setTelefono(e.target.value)}
-                      className="w-full rounded-xl border border-slate-200 bg-white px-2 py-1 text-[11px] font-bold text-slate-800 focus:outline-none"
+                      className="w-full rounded-xl border border-slate-200 bg-white px-2 py-1 text-sm font-bold text-slate-800 focus:outline-none"
                     />
                   </div>
                 </div>
@@ -653,8 +653,8 @@ export default function CheckoutModal({
                         }`}
                       >
                         <div className="min-w-0 flex-1">
-                          <p className="text-[11px] font-black text-slate-900 leading-tight truncate">{metodo.value}</p>
-                          <p className="text-[7.5px] font-medium text-slate-400">
+                          <p className="text-sm font-black text-slate-900 leading-tight truncate">{metodo.value}</p>
+                          <p className="text-[9px] font-medium text-slate-400">
                             {metodo.field5 === 'REF' ? 'Cobro en Bs (BCV)' : 'Cobro en Divisa ($)'}
                           </p>
                         </div>
@@ -752,7 +752,7 @@ export default function CheckoutModal({
                 </span>
               )}
               <span className="text-[7.5px] font-black text-slate-400 uppercase tracking-widest block">Total A Pagar</span>
-              <span className="text-xl font-black text-[#fe6712] block leading-tight mt-0.5">
+              <span className="text-2xl font-black text-[#fe6712] block leading-tight mt-0.5">
                 {cobraEnBs
                   ? `Bs.S ${totalBolivares.toLocaleString('es-VE', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`
                   : `$${totalFinalUSD.toFixed(2)} USD`}
@@ -767,7 +767,7 @@ export default function CheckoutModal({
                 <div key={cIdx} className="flex justify-between items-center pb-1 border-b border-slate-100 last:border-b-0 last:pb-0">
                   <div>
                     <span className="text-[7.5px] font-black text-slate-400 uppercase block leading-none">{campo.label}</span>
-                    <span className="font-bold text-slate-800 text-[11px]">{campo.value}</span>
+                    <span className="font-bold text-slate-800 text-sm">{campo.value}</span>
                   </div>
                   <button
                     type="button"
@@ -796,7 +796,7 @@ export default function CheckoutModal({
                 placeholder="Nro. De Referencia (Opcional)"
                 value={referenciaPago}
                 onChange={(e) => setReferenciaPago(e.target.value)}
-                className="w-full rounded-xl border border-slate-200 bg-white px-3 py-1 text-xs font-bold text-slate-800 focus:border-[#fe6712] focus:outline-none"
+                className="w-full rounded-xl border border-slate-200 bg-white px-3 py-1 text-sm font-bold text-slate-800 focus:border-[#fe6712] focus:outline-none"
               />
               <label
                 className={`flex items-center justify-center gap-2 w-full py-1 px-3 rounded-xl cursor-pointer transition text-xs font-bold ${
@@ -885,9 +885,9 @@ export default function CheckoutModal({
               )}
               <div className="flex items-center justify-between text-xs px-1 font-black mb-1">
                 <span className="text-slate-500">Total a pagar:</span>
-                <span className="text-[#fe6712] text-sm font-black">${totalFinalUSD.toFixed(2)} USD
+                <span className="text-[#fe6712] text-base font-black">${totalFinalUSD.toFixed(2)} USD
                   {selectedMethod?.field5 === 'REF' && tasaRef > 0 && (
-                    <span className="ml-1 text-xs text-slate-500 font-medium">/ Bs.S {totalBolivares.toLocaleString('es-VE', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}</span>
+                    <span className="ml-1 text-sm text-slate-500 font-medium">/ Bs.S {totalBolivares.toLocaleString('es-VE', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}</span>
                   )}
                 </span>
               </div>
