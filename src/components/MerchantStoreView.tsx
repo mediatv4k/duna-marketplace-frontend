@@ -268,7 +268,8 @@ export default function MerchantStoreView({
         const normalizedGroups = Array.isArray(rawVariants) ? rawVariants.map((g: any) => {
           const list = g.items || g.options || g.values || g.variants || g.choices || [];
           
-          const normalizedList = list.map((item: any) => ({
+          // Las opciones INACTIVE (p. ej. sabor sin stock en la BD) no se ofrecen: el backend rechaza la orden con ellas
+          const normalizedList = list.filter((item: any) => item?.status !== 'INACTIVE').map((item: any) => ({
             ...item,
             name: item.title || item.name || item.label || 'Opción',
             title: item.title || item.name || item.label || 'Opción',
