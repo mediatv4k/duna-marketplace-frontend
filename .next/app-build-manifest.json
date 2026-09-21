@@ -1,15 +1,64 @@
 {
   "pages": {
-    "/page": [
-      "static/chunks/webpack.js",
-      "static/chunks/main-app.js",
-      "static/chunks/app/page.js"
+    "/_not-found/page": [
+      "static/chunks/webpack-879f858537244e02.js",
+      "static/chunks/fd9d1056-880e398eb8266174.js",
+      "static/chunks/23-32774d346ff0c276.js",
+      "static/chunks/main-app-0744285922492518.js",
+      "static/chunks/app/_not-found/page-519bf5eac38f62b0.js"
     ],
     "/layout": [
-      "static/chunks/webpack.js",
-      "static/chunks/main-app.js",
-      "static/css/app/layout.css",
-      "static/chunks/app/layout.js"
+      "static/chunks/webpack-879f858537244e02.js",
+      "static/chunks/fd9d1056-880e398eb8266174.js",
+      "static/chunks/23-32774d346ff0c276.js",
+      "static/chunks/main-app-0744285922492518.js",
+      "static/css/f00dae3e25464b7b.css",
+      "static/chunks/app/layout-088d77c72d00a645.js"
+    ],
+    "/page": [
+      "static/chunks/webpack-879f858537244e02.js",
+      "static/chunks/fd9d1056-880e398eb8266174.js",
+      "static/chunks/23-32774d346ff0c276.js",
+      "static/chunks/main-app-0744285922492518.js",
+      "static/chunks/676-03ab518bb32f3bdb.js",
+      "static/chunks/146-a26a43d274e47791.js",
+      "static/chunks/742-abe1f991fba9a231.js",
+      "static/chunks/217-ffbd610bf4217934.js",
+      "static/chunks/app/page-b1b23152b7d7ba53.js"
+    ],
+    "/test-logistica/page": [
+      "static/chunks/webpack-879f858537244e02.js",
+      "static/chunks/fd9d1056-880e398eb8266174.js",
+      "static/chunks/23-32774d346ff0c276.js",
+      "static/chunks/main-app-0744285922492518.js",
+      "static/chunks/app/test-logistica/page-c324b5e563612864.js"
+    ],
+    "/order/[orderId]/timeline/page": [
+      "static/chunks/webpack-879f858537244e02.js",
+      "static/chunks/fd9d1056-880e398eb8266174.js",
+      "static/chunks/23-32774d346ff0c276.js",
+      "static/chunks/main-app-0744285922492518.js",
+      "static/chunks/742-abe1f991fba9a231.js",
+      "static/chunks/app/order/[orderId]/timeline/page-cfb2016341d17af8.js"
+    ],
+    "/tienda/demo-mostaza/page": [
+      "static/chunks/webpack-879f858537244e02.js",
+      "static/chunks/fd9d1056-880e398eb8266174.js",
+      "static/chunks/23-32774d346ff0c276.js",
+      "static/chunks/main-app-0744285922492518.js",
+      "static/chunks/146-a26a43d274e47791.js",
+      "static/chunks/app/tienda/demo-mostaza/page-2dad367ed5aeecab.js"
+    ],
+    "/test-helado/page": [
+      "static/chunks/webpack-879f858537244e02.js",
+      "static/chunks/fd9d1056-880e398eb8266174.js",
+      "static/chunks/23-32774d346ff0c276.js",
+      "static/chunks/main-app-0744285922492518.js",
+      "static/chunks/676-03ab518bb32f3bdb.js",
+      "static/chunks/146-a26a43d274e47791.js",
+      "static/chunks/742-abe1f991fba9a231.js",
+      "static/chunks/217-ffbd610bf4217934.js",
+      "static/chunks/app/test-helado/page-7525b904a1e9e752.js"
     ]
   }
 }

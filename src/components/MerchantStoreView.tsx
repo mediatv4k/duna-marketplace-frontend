@@ -10,6 +10,7 @@ import { getProduct, getStorePromotions, getDeliveryRate, getStorePaymentInfo } 
 import { getDistanceAndTime } from '@/lib/logisticsEngine';
 import { detectStoreNiche, getModalEngine, getNicheConfig } from '@/lib/nicheConfig';
 import { getNicheIcon, getBadgeColorClasses } from '@/lib/nicheIcons';
+import MerchantTemplateEngine, { templateNicheFromStoreNiche } from './MerchantTemplateEngine';
 
 // Regla del contrato: el backend no presta servicio de delivery a más de 12 km
 const MAX_DELIVERY_KM = 12;
@@ -443,242 +444,284 @@ export default function MerchantStoreView({
   const fleteActivo = deliveryMode === 'pickup' ? 0 : (deliveryMode === 'national' ? 4.50 : (esEnvioGratis ? 0 : deliveryCost));
   const totalUSD = subtotalUSD + fleteActivo;
 
-  return (
-    <div className="min-h-screen bg-slate-50 pb-28">
-      <div className="relative w-full h-52 bg-slate-900 overflow-hidden">
-        {merchant.banner ? (
-          <img src={merchant.banner} alt={merchant.name} className="w-full h-full object-cover" />
-        ) : (
-          <div className="w-full h-full bg-gradient-to-r from-[#fe6712] to-amber-600" />
-        )}
-        <div className="absolute inset-0 bg-gradient-to-t from-black/80 via-black/20 to-transparent" />
-        <button
-          onClick={onBack}
-          className="absolute top-4 left-4 bg-black/60 hover:bg-black/80 text-white px-4 py-2 rounded-2xl text-xs font-black backdrop-blur-md transition cursor-pointer shadow-lg border border-white/10"
-        >
-          ← Volver al inicio
-        </button>
+  // Piezas de la vista: se montan dentro del motor multiplantilla (nichos con plantilla) o directo (sin plantilla)
+  const templateNiche = templateNicheFromStoreNiche(storeNiche);
+  const heroNode = (
+        <div className="relative w-full h-52 bg-slate-900 overflow-hidden">
+          {merchant.banner ? (
+            <img src={merchant.banner} alt={merchant.name} className="w-full h-full object-cover" />
+          ) : (
+            <div className="w-full h-full bg-gradient-to-r from-[#fe6712] to-amber-600" />
+          )}
+          <div className="absolute inset-0 bg-gradient-to-t from-black/80 via-black/20 to-transparent" />
+          <button
+            onClick={onBack}
+            className="absolute top-4 left-4 bg-black/60 hover:bg-black/80 text-white px-4 py-2 rounded-2xl text-xs font-black backdrop-blur-md transition cursor-pointer shadow-lg border border-white/10"
+          >
+            ← Volver al inicio
+          </button>
 
-        <div className="absolute bottom-0 left-0 right-0 p-4 flex items-end gap-3">
-          <img
-            src={merchant.avatar || 'https://images.unsplash.com/photo-1541658016709-82535e94bc69'}
-            alt={merchant.name}
-            className="w-16 h-16 rounded-2xl object-cover shadow-md border-2 border-white shrink-0 bg-slate-100"
-          />
-          <div className="min-w-0 flex-1">
-            <h1 className="text-2xl font-bold text-white tracking-tight truncate">{merchant.name}</h1>
-            <div className="mt-2 flex flex-wrap items-center gap-2">
-              <span className="bg-white/20 backdrop-blur-md text-white text-xs font-semibold px-3 py-1.5 rounded-full flex items-center gap-1">⭐ {merchant.rating || '5.0'}</span>
-              {merchant.deliveryFee && <span className="bg-white/20 backdrop-blur-md text-white text-xs font-semibold px-3 py-1.5 rounded-full flex items-center gap-1">🛵 {merchant.deliveryFee}</span>}
-              {merchant.badge && <span className="bg-white/20 backdrop-blur-md text-white text-xs font-semibold px-3 py-1.5 rounded-full flex items-center gap-1">🕒 {merchant.badge}</span>}
-            </div>
-          </div>
-        </div>
-      </div>
-
-      <div className="max-w-4xl mx-auto px-4 mt-4 relative z-10">
-        {canShowPromotions && nicheConfig.heroVariant === 'PROMO_HERO' && featuredProduct && (
-          <div className="mb-4">
-            <div className="flex items-center gap-3 bg-white rounded-2xl p-3 shadow-md border border-slate-100">
-              <img
-                src={featuredProduct.image || 'https://images.unsplash.com/photo-1560008511-11c63416e52d'}
-                alt={featuredProduct.name}
-                className="w-14 h-14 rounded-xl object-cover shrink-0 border border-slate-100 bg-slate-50"
-              />
-              <div className="min-w-0 flex-1">
-                <span className="text-[9px] font-black uppercase tracking-wider text-[#fe6712] block">Destacado de hoy</span>
-                <h3 className="text-sm font-black text-slate-900 truncate">{featuredProduct.name}</h3>
-              </div>
-              <span className="text-base font-black text-slate-900 shrink-0">${(featuredProduct.price || 0).toFixed(2)}</span>
-            </div>
-          </div>
-        )}
-
-        {nicheConfig.trustBadges.length > 0 && (
-          <div className="mt-4 flex items-center gap-2 overflow-x-auto no-scrollbar pb-1">
-            {nicheConfig.trustBadges.map((badge, idx) => {
-              const BadgeIcon = getNicheIcon(badge.icon);
-              return (
-                <span
-                  key={idx}
-                  className={`flex items-center gap-1.5 shrink-0 px-3 py-1.5 rounded-xl border text-[11px] font-bold whitespace-nowrap ${getBadgeColorClasses(badge.colorToken)}`}
-                >
-                  <BadgeIcon className="w-3.5 h-3.5" />
-                  {badge.label}
-                </span>
-              );
-            })}
-          </div>
-        )}
-
-        <PromotionsCarousel
-          promotions={canShowPromotions ? promotions : []}
-          onSelectPromotion={handlePromotionClick}
-        />
-
-        {productCategories.length > 1 && (
-          <div className="mt-4 flex items-center gap-2 overflow-x-auto no-scrollbar pb-1">
-            {productCategories.map((cat) => (
-              <button
-                key={cat}
-                type="button"
-                onClick={() => setSelectedCategory(cat)}
-                className={`px-4 py-2 rounded-xl text-xs font-black transition cursor-pointer whitespace-nowrap shrink-0 ${
-                  selectedCategory === cat
-                    ? 'bg-[#fe6712] text-white shadow-md shadow-orange-500/20'
-                    : 'bg-slate-100 text-slate-600 hover:bg-slate-200'
-                }`}
-              >
-                {cat === 'ALL' ? '✨ Todos' : cat}
-              </button>
-            ))}
-          </div>
-        )}
-
-        <div className="mt-6 sticky top-0 z-40 -mx-4 px-4 bg-white/95 backdrop-blur-md border-b border-gray-100 py-3 shadow-sm">
-          <div className="relative">
-            <Search className="absolute left-4 top-4 w-4 h-4 text-slate-400" />
-            <input
-              type="text"
-              placeholder="Buscar productos, sabores, combos o especialidades..."
-              value={searchQuery}
-              onChange={(e) => setSearchQuery(e.target.value)}
-              className="w-full pl-12 pr-4 py-3.5 rounded-2xl bg-white border border-slate-200 text-sm font-bold text-slate-800 shadow-sm focus:outline-none focus:border-[#fe6712] focus:ring-2 focus:ring-orange-100 transition"
+          <div className="absolute bottom-0 left-0 right-0 p-4 flex items-end gap-3">
+            <img
+              src={merchant.avatar || 'https://images.unsplash.com/photo-1541658016709-82535e94bc69'}
+              alt={merchant.name}
+              className="w-16 h-16 rounded-2xl object-cover shadow-md border-2 border-white shrink-0 bg-slate-100"
             />
+            <div className="min-w-0 flex-1">
+              <h1 className="text-2xl font-bold text-white tracking-tight truncate">{merchant.name}</h1>
+              <div className="mt-2 flex flex-wrap items-center gap-2">
+                <span className="bg-white/20 backdrop-blur-md text-white text-xs font-semibold px-3 py-1.5 rounded-full flex items-center gap-1">⭐ {merchant.rating || '5.0'}</span>
+                {merchant.deliveryFee && <span className="bg-white/20 backdrop-blur-md text-white text-xs font-semibold px-3 py-1.5 rounded-full flex items-center gap-1">🛵 {merchant.deliveryFee}</span>}
+                {merchant.badge && <span className="bg-white/20 backdrop-blur-md text-white text-xs font-semibold px-3 py-1.5 rounded-full flex items-center gap-1">🕒 {merchant.badge}</span>}
+              </div>
+            </div>
           </div>
         </div>
-
-        <div className="mt-8">
-          <div className="flex items-center justify-between mb-4">
-            <h2 className="text-sm font-black text-slate-800 uppercase tracking-wider">
-              Menú y Productos ({filteredProducts.length})
-            </h2>
-          </div>
-          
-          <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
-            {filteredProducts.map((product) => (
-              <div
-                key={product.id || product.code}
-                onClick={() => handleProductClick(product)}
-                className="bg-white rounded-3xl p-4 border border-slate-100 shadow-sm hover:shadow-md hover:border-orange-200 transition-all duration-200 cursor-pointer flex gap-4 items-center group"
-              >
+  );
+  const contentNode = (
+    <>
+          {canShowPromotions && nicheConfig.heroVariant === 'PROMO_HERO' && featuredProduct && (
+            <div className="mb-4">
+              <div className="flex items-center gap-3 bg-white rounded-2xl p-3 shadow-md border border-slate-100">
                 <img
-                  src={product.image || 'https://images.unsplash.com/photo-1560008511-11c63416e52d'}
-                  alt={product.name}
-                  className="w-24 h-24 rounded-2xl object-cover shrink-0 group-hover:scale-105 transition duration-300 shadow-xs"
+                  src={featuredProduct.image || 'https://images.unsplash.com/photo-1560008511-11c63416e52d'}
+                  alt={featuredProduct.name}
+                  className="w-14 h-14 rounded-xl object-cover shrink-0 border border-slate-100 bg-slate-50"
                 />
-                <div className="flex-1 min-w-0">
-                  <span className="text-[9px] font-black uppercase tracking-wider text-[#fe6712] bg-orange-50 px-2 py-0.5 rounded-md inline-block mb-1">
-                    {product.category || 'GENERAL'}
+                <div className="min-w-0 flex-1">
+                  <span className="text-[9px] font-black uppercase tracking-wider text-[#fe6712] block">Destacado de hoy</span>
+                  <h3 className="text-sm font-black text-slate-900 truncate">{featuredProduct.name}</h3>
+                </div>
+                <span className="text-base font-black text-slate-900 shrink-0">${(featuredProduct.price || 0).toFixed(2)}</span>
+              </div>
+            </div>
+          )}
+
+          {!templateNiche && nicheConfig.trustBadges.length > 0 && (
+            <div className="mt-4 flex items-center gap-2 overflow-x-auto no-scrollbar pb-1">
+              {nicheConfig.trustBadges.map((badge, idx) => {
+                const BadgeIcon = getNicheIcon(badge.icon);
+                return (
+                  <span
+                    key={idx}
+                    className={`flex items-center gap-1.5 shrink-0 px-3 py-1.5 rounded-xl border text-[11px] font-bold whitespace-nowrap ${getBadgeColorClasses(badge.colorToken)}`}
+                  >
+                    <BadgeIcon className="w-3.5 h-3.5" />
+                    {badge.label}
                   </span>
-                  <h3 className="text-sm font-black text-slate-900 truncate group-hover:text-[#fe6712] transition">{product.name}</h3>
-                  <p className="text-[11px] text-slate-500 line-clamp-1 mt-0.5">{product.description || 'Producto verificado de calidad garantizada.'}</p>
-                  
-                  <div className="flex items-center justify-between mt-3">
-                    <span className="text-sm font-black text-slate-950">${(product.price || 1.5).toFixed(2)}</span>
-                    <span className="text-[10px] font-black text-[#fe6712] bg-orange-50 px-3 py-1.5 rounded-xl group-hover:bg-[#fe6712] group-hover:text-white transition shadow-2xs">
-                      Personalizar →
+                );
+              })}
+            </div>
+          )}
+
+          <PromotionsCarousel
+            promotions={canShowPromotions ? promotions : []}
+            onSelectPromotion={handlePromotionClick}
+          />
+
+          {!templateNiche && productCategories.length > 1 && (
+            <div className="mt-4 flex items-center gap-2 overflow-x-auto no-scrollbar pb-1">
+              {productCategories.map((cat) => (
+                <button
+                  key={cat}
+                  type="button"
+                  onClick={() => setSelectedCategory(cat)}
+                  className={`px-4 py-2 rounded-xl text-xs font-black transition cursor-pointer whitespace-nowrap shrink-0 ${
+                    selectedCategory === cat
+                      ? 'bg-[#fe6712] text-white shadow-md shadow-orange-500/20'
+                      : 'bg-slate-100 text-slate-600 hover:bg-slate-200'
+                  }`}
+                >
+                  {cat === 'ALL' ? '✨ Todos' : cat}
+                </button>
+              ))}
+            </div>
+          )}
+
+          <div className={`mt-6 sticky ${templateNiche ? 'top-[61px]' : 'top-0'} z-40 -mx-4 px-4 bg-white/95 backdrop-blur-md border-b border-gray-100 py-3 shadow-sm`}>
+            <div className="relative">
+              <Search className="absolute left-4 top-4 w-4 h-4 text-slate-400" />
+              <input
+                type="text"
+                placeholder="Buscar productos, sabores, combos o especialidades..."
+                value={searchQuery}
+                onChange={(e) => setSearchQuery(e.target.value)}
+                className="w-full pl-12 pr-4 py-3.5 rounded-2xl bg-white border border-slate-200 text-sm font-bold text-slate-800 shadow-sm focus:outline-none focus:border-[#fe6712] focus:ring-2 focus:ring-orange-100 transition"
+              />
+            </div>
+          </div>
+
+          <div className="mt-8">
+            <div className="flex items-center justify-between mb-4">
+              <h2 className="text-sm font-black text-slate-800 uppercase tracking-wider">
+                Menú y Productos ({filteredProducts.length})
+              </h2>
+            </div>
+            
+            <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
+              {filteredProducts.map((product) => (
+                <div
+                  key={product.id || product.code}
+                  onClick={() => handleProductClick(product)}
+                  className="bg-white rounded-3xl p-4 border border-slate-100 shadow-sm hover:shadow-md hover:border-orange-200 transition-all duration-200 cursor-pointer flex gap-4 items-center group"
+                >
+                  <img
+                    src={product.image || 'https://images.unsplash.com/photo-1560008511-11c63416e52d'}
+                    alt={product.name}
+                    className="w-24 h-24 rounded-2xl object-cover shrink-0 group-hover:scale-105 transition duration-300 shadow-xs"
+                  />
+                  <div className="flex-1 min-w-0">
+                    <span className="text-[9px] font-black uppercase tracking-wider text-[#fe6712] bg-orange-50 px-2 py-0.5 rounded-md inline-block mb-1">
+                      {product.category || 'GENERAL'}
                     </span>
+                    <h3 className="text-sm font-black text-slate-900 truncate group-hover:text-[#fe6712] transition">{product.name}</h3>
+                    <p className="text-[11px] text-slate-500 line-clamp-1 mt-0.5">{product.description || 'Producto verificado de calidad garantizada.'}</p>
+                    
+                    <div className="flex items-center justify-between mt-3">
+                      <span className="text-sm font-black text-slate-950">${(product.price || 1.5).toFixed(2)}</span>
+                      <span className="text-[10px] font-black text-[#fe6712] bg-orange-50 px-3 py-1.5 rounded-xl group-hover:bg-[#fe6712] group-hover:text-white transition shadow-2xs">
+                        Personalizar →
+                      </span>
+                    </div>
                   </div>
                 </div>
-              </div>
-            ))}
+              ))}
+            </div>
           </div>
-        </div>
+    </>
+  );
+  const overlaysNode = (
+    <>
+        {cartItems.length > 0 && (
+          <div className="fixed bottom-6 left-0 right-0 z-50 flex justify-center px-4 animate-in fade-in slide-in-from-bottom-4">
+            <div className="w-full max-w-md bg-slate-900 text-white rounded-3xl p-4 shadow-2xl flex items-center justify-between border border-slate-800 backdrop-blur-lg">
+              <div className="flex items-center gap-3">
+                <div className="w-10 h-10 rounded-2xl bg-[#fe6712] flex items-center justify-center font-black text-white shadow-md">
+                  {totalItems}
+                </div>
+                <div>
+                  <p className="text-[10px] uppercase font-black text-slate-400 tracking-wider">Productos en bolsa</p>
+                  <p className="text-base font-black text-white">${subtotalUSD.toFixed(2)} USD</p>
+                </div>
+              </div>
+              <button
+                onClick={() => setIsCartOpen(true)}
+                className="bg-[#fe6712] hover:bg-[#e0580d] text-white px-5 py-3 rounded-2xl font-black text-xs transition flex items-center gap-2 cursor-pointer shadow-lg"
+              >
+                <span>Ver Pedido y Entrega</span>
+                <ChevronRight className="w-4 h-4" />
+              </button>
+            </div>
+          </div>
+        )}
+
+        {!templateNiche && isMasterModalOpen && selectedProductDetail && (
+          <MasterProductModal
+            product={selectedProductDetail}
+            isOpen={isMasterModalOpen}
+            onClose={() => setIsMasterModalOpen(false)}
+            onAddToCart={handleAddToCartFromModal}
+            nicheEngine={modalEngine}
+            bcvRate={bcvRate}
+          />
+        )}
+
+        {isCartOpen && (
+          <CartModal
+            isOpen={isCartOpen}
+            onClose={() => setIsCartOpen(false)}
+            cartItems={cartItems}
+            totalItems={totalItems}
+            subtotalUSD={subtotalUSD}
+            deliveryMode={deliveryMode}
+            setDeliveryMode={setDeliveryMode}
+            rewardMode={rewardMode}
+            setRewardMode={setRewardMode}
+            faltaParaEnvioGratis={faltaParaEnvioGratis}
+            progresoEnvio={progresoEnvio}
+            esEnvioGratis={esEnvioGratis}
+            deliveryCost={deliveryCost}
+            discountDelivery={discountDelivery}
+            totalUSD={totalUSD}
+            onUpdateQty={handleUpdateQty}
+            quoteStatus={quote.status}
+            quoteMessage={quote.message}
+            distanceKm={quote.distanceKm}
+            durationMin={quote.durationMin}
+            customerLocation={customerLocation}
+            isLocating={isLocating}
+            locationError={locationError}
+            onRequestLocation={handleRequestLocation}
+            onPickLocation={() => setIsPickerOpen(true)}
+            onOpenCheckout={(summary) => {
+              setIsCartOpen(false);
+              const isDelivery = summary.metodoEntrega === 'delivery';
+              // Delivery: ubicación y distancia reales cotizadas. Pickup/nacional: no hay ruta de reparto (distancia 0).
+              const point = isDelivery ? customerLocation : (customerLocation || merchant?.coords);
+              onOpenCheckout({
+                ...summary,
+                ...(isDelivery && customerLocation
+                  ? { direccion: `${customerLocation.label}: ${customerLocation.lat.toFixed(5)}, ${customerLocation.lng.toFixed(5)}` }
+                  : {}),
+                location: point ? { lat: Number(point.lat), lng: Number(point.lng) } : null,
+                distanceKm: isDelivery ? (quote.distanceKm ?? 0) : 0,
+                durationMin: isDelivery ? (quote.durationMin ?? 0) : 0,
+              });
+            }}
+            isNationalShippingEnabled={true}
+          />
+        )}
+
+        {/* Dirección de entrega alterna (mapa): al confirmar, el efecto de cotización recalcula distancia, bloqueo de 12 km y getDeliveryRate */}
+        <LocationPickerModal
+          isOpen={isPickerOpen}
+          onClose={() => setIsPickerOpen(false)}
+          initialCenter={customerLocation ? { lat: customerLocation.lat, lng: customerLocation.lng } : { lat: Number(merchant?.coords?.lat), lng: Number(merchant?.coords?.lng) }}
+          storeCoords={merchant?.coords ? { lat: Number(merchant.coords.lat), lng: Number(merchant.coords.lng) } : null}
+          onConfirm={(picked) => {
+            setLocationError(null);
+            setCustomerLocation({ lat: picked.lat, lng: picked.lng, label: picked.address, manual: true });
+            setIsPickerOpen(false);
+          }}
+        />
+    </>
+  );
+
+  if (templateNiche) {
+    return (
+      <MerchantTemplateEngine
+        niche={templateNiche}
+        storeNiche={storeNiche}
+        merchantName={merchant.name}
+        hero={heroNode}
+        bcvRate={bcvRate}
+        products={products}
+        filters={productCategories.filter((c) => c !== 'ALL')}
+        activeFilter={selectedCategory}
+        onFilterChange={setSelectedCategory}
+        cartItems={cartItems}
+        subtotalUSD={subtotalUSD}
+        onOpenCart={() => setIsCartOpen(true)}
+        selectedProduct={selectedProductDetail}
+        isProductModalOpen={isMasterModalOpen}
+        onCloseProductModal={() => setIsMasterModalOpen(false)}
+        onAddToCart={handleAddToCartFromModal}
+      >
+        {contentNode}
+        {overlaysNode}
+      </MerchantTemplateEngine>
+    );
+  }
+
+  return (
+    <div className="min-h-screen bg-slate-50 pb-28">
+      {heroNode}
+
+      <div className="max-w-4xl mx-auto px-4 mt-4 relative z-10">
+        {contentNode}
       </div>
 
-      {cartItems.length > 0 && (
-        <div className="fixed bottom-6 left-0 right-0 z-50 flex justify-center px-4 animate-in fade-in slide-in-from-bottom-4">
-          <div className="w-full max-w-md bg-slate-900 text-white rounded-3xl p-4 shadow-2xl flex items-center justify-between border border-slate-800 backdrop-blur-lg">
-            <div className="flex items-center gap-3">
-              <div className="w-10 h-10 rounded-2xl bg-[#fe6712] flex items-center justify-center font-black text-white shadow-md">
-                {totalItems}
-              </div>
-              <div>
-                <p className="text-[10px] uppercase font-black text-slate-400 tracking-wider">Productos en bolsa</p>
-                <p className="text-base font-black text-white">${subtotalUSD.toFixed(2)} USD</p>
-              </div>
-            </div>
-            <button
-              onClick={() => setIsCartOpen(true)}
-              className="bg-[#fe6712] hover:bg-[#e0580d] text-white px-5 py-3 rounded-2xl font-black text-xs transition flex items-center gap-2 cursor-pointer shadow-lg"
-            >
-              <span>Ver Pedido y Entrega</span>
-              <ChevronRight className="w-4 h-4" />
-            </button>
-          </div>
-        </div>
-      )}
-
-      {isMasterModalOpen && selectedProductDetail && (
-        <MasterProductModal
-          product={selectedProductDetail}
-          isOpen={isMasterModalOpen}
-          onClose={() => setIsMasterModalOpen(false)}
-          onAddToCart={handleAddToCartFromModal}
-          nicheEngine={modalEngine}
-          bcvRate={bcvRate}
-        />
-      )}
-
-      {isCartOpen && (
-        <CartModal
-          isOpen={isCartOpen}
-          onClose={() => setIsCartOpen(false)}
-          cartItems={cartItems}
-          totalItems={totalItems}
-          subtotalUSD={subtotalUSD}
-          deliveryMode={deliveryMode}
-          setDeliveryMode={setDeliveryMode}
-          rewardMode={rewardMode}
-          setRewardMode={setRewardMode}
-          faltaParaEnvioGratis={faltaParaEnvioGratis}
-          progresoEnvio={progresoEnvio}
-          esEnvioGratis={esEnvioGratis}
-          deliveryCost={deliveryCost}
-          discountDelivery={discountDelivery}
-          totalUSD={totalUSD}
-          onUpdateQty={handleUpdateQty}
-          quoteStatus={quote.status}
-          quoteMessage={quote.message}
-          distanceKm={quote.distanceKm}
-          durationMin={quote.durationMin}
-          customerLocation={customerLocation}
-          isLocating={isLocating}
-          locationError={locationError}
-          onRequestLocation={handleRequestLocation}
-          onPickLocation={() => setIsPickerOpen(true)}
-          onOpenCheckout={(summary) => {
-            setIsCartOpen(false);
-            const isDelivery = summary.metodoEntrega === 'delivery';
-            // Delivery: ubicación y distancia reales cotizadas. Pickup/nacional: no hay ruta de reparto (distancia 0).
-            const point = isDelivery ? customerLocation : (customerLocation || merchant?.coords);
-            onOpenCheckout({
-              ...summary,
-              ...(isDelivery && customerLocation
-                ? { direccion: `${customerLocation.label}: ${customerLocation.lat.toFixed(5)}, ${customerLocation.lng.toFixed(5)}` }
-                : {}),
-              location: point ? { lat: Number(point.lat), lng: Number(point.lng) } : null,
-              distanceKm: isDelivery ? (quote.distanceKm ?? 0) : 0,
-              durationMin: isDelivery ? (quote.durationMin ?? 0) : 0,
-            });
-          }}
-          isNationalShippingEnabled={true}
-        />
-      )}
-
-      {/* Dirección de entrega alterna (mapa): al confirmar, el efecto de cotización recalcula distancia, bloqueo de 12 km y getDeliveryRate */}
-      <LocationPickerModal
-        isOpen={isPickerOpen}
-        onClose={() => setIsPickerOpen(false)}
-        initialCenter={customerLocation ? { lat: customerLocation.lat, lng: customerLocation.lng } : { lat: Number(merchant?.coords?.lat), lng: Number(merchant?.coords?.lng) }}
-        storeCoords={merchant?.coords ? { lat: Number(merchant.coords.lat), lng: Number(merchant.coords.lng) } : null}
-        onConfirm={(picked) => {
-          setLocationError(null);
-          setCustomerLocation({ lat: picked.lat, lng: picked.lng, label: picked.address, manual: true });
-          setIsPickerOpen(false);
-        }}
-      />
+      {overlaysNode}
     </div>
   );
 }

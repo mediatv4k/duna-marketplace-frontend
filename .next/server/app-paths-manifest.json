@@ -1,4 +1,9 @@
 {
+  "/_not-found/page": "app/_not-found/page.js",
+  "/api/bcv/route": "app/api/bcv/route.js",
   "/page": "app/page.js",
-  "/api/bcv/route": "app/api/bcv/route.js"
+  "/test-logistica/page": "app/test-logistica/page.js",
+  "/order/[orderId]/timeline/page": "app/order/[orderId]/timeline/page.js",
+  "/tienda/demo-mostaza/page": "app/tienda/demo-mostaza/page.js",
+  "/test-helado/page": "app/test-helado/page.js"
 }
