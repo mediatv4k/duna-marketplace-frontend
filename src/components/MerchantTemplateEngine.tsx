@@ -77,6 +77,8 @@ export interface MerchantTemplateEngineProps {
   onOpenCart?: () => void;
   // Escritorio con barra lateral: contenedores max-w-7xl y los chips de categoría pasan solo a móvil (el padre dibuja "Departamentos")
   desktopSidebarLayout?: boolean;
+  // Oculta en escritorio toda la cinta de nicho (avisos, insignias, chips): solo cuando el padre ya la reemplaza (p. ej. farmacia)
+  hideNicheHeaderDesktop?: boolean;
   // Botón "Volver" del navbar (solo escritorio): reemplaza al de la portada cuando ésta se oculta
   onBack?: () => void;
 
@@ -150,6 +152,7 @@ export default function MerchantTemplateEngine({
   children,
   onOpenCart,
   desktopSidebarLayout = false,
+  hideNicheHeaderDesktop = false,
   onBack,
   bcvRate,
   walletBalanceUSD,
@@ -208,7 +211,7 @@ export default function MerchantTemplateEngine({
       case 'fast-food':
         return (
           <div className="space-y-1.5">
-            <p className="text-[10px] font-black uppercase tracking-wider text-slate-400">¿Qué se te antoja hoy?</p>
+            <p className={`text-[10px] font-black uppercase tracking-wider text-slate-400 ${desktopSidebarLayout ? 'lg:hidden' : ''}`}>¿Qué se te antoja hoy?</p>
             {chipsRow(true)}
           </div>
         );
@@ -251,7 +254,7 @@ export default function MerchantTemplateEngine({
       case 'ice-cream':
         return (
           <div className="space-y-1.5">
-            <p className="flex items-center gap-1.5 text-[10px] font-black uppercase tracking-wider text-slate-400">
+            <p className={`flex items-center gap-1.5 text-[10px] font-black uppercase tracking-wider text-slate-400 ${desktopSidebarLayout ? 'lg:hidden' : ''}`}>
               <IceCream className="w-3.5 h-3.5" /> Elige tu formato
             </p>
             {chipsRow(false)}
@@ -260,7 +263,7 @@ export default function MerchantTemplateEngine({
       case 'minimarket':
         return (
           <div className="space-y-1.5">
-            <p className="flex items-center gap-1.5 text-[10px] font-black uppercase tracking-wider text-slate-400">
+            <p className={`flex items-center gap-1.5 text-[10px] font-black uppercase tracking-wider text-slate-400 ${desktopSidebarLayout ? 'lg:hidden' : ''}`}>
               <ShoppingBasket className="w-3.5 h-3.5" /> Pasillos
             </p>
             {chipsRow(false)}
@@ -348,7 +351,7 @@ export default function MerchantTemplateEngine({
       {hero}
 
       {/* ── Cabecera / filtros específicos del nicho + badges de confianza ── */}
-      <div className={`${desktopSidebarLayout ? 'max-w-7xl md:px-8 lg:hidden' : 'max-w-4xl'} mx-auto px-4 pt-4 space-y-3`}>
+      <div className={`${desktopSidebarLayout ? 'max-w-7xl md:px-8' : 'max-w-4xl'} ${hideNicheHeaderDesktop ? 'lg:hidden' : ''} mx-auto px-4 pt-4 space-y-3`}>
         {renderNicheHeader()}
         {nicheConfig.trustBadges.length > 0 && (
           <div className="flex items-center gap-2 overflow-x-auto no-scrollbar pb-1">

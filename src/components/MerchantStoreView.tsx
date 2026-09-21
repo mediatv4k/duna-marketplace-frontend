@@ -34,6 +34,7 @@ interface MerchantStoreViewProps {
   onOpenCheckout: (summary: any) => void;
   forceOpenCartTrigger?: number;
   userLocation?: CustomerLocation | null;
+  isLoadingMore?: boolean; // siguen llegando páginas de productos del backend
 }
 
 export default function MerchantStoreView({
@@ -43,6 +44,7 @@ export default function MerchantStoreView({
   onOpenCheckout,
   forceOpenCartTrigger,
   userLocation,
+  isLoadingMore = false,
 }: MerchantStoreViewProps) {
   const [cartItems, setCartItems] = useState<any[]>(() => {
     if (typeof window !== 'undefined') {
@@ -448,10 +450,11 @@ export default function MerchantStoreView({
 
   // Piezas de la vista: se montan dentro del motor multiplantilla (nichos con plantilla) o directo (sin plantilla)
   const templateNiche = templateNicheFromStoreNiche(storeNiche);
-  // Diseño corporativo de escritorio (barra lateral + productos): solo plantilla farmacia
-  const sidebarLayout = templateNiche === 'farma';
+  const isFarma = templateNiche === 'farma';
+  // Barra lateral de departamentos + productos en escritorio: TODAS las tiendas (la portada se conserva; solo farmacia la oculta)
+  const sidebarLayout = true;
   const heroNode = (
-        <div className={`${sidebarLayout ? 'lg:hidden' : ''} relative w-full h-52 lg:h-44 bg-slate-900 overflow-hidden`}>
+        <div className={`${isFarma ? 'lg:hidden' : ''} relative w-full h-52 lg:h-44 bg-slate-900 overflow-hidden`}>
           {merchant.banner ? (
             <img src={merchant.banner} alt={merchant.name} className="w-full h-full object-cover" />
           ) : (
@@ -538,7 +541,7 @@ export default function MerchantStoreView({
           />
 
           {!templateNiche && productCategories.length > 1 && (
-            <div className="mt-4 flex items-center gap-2 overflow-x-auto no-scrollbar pb-1">
+            <div className="mt-4 flex items-center gap-2 overflow-x-auto no-scrollbar pb-1 lg:hidden">
               {productCategories.map((cat) => (
                 <button
                   key={cat}
@@ -556,7 +559,7 @@ export default function MerchantStoreView({
             </div>
           )}
 
-          {sidebarLayout && recipeHref && (
+          {isFarma && recipeHref && (
             <a
               href={recipeHref}
               target="_blank"
@@ -587,6 +590,7 @@ export default function MerchantStoreView({
                 <div className="flex items-center gap-2">
                   <h2 className="text-sm font-black text-slate-800 uppercase tracking-wider">Todos los Productos</h2>
                   <span className="rounded-full bg-slate-100 px-2.5 py-0.5 text-[10px] font-black text-slate-600">{filteredProducts.length}</span>
+                  {isLoadingMore && <span className="text-[10px] font-bold text-slate-400">Cargando catálogo completo…</span>}
                 </div>
               ) : (
                 <h2 className="text-sm font-black text-slate-800 uppercase tracking-wider">
@@ -653,8 +657,8 @@ export default function MerchantStoreView({
 
       {/* Catálogo: barra lateral + productos */}
       <div className="grid grid-cols-1 lg:grid-cols-4 gap-8">
-        <aside className="hidden lg:block lg:col-span-1 space-y-6 sticky top-24 self-start max-h-[calc(100vh-6rem)] overflow-y-auto no-scrollbar">
-          {recipeHref && (
+        <aside className={`hidden lg:block lg:col-span-1 space-y-6 sticky ${templateNiche ? 'top-24 max-h-[calc(100vh-6rem)]' : 'top-6 max-h-[calc(100vh-3rem)]'} self-start overflow-y-auto no-scrollbar`}>
+          {isFarma && recipeHref && (
             <a
               href={recipeHref}
               target="_blank"
@@ -710,20 +714,22 @@ export default function MerchantStoreView({
             </div>
           )}
 
-          <div className="rounded-2xl p-5 border border-orange-100 shadow-soft bg-gradient-to-br from-orange-50 to-amber-50">
-            <h3 className="text-xs font-black uppercase tracking-wider text-slate-800 mb-3">Garantía D&apos;una</h3>
-            <ul className="space-y-2">
-              {nicheConfig.trustBadges.map((badge, idx) => {
-                const BadgeIcon = getNicheIcon(badge.icon);
-                return (
-                  <li key={idx} className="flex items-center gap-2 text-xs font-bold text-slate-700">
-                    <BadgeIcon className="w-4 h-4 text-brand-orange shrink-0" />
-                    {badge.label}
-                  </li>
-                );
-              })}
-            </ul>
-          </div>
+          {isFarma && nicheConfig.trustBadges.length > 0 && (
+            <div className="rounded-2xl p-5 border border-orange-100 shadow-soft bg-gradient-to-br from-orange-50 to-amber-50">
+              <h3 className="text-xs font-black uppercase tracking-wider text-slate-800 mb-3">Garantía D&apos;una</h3>
+              <ul className="space-y-2">
+                {nicheConfig.trustBadges.map((badge, idx) => {
+                  const BadgeIcon = getNicheIcon(badge.icon);
+                  return (
+                    <li key={idx} className="flex items-center gap-2 text-xs font-bold text-slate-700">
+                      <BadgeIcon className="w-4 h-4 text-brand-orange shrink-0" />
+                      {badge.label}
+                    </li>
+                  );
+                })}
+              </ul>
+            </div>
+          )}
         </aside>
 
         <section className="lg:col-span-3 space-y-6">
@@ -853,7 +859,8 @@ export default function MerchantStoreView({
         subtotalUSD={subtotalUSD}
         onOpenCart={() => setIsCartOpen(true)}
         desktopSidebarLayout={sidebarLayout}
-        onBack={sidebarLayout ? onBack : undefined}
+        hideNicheHeaderDesktop={isFarma}
+        onBack={isFarma ? onBack : undefined}
         selectedProduct={selectedProductDetail}
         isProductModalOpen={isMasterModalOpen}
         onCloseProductModal={() => setIsMasterModalOpen(false)}
@@ -869,7 +876,7 @@ export default function MerchantStoreView({
     <div className="min-h-screen bg-slate-50 pb-28">
       {heroNode}
 
-      <div className="max-w-4xl mx-auto px-4 mt-4 relative z-10">
+      <div className={`${sidebarLayout ? 'max-w-7xl md:px-8' : 'max-w-4xl'} mx-auto px-4 mt-4 relative z-10`}>
         {contentNode}
       </div>
 

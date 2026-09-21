@@ -51,6 +51,8 @@ export default function MultitiendaHub() {
   const [activeMerchantInfo, setActiveMerchantInfo] = useState<any>(null);
   const [activeMerchantProducts, setActiveMerchantProducts] = useState<any[]>([]);
   const [activeMerchantId, setActiveMerchantId] = useState<string | null>(null);
+  const [isLoadingMoreProducts, setIsLoadingMoreProducts] = useState(false);
+  const activeStoreRef = useRef<string | null>(null);
 
   const [selectedCategory, setSelectedCategory] = useState<string>('ALL');
   const [searchQuery, setSearchQuery] = useState('');
@@ -204,6 +206,33 @@ export default function MultitiendaHub() {
       setActiveMerchantInfo(mappedInfo);
       setActiveMerchantProducts(flatProducts);
       setActiveMerchantId(storeIdStr);
+      activeStoreRef.current = storeIdStr;
+
+      // El backend pagina de a 30 productos (data.meta.last_page / data.hasMore): sin las demás páginas el catálogo y las categorías
+      // quedaban incompletos (p. ej. Proseco Bodegón: 30 de 255 productos, solo "LICORES"). Se traen el resto en segundo plano.
+      const lastPage = Number(res?.data?.meta?.last_page || 1);
+      if (res?.data?.hasMore && lastPage > 1) {
+        const MAX_PAGES = 12; // tope de seguridad: 12 × 30 = 360 productos
+        const pages = Array.from({ length: Math.min(lastPage, MAX_PAGES) - 1 }, (_, i) => i + 2);
+        setIsLoadingMoreProducts(true);
+        Promise.all(pages.map((pg) => getProductsByStore(store.id, pg)))
+          .then((results) => {
+            if (activeStoreRef.current !== storeIdStr) return;
+            const more = results.flatMap((r: any) =>
+              r?.code === 1 && Array.isArray(r.data?.products) ? r.data.products.flatMap((cat: any) => cat.data || cat) : []
+            );
+            setActiveMerchantProducts((prev) => {
+              const seen = new Set(prev.map((x: any) => x.id ?? x.code));
+              return [...prev, ...more.filter((x: any) => !seen.has(x.id ?? x.code))];
+            });
+          })
+          .catch((err) => console.error('Error al cargar más productos', err))
+          .finally(() => {
+            if (activeStoreRef.current === storeIdStr) setIsLoadingMoreProducts(false);
+          });
+      } else {
+        setIsLoadingMoreProducts(false);
+      }
 
     } catch (e) {
       console.error("Error al cargar productos", e);
@@ -249,6 +278,7 @@ export default function MultitiendaHub() {
           key={activeMerchantId}
           merchant={activeMerchantInfo}
           products={activeMerchantProducts}
+          isLoadingMore={isLoadingMoreProducts}
           onBack={() => {
             setActiveMerchantId(null);
             if (typeof window !== 'undefined') localStorage.removeItem('current_cart_store_id');

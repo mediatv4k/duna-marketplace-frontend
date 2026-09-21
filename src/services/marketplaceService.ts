@@ -66,8 +66,10 @@ export async function submitPurchaseOrder(orderDataPayload: any, file?: File | n
 }
 
 
-export async function getProductsByStore(storeId: number | string): Promise<ApiResponse<any>> {
-  return await apiFetch<any>(`/products/store/${storeId}`);
+// GET /products/store/{id}?page=N — el backend pagina de a 30 productos (data.meta.{total,per_page,current_page,last_page}, data.hasMore).
+// Verificado en DEV: Proseco Bodegón = 255 productos en 9 páginas; Papá Helado = 38 en 2. Sin `page` devuelve la página 1.
+export async function getProductsByStore(storeId: number | string, page: number = 1): Promise<ApiResponse<any>> {
+  return await apiFetch<any>(`/products/store/${storeId}${page > 1 ? `?page=${page}` : ''}`);
 }
 
 export async function getProduct(productId: number | string): Promise<ApiResponse<any>> {
