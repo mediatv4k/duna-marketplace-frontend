@@ -498,22 +498,7 @@ export default function MerchantStoreView({
 
   const featuredNode = (
     <>
-          {canShowPromotions && nicheConfig.heroVariant === 'PROMO_HERO' && featuredProduct && (
-            <div className="mb-4">
-              <div className="flex items-center gap-3 bg-white rounded-2xl p-3 shadow-md border border-slate-100">
-                <img
-                  src={featuredProduct.image || 'https://images.unsplash.com/photo-1560008511-11c63416e52d'}
-                  alt={featuredProduct.name}
-                  className="w-14 h-14 rounded-xl object-cover shrink-0 border border-slate-100 bg-slate-50"
-                />
-                <div className="min-w-0 flex-1">
-                  <span className="text-[9px] font-black uppercase tracking-wider text-[#fe6712] block">Destacado de hoy</span>
-                  <h3 className="text-sm font-black text-slate-900 truncate">{featuredProduct.name}</h3>
-                </div>
-                <span className="text-base font-black text-slate-900 shrink-0">${(featuredProduct.price || 0).toFixed(2)}</span>
-              </div>
-            </div>
-          )}
+          {/* Se retiró la tarjeta horizontal "Destacado de hoy": repetía la promoción principal; las promociones van en el carrusel vertical */}
     </>
   );
   const catalogNode = (
@@ -657,7 +642,7 @@ export default function MerchantStoreView({
 
       {/* Catálogo: barra lateral + productos */}
       <div className="grid grid-cols-1 lg:grid-cols-4 gap-8">
-        <aside className={`hidden lg:block lg:col-span-1 space-y-6 sticky ${templateNiche ? 'top-24 max-h-[calc(100vh-6rem)]' : 'top-6 max-h-[calc(100vh-3rem)]'} self-start overflow-y-auto no-scrollbar`}>
+        <aside className={`hidden lg:block lg:col-span-1 space-y-6 sticky ${templateNiche ? 'top-24 max-h-[calc(100vh-6rem)]' : 'top-6 max-h-[calc(100vh-3rem)]'} self-start overflow-y-auto no-scrollbar -mx-1 px-1 pt-1 pb-3`}>
           {isFarma && recipeHref && (
             <a
               href={recipeHref}
@@ -876,7 +861,7 @@ export default function MerchantStoreView({
     <div className="min-h-screen bg-slate-50 pb-28">
       {heroNode}
 
-      <div className={`${sidebarLayout ? 'max-w-7xl md:px-8' : 'max-w-4xl'} mx-auto px-4 mt-4 relative z-10`}>
+      <div className={`${sidebarLayout ? 'max-w-7xl' : 'max-w-4xl'} mx-auto w-full px-4 md:px-8 py-6 relative z-10`}>
         {contentNode}
       </div>
 
