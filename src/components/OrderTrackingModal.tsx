@@ -10,7 +10,7 @@ import { FINAL_STATUSES, getTrackingState } from '@/lib/orderTracking';
 import { useArrivalAlert } from '@/lib/useArrivalAlert';
 import OrderTimelinePanel from './OrderTimelinePanel';
 
-const POLL_INTERVAL_MS = 9000;
+const POLL_INTERVAL_MS = 10000; // refresco automático cada 10 s (el ciclo ya existente en el efecto de fetchOrder, con limpieza en el return)
 
 interface OrderTrackingModalProps {
   isOpen: boolean;
@@ -151,6 +151,9 @@ export default function OrderTrackingModal({ isOpen, onClose, orderId, orderSumm
   const displayPhone = remote?.customer_phone || orderData?.telefono || orderSummary?.telefono || '';
   const metodoPagoLower = String(orderData?.metodoPago || '').toLowerCase();
   const isPagoMethod = (keyword: string) => metodoPagoLower.includes(keyword);
+  // Inferencia de pago: status/paid REALES del backend (remote), no el estado local del checkout. Si el comercio avanza el pedido
+  // (status distinto de los iniciales) se infiere pago validado; cancelado/rechazado/error NO cuentan como pago verificado.
+  const isPaymentVerified = remote?.paid === true || (!!remote?.status && !['REQUESTED_BEGIN', 'REQUESTED_END', 'CANCELLED', 'REJECTED', 'ERROR'].includes(String(remote.status).toUpperCase()));
   const DIVIDER = '-'.repeat(40);
 
   return (
@@ -383,9 +386,9 @@ export default function OrderTrackingModal({ isOpen, onClose, orderId, orderSumm
                       <p className="text-xs text-slate-600"><strong>Teléfono:</strong> {displayPhone}</p>
                     )}
 
-                    <div className="flex items-center gap-2 text-xs text-amber-700 bg-amber-50 p-2.5 rounded-xl border border-amber-100">
-                      <DollarSign className="w-4 h-4 shrink-0 text-amber-600" />
-                      <p><strong>Pago en verificación:</strong> {orderData?.metodoPago === 'efectivo' ? 'Efectivo en Entrega' : 'Pago Móvil'}</p>
+                    <div className={`flex items-center gap-2 text-xs p-2.5 rounded-xl border ${isPaymentVerified ? 'text-emerald-700 bg-emerald-50 border-emerald-100' : 'text-amber-700 bg-amber-50 border-amber-100'}`}>
+                      <DollarSign className={`w-4 h-4 shrink-0 ${isPaymentVerified ? 'text-emerald-600' : 'text-amber-600'}`} />
+                      <p><strong>{isPaymentVerified ? 'Pago verificado exitosamente' : 'Pago en verificación'}:</strong> {orderData?.metodoPago === 'efectivo' ? 'Efectivo en Entrega' : 'Pago Móvil'}</p>
                     </div>
                   </div>
 
