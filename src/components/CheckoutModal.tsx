@@ -74,6 +74,38 @@ export interface OrderSummaryData {
   durationMin?: number;
 }
 
+// Comprime la imagen del comprobante (canvas): ancho máx. 1024 px y JPEG calidad 0.6, para no superar el límite del backend (Error 413).
+// Si algo falla o el resultado no es más liviano, se conserva el archivo original.
+async function compressPaymentImage(file: File, maxWidth = 1024, quality = 0.6): Promise<File> {
+  if (typeof window === 'undefined' || !file.type.startsWith('image/')) return file;
+  try {
+    const url = URL.createObjectURL(file);
+    const img = await new Promise<HTMLImageElement>((resolve, reject) => {
+      const el = new Image();
+      el.onload = () => resolve(el);
+      el.onerror = reject;
+      el.src = url;
+    });
+    URL.revokeObjectURL(url);
+    const scale = Math.min(1, maxWidth / img.width);
+    const w = Math.round(img.width * scale);
+    const h = Math.round(img.height * scale);
+    const canvas = document.createElement('canvas');
+    canvas.width = w;
+    canvas.height = h;
+    const ctx = canvas.getContext('2d');
+    if (!ctx) return file;
+    ctx.fillStyle = '#ffffff';
+    ctx.fillRect(0, 0, w, h);
+    ctx.drawImage(img, 0, 0, w, h);
+    const blob = await new Promise<Blob | null>((resolve) => canvas.toBlob(resolve, 'image/jpeg', quality));
+    if (!blob || blob.size >= file.size) return file;
+    return new File([blob], `${file.name.replace(/.[^.]+$/, '')}.jpg`, { type: 'image/jpeg' });
+  } catch {
+    return file;
+  }
+}
+
 interface CheckoutModalProps {
   isOpen: boolean;
   onClose: () => void;
@@ -245,10 +277,11 @@ export default function CheckoutModal({
     setTimeout(() => setCopiadoTexto(null), 2000);
   };
 
-  const handleFileChange = (e: React.ChangeEvent<HTMLInputElement>) => {
+  const handleFileChange = async (e: React.ChangeEvent<HTMLInputElement>) => {
     if (e.target.files && e.target.files[0]) {
-      setArchivoComprobante(e.target.files[0]);
-      setNombreArchivo(e.target.files[0].name);
+      const original = e.target.files[0];
+      setNombreArchivo(original.name);
+      setArchivoComprobante(await compressPaymentImage(original));
     }
   };
 
@@ -711,6 +744,13 @@ export default function CheckoutModal({
             )}
 
             <div className="text-center shrink-0 py-1 bg-slate-50 p-2 rounded-xl border border-slate-100">
+              {descuentoUSD > 0 && (
+                <span className="block text-[10px] font-black text-emerald-600 mb-0.5">
+                  Cofre Recompensa D&apos;una (25% OFF en flete): - {cobraEnBs
+                    ? `Bs.S ${(descuentoUSD * tasaRef).toLocaleString('es-VE', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`
+                    : `$${descuentoUSD.toFixed(2)} USD`}
+                </span>
+              )}
               <span className="text-[7.5px] font-black text-slate-400 uppercase tracking-widest block">Total A Pagar</span>
               <span className="text-xl font-black text-[#fe6712] block leading-tight mt-0.5">
                 {cobraEnBs
@@ -845,7 +885,11 @@ export default function CheckoutModal({
               )}
               <div className="flex items-center justify-between text-xs px-1 font-black mb-1">
                 <span className="text-slate-500">Total a pagar:</span>
-                <span className="text-[#fe6712] text-sm font-black">${totalFinalUSD.toFixed(2)} USD</span>
+                <span className="text-[#fe6712] text-sm font-black">${totalFinalUSD.toFixed(2)} USD
+                  {selectedMethod?.field5 === 'REF' && tasaRef > 0 && (
+                    <span className="ml-1 text-xs text-slate-500 font-medium">/ Bs.S {totalBolivares.toLocaleString('es-VE', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}</span>
+                  )}
+                </span>
               </div>
               <div className="flex gap-2">
                 <button type="button" onClick={onBackToCart} className="rounded-2xl border border-slate-200 px-3 py-1.5 text-xs font-bold text-slate-600 hover:bg-slate-50">

@@ -279,7 +279,9 @@ export default function MerchantStoreView({
             price: item.price || item.unitPrice || 0
           }));
 
-          const isMultiple = g.selectType === 'MULTIPLE' || g.max > 1;
+          // CHECKIN = casillas de verificación del backend (p. ej. grupo "SIN": sin cebolla, sin salsa); antes caía en SINGLE (radio)
+          const isCheckbox = g.selectType === 'CHECKIN';
+          const isMultiple = g.selectType === 'MULTIPLE' || isCheckbox || g.max > 1;
 
           return {
             ...g,
@@ -288,6 +290,7 @@ export default function MerchantStoreView({
             label: g.name || g.title || g.label || 'Opciones',
             type: 'SIZE_RADIO', 
             selectType: isMultiple ? 'MULTIPLE' : 'SINGLE',
+            checkbox: isCheckbox,
             items: normalizedList,
             options: normalizedList,
             values: normalizedList,

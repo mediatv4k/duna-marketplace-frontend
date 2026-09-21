@@ -270,7 +270,7 @@ export default function MasterProductModal({
           if (group.options?.length > 0) {
             initialVars[idx] = group.options.map((opt: any, oIdx: number) => ({
               ...opt,
-              count: oIdx === 0 ? 1 : 0
+              count: oIdx === 0 && !group.checkbox ? 1 : 0
             }));
           }
         });
@@ -428,6 +428,21 @@ export default function MasterProductModal({
       }
 
       return { ...prev, [groupIdx]: updatedList };
+    });
+  };
+
+  // Casillas (grupos CHECKIN, ej. "SIN"): alterna 0/1 por opción respetando maxItems del grupo (el mínimo lo valida isMinimumsMet)
+  const handleGlobalCheckboxToggle = (groupIdx: number, optionCode: string) => {
+    setSelectedVariants(prev => {
+      const grp = availableGroups[groupIdx];
+      const options = grp?.options || [];
+      const current: any[] = Array.isArray(prev[groupIdx]) ? prev[groupIdx] : options.map((o: any) => ({ ...o, count: 0 }));
+      const max = Number(grp?.maxItems || grp?.max || 0);
+      const isTarget = (i: any) => i.code === optionCode || i.id === optionCode;
+      const turningOn = !current.some((i: any) => isTarget(i) && (i.count || 0) > 0);
+      const selectedCount = current.filter((i: any) => (i.count || 0) > 0).length;
+      if (turningOn && max > 0 && selectedCount >= max) return prev;
+      return { ...prev, [groupIdx]: current.map((i: any) => (isTarget(i) ? { ...i, count: turningOn ? 1 : 0 } : i)) };
     });
   };
 
@@ -637,7 +652,7 @@ export default function MasterProductModal({
           variantsPayload.push({
             name: group.name || group.title,
             code: group.code,
-            type: group.selectType || 'MULTIPLE',
+            type: (group.checkbox || group.selectType === 'CHECKIN') ? 'CHECKIN' : (group.selectType || 'MULTIPLE'),
             items
           });
         }
@@ -762,6 +777,22 @@ export default function MasterProductModal({
                         ? currentSelectionList.find((i: any) => i.code === opt.code || i.id === opt.code)
                         : null;
                       const currentCount = matchedItem ? (matchedItem.count || 0) : (opt.code === group.options[0]?.code ? 1 : 0);
+
+                      if (group.checkbox) {
+                        const { priceLabel, bsLabel } = getOptionPriceLabels(opt.price, false, bcvRate);
+                        return (
+                          <OptionCapsule
+                            key={opt.code}
+                            mode="single"
+                            name={opt.name}
+                            image={opt.image}
+                            priceLabel={priceLabel}
+                            bsLabel={bsLabel}
+                            count={matchedItem ? (matchedItem.count || 0) : 0}
+                            onSelect={() => handleGlobalCheckboxToggle(gIdx, opt.code)}
+                          />
+                        );
+                      }
 
                       if (group.selectType === 'SINGLE') {
                         const { priceLabel, bsLabel } = getOptionPriceLabels(opt.price, group.pricingRole === 'BASE', bcvRate);
