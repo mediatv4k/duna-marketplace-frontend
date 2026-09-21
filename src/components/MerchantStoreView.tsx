@@ -1,7 +1,7 @@
 ﻿'use client';
 
 import React, { useState } from 'react';
-import { ShoppingBag, ChevronRight, Search, Star, Clock, MapPin, Sparkles } from 'lucide-react';
+import { ShoppingBag, ChevronRight, Search, Star, Clock, MapPin, Sparkles, FileText } from 'lucide-react';
 import CartModal from './CartModal';
 import LocationPickerModal from './LocationPickerModal';
 import MasterProductModal from './MasterProductModal';
@@ -11,6 +11,7 @@ import { getDistanceAndTime } from '@/lib/logisticsEngine';
 import { detectStoreNiche, getModalEngine, getNicheConfig } from '@/lib/nicheConfig';
 import { getNicheIcon, getBadgeColorClasses } from '@/lib/nicheIcons';
 import MerchantTemplateEngine, { templateNicheFromStoreNiche } from './MerchantTemplateEngine';
+import { toWhatsAppNumber } from '@/lib/orderTracking';
 
 // Regla del contrato: el backend no presta servicio de delivery a más de 12 km
 const MAX_DELIVERY_KM = 12;
@@ -447,7 +448,7 @@ export default function MerchantStoreView({
   // Piezas de la vista: se montan dentro del motor multiplantilla (nichos con plantilla) o directo (sin plantilla)
   const templateNiche = templateNicheFromStoreNiche(storeNiche);
   const heroNode = (
-        <div className="relative w-full h-52 bg-slate-900 overflow-hidden">
+        <div className="relative w-full h-52 lg:h-44 bg-slate-900 overflow-hidden">
           {merchant.banner ? (
             <img src={merchant.banner} alt={merchant.name} className="w-full h-full object-cover" />
           ) : (
@@ -478,7 +479,17 @@ export default function MerchantStoreView({
           </div>
         </div>
   );
-  const contentNode = (
+  // Diseño corporativo de escritorio (barra lateral + productos): solo plantilla farmacia. Todo con datos reales de la tienda.
+  const sidebarLayout = templateNiche === 'farma';
+  const storeWa = toWhatsAppNumber(merchant?.phone);
+  const waHref = (text: string) => (storeWa ? `https://wa.me/${storeWa}?text=${encodeURIComponent(text)}` : null);
+  const recipeHref = waHref(`Hola ${merchant.name}, quiero enviarles mi récipe médico.`);
+  const departmentCounts = productCategories
+    .filter((c) => c !== 'ALL')
+    .map((cat) => ({ cat, count: products.filter((p: any) => ((p.category && String(p.category).trim()) || 'Otros') === cat).length }));
+  const storeBrands = Array.from(new Set(products.map((p: any) => p.brand || p.laboratory).filter(Boolean))) as string[];
+
+  const featuredNode = (
     <>
           {canShowPromotions && nicheConfig.heroVariant === 'PROMO_HERO' && featuredProduct && (
             <div className="mb-4">
@@ -496,7 +507,10 @@ export default function MerchantStoreView({
               </div>
             </div>
           )}
-
+    </>
+  );
+  const catalogNode = (
+    <>
           {!templateNiche && nicheConfig.trustBadges.length > 0 && (
             <div className="mt-4 flex items-center gap-2 overflow-x-auto no-scrollbar pb-1">
               {nicheConfig.trustBadges.map((badge, idx) => {
@@ -538,6 +552,18 @@ export default function MerchantStoreView({
             </div>
           )}
 
+          {sidebarLayout && recipeHref && (
+            <a
+              href={recipeHref}
+              target="_blank"
+              rel="noopener noreferrer"
+              className="lg:hidden mt-4 w-full flex items-center justify-center gap-2 bg-brand-orange-light border border-orange-200 text-brand-orange font-bold text-xs py-2 rounded-full mb-3 shadow-sm"
+            >
+              <FileText className="h-4 w-4" />
+              Subir Récipe Médico
+            </a>
+          )}
+
           <div className={`mt-6 sticky ${templateNiche ? 'top-[61px]' : 'top-0'} z-40 -mx-4 px-4 bg-white/95 backdrop-blur-md border-b border-gray-100 py-3 shadow-sm`}>
             <div className="relative">
               <Search className="absolute left-4 top-4 w-4 h-4 text-slate-400" />
@@ -553,12 +579,19 @@ export default function MerchantStoreView({
 
           <div className="mt-8">
             <div className="flex items-center justify-between mb-4">
-              <h2 className="text-sm font-black text-slate-800 uppercase tracking-wider">
-                Menú y Productos ({filteredProducts.length})
-              </h2>
+              {sidebarLayout ? (
+                <div className="flex items-center gap-2">
+                  <h2 className="text-sm font-black text-slate-800 uppercase tracking-wider">Todos los Productos</h2>
+                  <span className="rounded-full bg-slate-100 px-2.5 py-0.5 text-[10px] font-black text-slate-600">{filteredProducts.length}</span>
+                </div>
+              ) : (
+                <h2 className="text-sm font-black text-slate-800 uppercase tracking-wider">
+                  Menú y Productos ({filteredProducts.length})
+                </h2>
+              )}
             </div>
             
-            <div className="grid grid-cols-2 sm:grid-cols-2 md:grid-cols-3 lg:grid-cols-4 gap-3 md:gap-4">
+            <div className={`grid grid-cols-2 sm:grid-cols-2 md:grid-cols-3 ${sidebarLayout ? 'lg:grid-cols-3' : 'lg:grid-cols-4'} gap-3 md:gap-4`}>
               {filteredProducts.map((product) => {
                 // Insignia solo si el backend trae el dato (hoy los productos no incluyen marca oficial / genérico)
                 const badge = product.isOfficialBrand
@@ -608,6 +641,96 @@ export default function MerchantStoreView({
               })}
             </div>
           </div>
+    </>
+  );
+  const contentNode = sidebarLayout ? (
+    <>
+      {featuredNode}
+
+      {/* Catálogo: barra lateral + productos */}
+      <div className="grid grid-cols-1 lg:grid-cols-4 gap-8">
+        <aside className="hidden lg:block lg:col-span-1 space-y-6">
+          {recipeHref && (
+            <a
+              href={recipeHref}
+              target="_blank"
+              rel="noopener noreferrer"
+              className="flex items-center gap-3 rounded-2xl border border-brand-orange bg-orange-50 p-4 shadow-soft hover:bg-orange-100 transition"
+            >
+              <span className="flex h-10 w-10 shrink-0 items-center justify-center rounded-xl bg-brand-orange text-white">
+                <FileText className="h-5 w-5" />
+              </span>
+              <span className="min-w-0">
+                <span className="block text-xs font-black text-slate-900 leading-tight">Subir Récipe Médico</span>
+                <span className="block text-[10px] font-semibold text-slate-500 leading-tight mt-0.5">Cotización con Farmacéutico</span>
+              </span>
+            </a>
+          )}
+
+          <div className="bg-white rounded-2xl p-5 border border-slate-100 shadow-soft">
+            <h3 className="text-xs font-black uppercase tracking-wider text-slate-800 mb-3">Departamentos</h3>
+            <ul className="space-y-1">
+              <li>
+                <button
+                  type="button"
+                  onClick={() => setSelectedCategory('ALL')}
+                  className={`w-full flex items-center justify-between rounded-lg px-2.5 py-1.5 text-xs font-bold transition cursor-pointer ${selectedCategory === 'ALL' ? 'bg-orange-50 text-brand-orange' : 'text-slate-600 hover:bg-slate-50'}`}
+                >
+                  <span>Todos</span>
+                  <span className="text-[10px] font-black text-slate-400">{products.length}</span>
+                </button>
+              </li>
+              {departmentCounts.map(({ cat, count }) => (
+                <li key={cat}>
+                  <button
+                    type="button"
+                    onClick={() => setSelectedCategory(cat)}
+                    className={`w-full flex items-center justify-between rounded-lg px-2.5 py-1.5 text-xs font-bold transition cursor-pointer ${selectedCategory === cat ? 'bg-orange-50 text-brand-orange' : 'text-slate-600 hover:bg-slate-50'}`}
+                  >
+                    <span className="truncate pr-2">{cat}</span>
+                    <span className="text-[10px] font-black text-slate-400">{count}</span>
+                  </button>
+                </li>
+              ))}
+            </ul>
+          </div>
+
+          {storeBrands.length > 0 && (
+            <div className="bg-white rounded-2xl p-5 border border-slate-100 shadow-soft">
+              <h3 className="text-xs font-black uppercase tracking-wider text-slate-800 mb-3">Marcas &amp; Laboratorios</h3>
+              <div className="flex flex-wrap gap-2">
+                {storeBrands.map((brand) => (
+                  <span key={brand} className="rounded-full bg-slate-100 px-2.5 py-1 text-[10px] font-bold text-slate-600">{brand}</span>
+                ))}
+              </div>
+            </div>
+          )}
+
+          <div className="rounded-2xl p-5 border border-orange-100 shadow-soft bg-gradient-to-br from-orange-50 to-amber-50">
+            <h3 className="text-xs font-black uppercase tracking-wider text-slate-800 mb-3">Garantía D&apos;una</h3>
+            <ul className="space-y-2">
+              {nicheConfig.trustBadges.map((badge, idx) => {
+                const BadgeIcon = getNicheIcon(badge.icon);
+                return (
+                  <li key={idx} className="flex items-center gap-2 text-xs font-bold text-slate-700">
+                    <BadgeIcon className="w-4 h-4 text-brand-orange shrink-0" />
+                    {badge.label}
+                  </li>
+                );
+              })}
+            </ul>
+          </div>
+        </aside>
+
+        <section className="lg:col-span-3 space-y-6">
+          {catalogNode}
+        </section>
+      </div>
+    </>
+  ) : (
+    <>
+      {featuredNode}
+      {catalogNode}
     </>
   );
   const overlaysNode = (
@@ -722,6 +845,7 @@ export default function MerchantStoreView({
         cartItems={cartItems}
         subtotalUSD={subtotalUSD}
         onOpenCart={() => setIsCartOpen(true)}
+        desktopSidebarLayout={sidebarLayout}
         selectedProduct={selectedProductDetail}
         isProductModalOpen={isMasterModalOpen}
         onCloseProductModal={() => setIsMasterModalOpen(false)}

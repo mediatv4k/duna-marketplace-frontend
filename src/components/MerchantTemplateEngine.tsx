@@ -75,6 +75,8 @@ export interface MerchantTemplateEngineProps {
   children?: React.ReactNode; // catálogo del comercio (grilla), lo aporta el padre
   // Si el padre ya tiene su propio carrito (CartModal), el botón del navbar lo abre en vez del drawer interno
   onOpenCart?: () => void;
+  // Escritorio con barra lateral: contenedores max-w-7xl y los chips de categoría pasan solo a móvil (el padre dibuja "Departamentos")
+  desktopSidebarLayout?: boolean;
 
   // Navbar corporativo (valores reales; si no hay dato, la píldora no se muestra)
   bcvRate?: number | null;
@@ -145,6 +147,7 @@ export default function MerchantTemplateEngine({
   hero,
   children,
   onOpenCart,
+  desktopSidebarLayout = false,
   bcvRate,
   walletBalanceUSD,
   products,
@@ -190,7 +193,7 @@ export default function MerchantTemplateEngine({
   );
 
   const chipsRow = (withEmoji: boolean) => filterList.length > 0 && (
-    <div className="flex items-center gap-2 overflow-x-auto no-scrollbar pb-1">
+    <div className={`flex items-center gap-2 overflow-x-auto no-scrollbar pb-1 ${desktopSidebarLayout ? 'lg:hidden' : ''}`}>
       {filterChip('ALL', 'Todos', withEmoji ? '✨' : undefined)}
       {filterList.map((cat) => filterChip(cat, cat, withEmoji ? moodEmoji(cat) : undefined))}
     </div>
@@ -298,7 +301,7 @@ export default function MerchantTemplateEngine({
     <div className="min-h-screen bg-slate-50 pb-28">
       {/* ── Núcleo universal: Navbar corporativo (Wallet / BCV / carrito) ── */}
       <header className="sticky top-0 z-40 bg-white/95 backdrop-blur-md border-b border-gray-100 shadow-sm">
-        <div className="max-w-4xl mx-auto px-4 py-3 flex items-center justify-between gap-3">
+        <div className={`${desktopSidebarLayout ? 'max-w-7xl md:px-8' : 'max-w-4xl'} mx-auto px-4 py-3 flex items-center justify-between gap-3`}>
           <h1 className="text-sm font-black text-slate-900 truncate">{merchantName || nicheConfig.label}</h1>
           <div className="flex items-center gap-2 shrink-0">
             {!!bcvRate && bcvRate > 0 && (
@@ -331,7 +334,7 @@ export default function MerchantTemplateEngine({
       {hero}
 
       {/* ── Cabecera / filtros específicos del nicho + badges de confianza ── */}
-      <div className="max-w-4xl mx-auto px-4 pt-4 space-y-3">
+      <div className={`${desktopSidebarLayout ? 'max-w-7xl md:px-8' : 'max-w-4xl'} mx-auto px-4 pt-4 space-y-3`}>
         {renderNicheHeader()}
         {nicheConfig.trustBadges.length > 0 && (
           <div className="flex items-center gap-2 overflow-x-auto no-scrollbar pb-1">
@@ -352,7 +355,7 @@ export default function MerchantTemplateEngine({
       </div>
 
       {/* ── Catálogo del comercio (lo aporta el padre) ── */}
-      <main className="max-w-4xl mx-auto px-4 pt-4">{children}</main>
+      <main className={desktopSidebarLayout ? 'max-w-7xl mx-auto w-full px-4 md:px-8 py-6 flex-1' : 'max-w-4xl mx-auto px-4 pt-4'}>{children}</main>
 
       {/* ── Núcleo universal: Drawer del carrito con termómetro gamificado ── */}
       {!onOpenCart && isCartOpen && (
