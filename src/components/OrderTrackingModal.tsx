@@ -121,8 +121,8 @@ export default function OrderTrackingModal({ isOpen, onClose, orderId, orderSumm
     : (orderSummary?.items || []);
 
   // Aplana item.variants (estructura anidada real) + exclusiones de item.breakdown en filas para la matriz
-  const getItemBreakdownRows = (item: any): { qty: number | null; name: string; price: number; isExclusion: boolean }[] => {
-    const rows: { qty: number | null; name: string; price: number; isExclusion: boolean }[] = [];
+  const getItemBreakdownRows = (item: any): { qty: number | null; name: string; price: number; isExclusion: boolean; isHeader?: boolean }[] => {
+    const rows: { qty: number | null; name: string; price: number; isExclusion: boolean; isHeader?: boolean }[] = [];
     const groups = Array.isArray(item.variants) ? item.variants : [];
 
     groups.forEach((g: any) => {
@@ -135,8 +135,25 @@ export default function OrderTrackingModal({ isOpen, onClose, orderId, orderSumm
       }
     });
 
-    const lines: string[] = Array.isArray(item.breakdown) ? item.breakdown : [];
-    lines.forEach((line: string) => {
+    // Una ranura = encabezado "👤 Ranura #1 (omar):" + un modificador por línea (•). Se acepta también el formato anterior
+    // "🍔 [Ranura #1omar]: 1x SIN PAPITA + 1x SIN SALSA" (carritos guardados) y se le quita el prefijo "1x" a los SIN.
+    const rawLines: string[] = Array.isArray(item.breakdown) ? item.breakdown : [];
+    const lines: string[] = rawLines.flatMap((raw: string) => {
+      const legacy = String(raw).match(/^🍔 \[(.+?)\]:\s*(.+)$/);
+      if (legacy) return [`👤 ${legacy[1]}:`, ...legacy[2].split(' + ').map((part) => `• ${part}`)];
+      return String(raw).split('\n');
+    });
+    lines.forEach((rawLine: string) => {
+      const line = rawLine.trim();
+      if (line.startsWith('👤')) {
+        rows.push({ qty: null, name: line, price: 0, isExclusion: false, isHeader: true });
+        return;
+      }
+      if (line.startsWith('•')) {
+        const text = line.replace(/^•\s*/, '').replace(/^1\s*x\s+(?=sin\b)/i, '');
+        rows.push({ qty: null, name: text, price: 0, isExclusion: /^sin\b/i.test(text) });
+        return;
+      }
       const isExclusion = /sin\s/i.test(line);
       if (isExclusion) {
         rows.push({ qty: null, name: line, price: 0, isExclusion: true });
@@ -274,7 +291,7 @@ export default function OrderTrackingModal({ isOpen, onClose, orderId, orderSumm
                               <div key={item.cartItemId || item.code || idx}>
                                 <p className="text-center text-slate-500 truncate">-------- {String(item.name || '').toUpperCase()} --------</p>
                                 {variantRows.map((v, vIdx) => (
-                                  <div key={vIdx} className={`flex justify-between gap-2 ${v.isExclusion ? 'text-red-600 font-bold' : ''}`}>
+                                  <div key={vIdx} className={`flex justify-between gap-2 ${v.isExclusion ? 'text-red-600 font-bold' : ''} ${v.isHeader ? 'font-bold mt-1' : ''}`}>
                                     <span className="truncate">{v.qty ? `${v.qty} ` : ''}{v.name}</span>
                                     <span className="shrink-0">{v.price > 0 && v.qty ? (v.price * v.qty).toFixed(2) : ''}</span>
                                   </div>
@@ -432,7 +449,7 @@ export default function OrderTrackingModal({ isOpen, onClose, orderId, orderSumm
                               <div key={item.cartItemId || item.code || idx}>
                                 <p className="text-center text-slate-500 truncate">-------- {String(item.name || '').toUpperCase()} --------</p>
                                 {variantRows.map((v, vIdx) => (
-                                  <div key={vIdx} className={`flex justify-between gap-2 ${v.isExclusion ? 'text-red-600 font-bold' : ''}`}>
+                                  <div key={vIdx} className={`flex justify-between gap-2 ${v.isExclusion ? 'text-red-600 font-bold' : ''} ${v.isHeader ? 'font-bold mt-1' : ''}`}>
                                     <span className="truncate">{v.qty ? `${v.qty} ` : ''}{v.name}</span>
                                     <span className="shrink-0">{v.price > 0 && v.qty ? (v.price * v.qty).toFixed(2) : ''}</span>
                                   </div>

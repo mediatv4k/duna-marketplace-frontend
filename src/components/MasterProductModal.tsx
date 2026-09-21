@@ -596,6 +596,9 @@ export default function MasterProductModal({
 
       slots.forEach((slot, idx) => {
         const slotTitle = slot.name?.trim() ? slot.name.trim() : `Ranura #${idx + 1}`;
+        // Encabezado legible: "Ranura #1omar" → "Ranura #1 (omar)"
+        const titleMatch = slotTitle.match(/^(Ranura #\d+)\s*(\S.*)$/i);
+        const slotHeader = titleMatch ? `${titleMatch[1]} (${titleMatch[2]})` : (/^Ranura #/i.test(slotTitle) ? slotTitle : `Ranura #${idx + 1} (${slotTitle})`);
         const slotParts: string[] = [];
 
         Object.values(slot.selectedVariants).forEach((sel: any) => {
@@ -603,10 +606,12 @@ export default function MasterProductModal({
           if (Array.isArray(sel)) {
             sel.forEach(item => {
               if ((item.count || 0) > 0) {
+                // Los modificadores "SIN ..." van sin prefijo de cantidad ("SIN PAPITA", no "1x SIN PAPITA")
+                const modLabel = /^sin\b/i.test(String(item.name || '').trim()) ? String(item.name).trim() : `${item.count}x ${item.name}`;
                 if (item.price && item.price > 0) {
-                  slotParts.push(`${item.count}x ${item.name} (+$${(item.price * item.count).toFixed(2)})`);
+                  slotParts.push(`${modLabel} (+$${(item.price * item.count).toFixed(2)})`);
                 } else {
-                  slotParts.push(`${item.count}x ${item.name}`);
+                  slotParts.push(modLabel);
                 }
               }
             });
@@ -616,12 +621,13 @@ export default function MasterProductModal({
         });
 
         if (slot.exclusions && slot.exclusions.length > 0) {
-          slotParts.push(`Sin ${slot.exclusions.join(', ')}`);
+          slot.exclusions.forEach((ex: string) => slotParts.push(`Sin ${ex}`));
         } else {
           slotParts.push('Con Todo');
         }
 
-        breakdown.push(`🍔 [${slotTitle}]: ${slotParts.join(' + ')}`);
+        // Una sola entrada por ranura: encabezado y cada modificador en su propia línea (viñeta)
+        breakdown.push([`👤 ${slotHeader}:`, ...slotParts.map((part) => `• ${part}`)].join('\n'));
       });
     } else {
       Object.keys(selectedVariants).forEach(key => {
