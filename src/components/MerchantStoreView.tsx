@@ -503,23 +503,6 @@ export default function MerchantStoreView({
   );
   const catalogNode = (
     <>
-          {!templateNiche && nicheConfig.trustBadges.length > 0 && (
-            <div className="mt-4 flex items-center gap-2 overflow-x-auto no-scrollbar pb-1">
-              {nicheConfig.trustBadges.map((badge, idx) => {
-                const BadgeIcon = getNicheIcon(badge.icon);
-                return (
-                  <span
-                    key={idx}
-                    className={`flex items-center gap-1.5 shrink-0 px-3 py-1.5 rounded-xl border text-[11px] font-bold whitespace-nowrap ${getBadgeColorClasses(badge.colorToken)}`}
-                  >
-                    <BadgeIcon className="w-3.5 h-3.5" />
-                    {badge.label}
-                  </span>
-                );
-              })}
-            </div>
-          )}
-
           <PromotionsCarousel
             promotions={canShowPromotions ? promotions : []}
             onSelectPromotion={handlePromotionClick}

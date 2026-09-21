@@ -5,7 +5,6 @@ import {
   ShoppingBag, Wallet, Coins, X, Trash2, Gift, Shirt, Cpu, IceCream, ShoppingBasket, Wine, Pill, Search, ArrowRight,
 } from 'lucide-react';
 import MasterProductModal from './MasterProductModal';
-import { getBadgeColorClasses, getNicheIcon } from '@/lib/nicheIcons';
 import { getModalEngine, getNicheConfig, type StoreNiche } from '@/lib/nicheConfig';
 
 // ─────────────────────────────────────────────────────────────────────────────
@@ -303,6 +302,8 @@ export default function MerchantTemplateEngine({
     }
   };
 
+  const nicheHeader = renderNicheHeader();
+
   return (
     <div className="min-h-screen bg-slate-50 pb-28">
       {/* ── Núcleo universal: Navbar corporativo (Wallet / BCV / carrito) ── */}
@@ -350,26 +351,12 @@ export default function MerchantTemplateEngine({
 
       {hero}
 
-      {/* ── Cabecera / filtros específicos del nicho + badges de confianza ── */}
-      <div className={`${desktopSidebarLayout ? 'max-w-7xl md:px-8' : 'max-w-4xl'} ${hideNicheHeaderDesktop ? 'lg:hidden' : ''} mx-auto px-4 pt-4 space-y-3`}>
-        {renderNicheHeader()}
-        {nicheConfig.trustBadges.length > 0 && (
-          <div className="flex items-center gap-2 overflow-x-auto no-scrollbar pb-1">
-            {nicheConfig.trustBadges.map((badge, idx) => {
-              const BadgeIcon = getNicheIcon(badge.icon);
-              return (
-                <span
-                  key={idx}
-                  className={`flex items-center gap-1.5 shrink-0 px-3 py-1.5 rounded-xl border text-[11px] font-bold whitespace-nowrap ${getBadgeColorClasses(badge.colorToken)}`}
-                >
-                  <BadgeIcon className="w-3.5 h-3.5" />
-                  {badge.label}
-                </span>
-              );
-            })}
-          </div>
-        )}
-      </div>
+      {/* ── Cabecera / filtros específicos del nicho (sin insignias de garantía) ── */}
+      {nicheHeader && (
+        <div className={`${desktopSidebarLayout ? 'max-w-7xl md:px-8' : 'max-w-4xl'} ${hideNicheHeaderDesktop ? 'lg:hidden' : ''} mx-auto px-4 pt-3`}>
+          {nicheHeader}
+        </div>
+      )}
 
       {/* ── Catálogo del comercio (lo aporta el padre) ── */}
       <main className={desktopSidebarLayout ? 'max-w-7xl mx-auto w-full px-4 md:px-8 py-6 flex-1' : 'max-w-4xl mx-auto px-4 pt-4'}>{children}</main>
