@@ -353,7 +353,7 @@ export default function MerchantTemplateEngine({
 
       {/* ── Cabecera / filtros específicos del nicho (sin insignias de garantía) ── */}
       {nicheHeader && (
-        <div className={`${desktopSidebarLayout ? 'max-w-7xl md:px-8' : 'max-w-4xl'} ${hideNicheHeaderDesktop ? 'lg:hidden' : ''} mx-auto px-4 pt-3`}>
+        <div className={`${desktopSidebarLayout ? 'max-w-7xl md:px-8' : 'max-w-4xl'} ${hideNicheHeaderDesktop ? 'lg:hidden' : ''} mx-auto px-4 pt-3 pb-2 sticky top-[61px] z-30 bg-white/95 backdrop-blur-md shadow-sm lg:static lg:bg-transparent lg:backdrop-blur-none lg:shadow-none lg:pb-0`}>
           {nicheHeader}
         </div>
       )}

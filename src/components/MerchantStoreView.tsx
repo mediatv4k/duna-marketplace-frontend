@@ -509,7 +509,7 @@ export default function MerchantStoreView({
           />
 
           {!templateNiche && productCategories.length > 1 && (
-            <div className="mt-4 flex items-center gap-2 overflow-x-auto no-scrollbar pb-1 lg:hidden">
+            <div className="mt-4 sticky top-0 z-40 -mx-4 px-4 py-2 bg-white/95 backdrop-blur-md shadow-sm flex items-center gap-2 overflow-x-auto no-scrollbar lg:hidden">
               {productCategories.map((cat) => (
                 <button
                   key={cat}
@@ -539,7 +539,7 @@ export default function MerchantStoreView({
             </a>
           )}
 
-          <div className={`mt-6 sticky ${templateNiche ? 'top-[61px]' : 'top-0'} z-40 -mx-4 px-4 bg-white/95 backdrop-blur-md border-b border-gray-100 py-3 shadow-sm`}>
+          <div className={`mt-6 lg:sticky ${templateNiche ? 'top-[61px]' : 'top-0'} z-40 -mx-4 px-4 bg-white/95 backdrop-blur-md border-b border-gray-100 py-3 shadow-sm`}>
             <div className="relative">
               <Search className="absolute left-4 top-4 w-4 h-4 text-slate-400" />
               <input
