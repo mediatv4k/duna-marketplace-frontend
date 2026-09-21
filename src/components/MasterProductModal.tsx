@@ -745,7 +745,7 @@ export default function MasterProductModal({
 
       <div className="bg-white w-full max-w-2xl rounded-t-[2.5rem] sm:rounded-3xl max-h-[92vh] flex flex-col overflow-hidden shadow-2xl relative z-10 animate-in slide-in-from-bottom sm:slide-in-from-bottom-0 sm:zoom-in-95 duration-200">
 
-        <div className="p-5 sm:p-6 border-b border-slate-100 flex justify-between items-start bg-white shrink-0">
+        <div className="p-4 sm:p-6 border-b border-slate-100 flex justify-between items-start bg-white shrink-0">
           <div className="flex-1 pr-4">
             <div className="flex items-center gap-2 mb-1">
               <span className="text-[10px] font-black text-slate-900 bg-slate-100 px-2.5 py-0.5 rounded-md uppercase tracking-wider">{product.code}</span>
@@ -760,12 +760,12 @@ export default function MasterProductModal({
 
         <div className="flex-1 overflow-y-auto">
           {step === 1 && (
-            <div className="p-5 sm:p-6 space-y-6">
-              <div className="grid grid-cols-1 sm:grid-cols-3 gap-4 items-center bg-slate-50 p-4 rounded-2xl border border-slate-100">
-                <div className="w-full h-40 bg-white rounded-xl flex items-center justify-center p-2 border border-slate-200 relative">
+            <div className="p-4 sm:p-6 space-y-4">
+              <div className="grid grid-cols-[6rem_1fr] sm:grid-cols-3 gap-3 sm:gap-4 items-start pb-3 border-b border-gray-100">
+                <div className="w-full h-24 sm:h-40 flex items-center justify-center relative">
                   <img src={product.image || product.img} alt={product.name} className="max-h-full max-w-full object-contain" onError={(e:any)=>{e.target.src='https://images.unsplash.com/photo-1542838132-92c53300491e?w=500&auto=format&fit=crop&q=60'}} />
                 </div>
-                <div className="sm:col-span-2 space-y-2">
+                <div className="sm:col-span-2 space-y-1.5 min-w-0">
                   <div className="flex justify-between items-baseline">
                     <div>
                       <span className="text-[10px] font-black text-slate-400 uppercase tracking-wider block">{isSlotMode ? 'Precio Configurado' : 'Precio Base'}</span>
@@ -782,9 +782,9 @@ export default function MasterProductModal({
                       <Check className="w-3 h-3" /> Disponible
                     </span>
                   </div>
-                  <p className="text-xs text-slate-600 font-medium leading-relaxed">{product.desc || product.description || 'Configura las opciones para este artículo.'}</p>
+                  <p className="text-xs text-slate-600 font-medium leading-snug line-clamp-2 sm:line-clamp-none">{product.desc || product.description || 'Configura las opciones para este artículo.'}</p>
 
-                  <div className="flex items-center justify-between pt-3 border-t border-slate-200">
+                  <div className="flex items-center justify-between pt-2 border-t border-gray-100">
                     <span className="text-xs font-bold text-slate-700">Cantidad (Unidades):</span>
                     <div className="flex items-center gap-3 bg-white px-2 py-1 rounded-xl border border-slate-200 shadow-sm">
                       <button onClick={() => setQty(Math.max(1, qty - 1))} className="w-6 h-6 flex items-center justify-center text-[#fe6712] hover:bg-orange-50 rounded-lg transition cursor-pointer">
@@ -801,7 +801,7 @@ export default function MasterProductModal({
 
               {/* Banner de personalización por unidad: arriba (debajo de la cantidad), visible sin scroll */}
                 {qty > 1 && !isCombo && !isSlotMode && (
-                  <div className="bg-orange-50/60 p-3.5 rounded-2xl border border-orange-200 flex justify-between items-center gap-3">
+                  <div className="py-2 border-b border-gray-100 flex justify-between items-center gap-3">
                     <div>
                       <span className="text-xs font-black text-slate-900 block">¿Personalizar cada unidad por separado?</span>
                       <span className="text-[10px] text-slate-500 font-medium">Configura ingredientes individuales para las {qty} unidades</span>
@@ -819,7 +819,7 @@ export default function MasterProductModal({
 
               {/* Variantes Globales: selección única (SINGLE, ej. Tamaño) o contadores (MULTIPLE, ej. Sabores) */}
               {!isSlotMode && availableGroups.map((group: any, gIdx: number) => (
-                <div key={gIdx} className="bg-white p-4 rounded-2xl border border-slate-200 shadow-sm space-y-3">
+                <div key={gIdx} className="pb-4 border-b border-gray-100 space-y-3">
                   <div>
                     <h4 className="text-xs font-black text-slate-900 uppercase tracking-wider">{group.title}</h4>
                     <p className="text-[10px] text-slate-500 font-bold">{group.subtitle || (group.selectType === 'SINGLE' ? 'Elige una opción' : 'Ajusta las cantidades por sabor u opción')}</p>
@@ -886,7 +886,7 @@ export default function MasterProductModal({
 
               {/* SELECTOR DE COMBOS POR RANURAS / MODO RANURAS */}
               {isSlotMode ? (
-                <div className="bg-gradient-to-r from-orange-50/80 via-amber-50/60 to-orange-50/80 p-4 rounded-2xl border border-orange-200 shadow-sm space-y-4">
+                <div className="pb-3 border-b border-gray-100 space-y-3">
                   <div className="flex flex-col sm:flex-row justify-between items-start sm:items-center gap-2">
                     <div>
                       <div className="flex items-center gap-2">
@@ -914,7 +914,7 @@ export default function MasterProductModal({
                   </div>
 
                   {/* Pestañas de Ranura */}
-                  <div className="flex gap-2 overflow-x-auto no-scrollbar pb-1 pt-1 border-t border-orange-200/60">
+                  <div className="flex gap-2 overflow-x-auto no-scrollbar pb-1 pt-1 border-t border-gray-100">
                     {slots.map((slot, idx) => {
                       const isActive = activeSlotIndex === idx;
                       const hasExcl = slot.exclusions && slot.exclusions.length > 0;
@@ -949,7 +949,7 @@ export default function MasterProductModal({
 
                   {/* Tarjeta de Configuración de la Ranura Activa con Contadores de Cantidad */}
                   {slots[activeSlotIndex] && (
-                    <div className="p-4 bg-white rounded-2xl border border-orange-100 shadow-sm space-y-4">
+                    <div className="space-y-3">
                       <div className="flex flex-col sm:flex-row justify-between items-start sm:items-center gap-2 pb-3 border-b border-slate-100">
                         <div className="flex-1 w-full sm:w-auto">
                           <label className="text-[9px] font-black text-slate-400 uppercase tracking-wider block mb-1">
@@ -1109,7 +1109,7 @@ export default function MasterProductModal({
                 <div className="space-y-4">
 
                   {product.exclusions && product.exclusions.length > 0 && (
-                    <div className="bg-white p-4 rounded-2xl border border-slate-200 shadow-sm space-y-3">
+                    <div className="pb-4 border-b border-gray-100 space-y-3">
                       <label className="text-xs font-black text-slate-900 uppercase tracking-wider flex items-center gap-1.5">
                         <Sparkles className="w-4 h-4 text-[#fe6712]" /> Firma D&apos;una (Exclusiones):
                       </label>
