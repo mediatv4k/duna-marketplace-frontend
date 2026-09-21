@@ -242,7 +242,7 @@ export default function MasterProductModal({
         // Inicializamos con soporte de cantidades o selección por defecto
         initialVars[gIndex] = g.options.map((opt: any, oIdx: number) => ({
           ...opt,
-          count: oIdx === 0 ? 1 : 0
+          count: oIdx === 0 && !g.checkbox ? 1 : 0
         }));
       }
     });
@@ -312,6 +312,32 @@ export default function MasterProductModal({
   }, [targetSlotCount, isOpen]);
 
   // Modificador de cantidad para opciones con contadores (+ / -) en ranura activa
+  // Casillas dentro de una ranura (grupos CHECKIN): alterna 0/1 por opción respetando maxItems del grupo
+  const handleSlotCheckboxToggle = (slotIndex: number, groupIdx: number, optionCode: string) => {
+    setSlots(prev => {
+      const copy = [...prev];
+      const slot = copy[slotIndex];
+      if (!slot) return prev;
+      const grp = availableGroups[groupIdx];
+      const options = grp?.options || [];
+      const currentSel = slot.selectedVariants[groupIdx];
+      const current: any[] = Array.isArray(currentSel) && currentSel.length > 0 ? currentSel : options.map((o: any) => ({ ...o, count: 0 }));
+      const max = Number(grp?.maxItems || grp?.max || 0);
+      const isTarget = (i: any) => i.code === optionCode || i.id === optionCode;
+      const turningOn = !current.some((i: any) => isTarget(i) && (i.count || 0) > 0);
+      const selectedCount = current.filter((i: any) => (i.count || 0) > 0).length;
+      if (turningOn && max > 0 && selectedCount >= max) return prev;
+      copy[slotIndex] = {
+        ...slot,
+        selectedVariants: {
+          ...slot.selectedVariants,
+          [groupIdx]: current.map((i: any) => (isTarget(i) ? { ...i, count: turningOn ? 1 : 0 } : i))
+        }
+      };
+      return copy;
+    });
+  };
+
   const handleSlotOptionQuantityChange = (groupIdx: number | string, optionCode: string, delta: number) => {
     setSlots(prev => {
       const copy = [...prev];
@@ -939,6 +965,20 @@ export default function MasterProductModal({
                                 const countVal = matched ? (matched.count || 0) : 0;
 
                                 const { priceLabel, bsLabel } = getOptionPriceLabels(opt.price, false, bcvRate);
+                                if (group.checkbox || group.selectType === 'CHECKIN') {
+                                  return (
+                                    <OptionCapsule
+                                      key={opt.code}
+                                      mode="single"
+                                      name={opt.name}
+                                      image={opt.image}
+                                      priceLabel={priceLabel}
+                                      bsLabel={bsLabel}
+                                      count={countVal}
+                                      onSelect={() => handleSlotCheckboxToggle(activeSlotIndex, gIdx, opt.code)}
+                                    />
+                                  );
+                                }
                                 return (
                                   <OptionCapsule
                                     key={opt.code}
