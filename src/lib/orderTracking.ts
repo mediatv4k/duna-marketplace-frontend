@@ -11,9 +11,9 @@ export function isFinalStatus(status: unknown): boolean {
 // Nombres amigables de los estados del historial (history[].status del backend)
 const STATUS_LABELS: Record<string, string> = {
   'driver_assigned': 'Repartidor asignado',
-  'inicia': 'Pedido recibido',
-  'solicitud completa': 'Orden confirmada',
-  'aceptado': 'Aceptado por el comercio',
+  'inicia': 'Pedido registrado',
+  'solicitud completa': 'Notificando al comercio',
+  'aceptado': 'Preparando tu pedido',
   'listo': 'Orden lista para entrega',
   'recogido': 'Pedido entregado al repartidor',
   'entregando': 'Pedido en camino',
