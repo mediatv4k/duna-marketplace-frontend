@@ -230,6 +230,8 @@ export default function MasterProductModal({
 
   const [isSlotCustomizationActive, setIsSlotCustomizationActive] = useState<boolean>(false);
   const isSlotMode = isCombo || (qty > 1 && isSlotCustomizationActive);
+  // Nombre visible de cada unidad: el del producto ("Perro Sencillo #1"), nunca la palabra genérica "Ranura"
+  const unitLabel = product?.name || 'Unidad';
 
   const targetSlotCount = useMemo(() => {
     if (isCombo) return baseSlotCount * qty;
@@ -253,7 +255,7 @@ export default function MasterProductModal({
 
     return {
       id: idx + 1,
-      name: existing?.name || `Ranura #${idx + 1}`,
+      name: existing?.name || '',
       selectedVariants: existing?.selectedVariants || initialVars,
       exclusions: existing?.exclusions || []
     };
@@ -593,16 +595,15 @@ export default function MasterProductModal({
 
     if (isSlotMode) {
       if (isCombo) {
-        breakdown.push(`Combo: ${product.name} (${slots.length} ranuras)`);
+        breakdown.push(`Combo: ${product.name} (${slots.length} unidades)`);
       } else {
-        breakdown.push(`Personalización por ranuras (${slots.length} unidades)`);
+        breakdown.push(`Personalización por unidad (${slots.length} unidades)`);
       }
 
       slots.forEach((slot, idx) => {
-        const slotTitle = slot.name?.trim() ? slot.name.trim() : `Ranura #${idx + 1}`;
-        // Encabezado legible: "Ranura #1omar" → "Ranura #1 (omar)"
-        const titleMatch = slotTitle.match(/^(Ranura #\d+)\s*(\S.*)$/i);
-        const slotHeader = titleMatch ? `${titleMatch[1]} (${titleMatch[2]})` : (/^Ranura #/i.test(slotTitle) ? slotTitle : `Ranura #${idx + 1} (${slotTitle})`);
+        const slotTitle = slot.name?.trim() || '';
+        // Encabezado legible: "Perro Sencillo #1 (omar)" (nombre del producto + número de unidad + nombre opcional)
+        const slotHeader = `${product.name || 'Unidad'} #${idx + 1}${slotTitle ? ` (${slotTitle})` : ''}`;
         const slotParts: string[] = [];
 
         Object.values(slot.selectedVariants).forEach((sel: any) => {
@@ -798,6 +799,24 @@ export default function MasterProductModal({
                 </div>
               </div>
 
+              {/* Banner de personalización por unidad: arriba (debajo de la cantidad), visible sin scroll */}
+                {qty > 1 && !isCombo && !isSlotMode && (
+                  <div className="bg-orange-50/60 p-3.5 rounded-2xl border border-orange-200 flex justify-between items-center gap-3">
+                    <div>
+                      <span className="text-xs font-black text-slate-900 block">¿Personalizar cada unidad por separado?</span>
+                      <span className="text-[10px] text-slate-500 font-medium">Configura ingredientes individuales para las {qty} unidades</span>
+                    </div>
+                    <button
+                      type="button"
+                      onClick={() => setIsSlotCustomizationActive(true)}
+                      className="bg-[#fe6712] hover:bg-[#e0580d] text-white text-[11px] font-black px-3.5 py-2 rounded-xl transition shadow-xs cursor-pointer flex items-center gap-1.5 shrink-0"
+                    >
+                      <Layers className="w-3.5 h-3.5" />
+                      <span>Personalizar unidades</span>
+                    </button>
+                  </div>
+                )}
+
               {/* Variantes Globales: selección única (SINGLE, ej. Tamaño) o contadores (MULTIPLE, ej. Sabores) */}
               {!isSlotMode && availableGroups.map((group: any, gIdx: number) => (
                 <div key={gIdx} className="bg-white p-4 rounded-2xl border border-slate-200 shadow-sm space-y-3">
@@ -875,11 +894,11 @@ export default function MasterProductModal({
                           <Layers className="w-3.5 h-3.5" />
                         </span>
                         <h4 className="text-xs font-black text-slate-900 uppercase tracking-wider">
-                          {isCombo ? 'Configuración de Combo por Ranuras' : 'Personalización Individual por Ranuras'}
+                          {isCombo ? 'Configuración del Combo por Unidades' : 'Personalización Individual por Unidad'}
                         </h4>
                       </div>
                       <p className="text-[10px] text-slate-500 font-bold mt-0.5 ml-8">
-                        Configura las {slots.length} ranuras con sus respectivas cantidades de sabores.
+                        Configura las {slots.length} unidades con sus respectivas cantidades de sabores.
                       </p>
                     </div>
 
@@ -915,7 +934,7 @@ export default function MasterProductModal({
                           }`}>
                             {idx + 1}
                           </span>
-                          <span className="truncate max-w-[120px]">{slot.name || `Ranura #${idx + 1}`}</span>
+                          <span className="truncate max-w-[120px]">{slot.name || `${unitLabel} #${idx + 1}`}</span>
                           {hasExcl && (
                             <span className={`text-[9px] px-1.5 py-0.2 rounded-full font-bold ${
                               isActive ? 'bg-orange-500 text-white' : 'bg-orange-100 text-[#fe6712]'
@@ -934,13 +953,13 @@ export default function MasterProductModal({
                       <div className="flex flex-col sm:flex-row justify-between items-start sm:items-center gap-2 pb-3 border-b border-slate-100">
                         <div className="flex-1 w-full sm:w-auto">
                           <label className="text-[9px] font-black text-slate-400 uppercase tracking-wider block mb-1">
-                            Ranura #{activeSlotIndex + 1} — Nombre / Persona (Opcional)
+                            {unitLabel} #{activeSlotIndex + 1} — Nombre / Persona (Opcional)
                           </label>
                           <input
                             type="text"
                             value={slots[activeSlotIndex].name || ''}
                             onChange={(e) => handleSlotNameChange(e.target.value)}
-                            placeholder={`Ej. Ranura #${activeSlotIndex + 1}, Omar, Niño...`}
+                            placeholder="Ej. Juan, María... (Opcional)"
                             className="w-full rounded-xl border border-slate-200 bg-slate-50 px-3 py-1.5 text-xs font-bold text-slate-800 focus:border-[#fe6712] focus:outline-none transition"
                           />
                         </div>
@@ -950,7 +969,7 @@ export default function MasterProductModal({
                             type="button"
                             onClick={copyCurrentSlotToAll}
                             className="text-[10px] font-black text-[#fe6712] hover:bg-orange-50 px-2.5 py-1.5 rounded-xl border border-orange-200 transition cursor-pointer flex items-center gap-1.5 shrink-0 self-end sm:self-auto"
-                            title="Aplica variantes y exclusiones de esta ranura a todas"
+                            title="Aplica variantes y exclusiones de esta unidad a todas"
                           >
                             <Copy className="w-3.5 h-3.5" />
                             <span>{copiedFeedback ? '✓ ¡Copiado a todas!' : 'Copiar a todas'}</span>
@@ -1013,7 +1032,7 @@ export default function MasterProductModal({
                         <div className="space-y-2 pt-2 border-t border-slate-100">
                           <div className="flex justify-between items-center">
                             <span className="text-[10px] font-black text-[#fe6712] uppercase tracking-wider flex items-center gap-1">
-                              <Sparkles className="w-3.5 h-3.5" /> Exclusiones para esta ranura:
+                              <Sparkles className="w-3.5 h-3.5" /> Exclusiones para esta unidad:
                             </span>
                             {slots[activeSlotIndex].exclusions?.length > 0 && (
                               <button
@@ -1064,7 +1083,7 @@ export default function MasterProductModal({
                         </button>
 
                         <span className="text-[10px] font-black text-slate-400 uppercase tracking-wider">
-                          Ranura {activeSlotIndex + 1} de {slots.length}
+                          {unitLabel} #{activeSlotIndex + 1} de {slots.length}
                         </span>
 
                         {activeSlotIndex < slots.length - 1 ? (
@@ -1088,22 +1107,6 @@ export default function MasterProductModal({
               ) : (
                 /* Modo Estándar */
                 <div className="space-y-4">
-                  {qty > 1 && !isCombo && (
-                    <div className="bg-orange-50/60 p-3.5 rounded-2xl border border-orange-200 flex justify-between items-center gap-3">
-                      <div>
-                        <span className="text-xs font-black text-slate-900 block">¿Personalizar cada unidad por separado?</span>
-                        <span className="text-[10px] text-slate-500 font-medium">Configura ingredientes individuales para las {qty} unidades</span>
-                      </div>
-                      <button
-                        type="button"
-                        onClick={() => setIsSlotCustomizationActive(true)}
-                        className="bg-[#fe6712] hover:bg-[#e0580d] text-white text-[11px] font-black px-3.5 py-2 rounded-xl transition shadow-xs cursor-pointer flex items-center gap-1.5 shrink-0"
-                      >
-                        <Layers className="w-3.5 h-3.5" />
-                        <span>Activar Ranuras</span>
-                      </button>
-                    </div>
-                  )}
 
                   {product.exclusions && product.exclusions.length > 0 && (
                     <div className="bg-white p-4 rounded-2xl border border-slate-200 shadow-sm space-y-3">
