@@ -70,6 +70,8 @@ function speak(text: string, onEnd: () => void): boolean {
 }
 
 export default function SalesRecoveryAssistant({ idleMs = IDLE_MS, onAccept, menuContext, cartContext, onOpenProduct, onAddToCart }: SalesRecoveryAssistantProps) {
+  return null; // [TEMP] Desactivado temporalmente por solicitud del usuario para trabajos de UI.
+
   const [isIdle, setIsIdle] = useState(false);
   const [chatOpen, setChatOpen] = useState(false);
   const [phase, setPhase] = useState<Phase>('idle');

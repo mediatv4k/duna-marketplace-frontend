@@ -607,26 +607,27 @@ export default function MerchantStoreView({
                       {badge && (
                         <span className={`absolute top-2 left-2 px-2 py-0.5 rounded-md text-[8px] font-bold ${badge.className}`}>{badge.label}</span>
                       )}
-                      <div
-                        role="button"
-                        aria-label={`Ampliar foto de ${product.name}`}
-                        onClick={(e) => {
-                          e.stopPropagation();
-                          setLightboxImage({
-                            url: product.image || 'https://images.unsplash.com/photo-1560008511-11c63416e52d',
-                            name: product.name || 'Producto',
-                          });
-                        }}
-                        className="relative w-full aspect-square mb-2 mt-4 p-2 bg-white rounded-xl border border-slate-100 overflow-hidden cursor-zoom-in"
-                      >
+                      <div className="relative w-full aspect-square mb-2 mt-4 p-2 bg-white rounded-xl border border-slate-100 overflow-hidden">
                         <img
                           src={product.image || 'https://images.unsplash.com/photo-1560008511-11c63416e52d'}
                           alt={product.name}
                           className="w-full h-full object-cover rounded-lg"
                         />
-                        <span className="absolute bottom-3 right-3 flex h-6 w-6 items-center justify-center rounded-full bg-black/30 text-white backdrop-blur-sm">
+                        {/* Lightbox: solo la lupa lo abre (stopPropagation); tocar el resto de la foto abre la ficha del producto como el resto de la tarjeta */}
+                        <button
+                          type="button"
+                          aria-label={`Ampliar foto de ${product.name}`}
+                          onClick={(e) => {
+                            e.stopPropagation();
+                            setLightboxImage({
+                              url: product.image || 'https://images.unsplash.com/photo-1560008511-11c63416e52d',
+                              name: product.name || 'Producto',
+                            });
+                          }}
+                          className="absolute bottom-3 right-3 flex h-6 w-6 items-center justify-center rounded-full bg-black/30 text-white backdrop-blur-sm hover:bg-black/50 transition cursor-zoom-in"
+                        >
                           <ZoomIn className="h-3.5 w-3.5" />
-                        </span>
+                        </button>
                       </div>
                       <p className="text-[8px] text-slate-400 uppercase tracking-wide mb-0.5">
                         {product.brand || product.laboratory || product.category || 'GENERAL'}
