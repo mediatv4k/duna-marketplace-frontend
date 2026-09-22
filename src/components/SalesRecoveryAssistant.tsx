@@ -14,6 +14,7 @@ const ACTIVITY_EVENTS: (keyof WindowEventMap)[] = ['mousemove', 'touchstart', 'k
 const GREETING = 'Hola, ¿te puedo ayudar con esta fase y dirigirte en el proceso hasta que hagas tu compra?';
 
 const MUTE_TAG = '[MUTE_ASSISTANT]';
+const CART_TAG_RE = /\[AGREGAR_CARRITO:([a-zA-Z0-9_-]+):(\d+)\]/; // comando de venta: agregar `cantidad` del producto `id`
 const PRODUCT_TAG_RE = /\[VER_PRODUCTO:([a-zA-Z0-9_-]+)\]/; // comando de navegación: abre la ficha del producto
 const MUTE_STORAGE_KEY = 'duna_assistant_muted'; // silencio para el resto de la sesión (sessionStorage)
 
@@ -31,6 +32,7 @@ interface SalesRecoveryAssistantProps {
   onAccept?: () => void; // acción extra opcional al aceptar la ayuda
   menuContext?: string; // catálogo resumido de la tienda actual (lo arma el padre; el asistente no lee el catálogo)
   cartContext?: string; // carrito actual resumido (lo arma el padre; el asistente no lee ni toca el carrito)
+  onAddToCart?: (id: string, qty: number) => void; // el padre decide cómo agregarlo (hoy abre la ficha para confirmar variantes)
   onOpenProduct?: (productId: string) => void; // el padre abre la ficha del producto (la app no tiene rutas /store/.../product: la ficha es un modal)
 }
 
@@ -51,7 +53,7 @@ function speak(text: string, onEnd: () => void): boolean {
   }
 }
 
-export default function SalesRecoveryAssistant({ idleMs = IDLE_MS, onAccept, menuContext, cartContext, onOpenProduct }: SalesRecoveryAssistantProps) {
+export default function SalesRecoveryAssistant({ idleMs = IDLE_MS, onAccept, menuContext, cartContext, onOpenProduct, onAddToCart }: SalesRecoveryAssistantProps) {
   const [isIdle, setIsIdle] = useState(false);
   const [chatOpen, setChatOpen] = useState(false);
   const [phase, setPhase] = useState<Phase>('idle');
@@ -66,8 +68,8 @@ export default function SalesRecoveryAssistant({ idleMs = IDLE_MS, onAccept, men
   const abortRef = useRef<AbortController | null>(null);
   const aliveRef = useRef(true);
   // El último contexto siempre disponible para `ask` sin recrear el callback en cada cambio del carrito
-  const contextRef = useRef({ menuContext, cartContext, onOpenProduct });
-  contextRef.current = { menuContext, cartContext, onOpenProduct };
+  const contextRef = useRef({ menuContext, cartContext, onOpenProduct, onAddToCart });
+  contextRef.current = { menuContext, cartContext, onOpenProduct, onAddToCart };
 
   const restartTimer = useCallback(() => {
     if (timerRef.current) clearTimeout(timerRef.current);
@@ -165,11 +167,20 @@ export default function SalesRecoveryAssistant({ idleMs = IDLE_MS, onAccept, men
       // La etiqueta es una señal interna: nunca se muestra ni se lee en voz alta
       // Comando [VER_PRODUCTO:id]: se extrae el id y la etiqueta se quita del texto (ni se muestra ni se lee)
       const productMatch = res.ok ? rawReply.match(PRODUCT_TAG_RE) : null;
-      const reply = rawReply.split(MUTE_TAG).join('').replace(new RegExp(PRODUCT_TAG_RE.source, 'g'), '').trim();
-      if (productMatch) {
+      // Comando [AGREGAR_CARRITO:id:cantidad]: mismo trato; si vienen los dos comandos, manda el de venta (no se abre la ficha dos veces)
+      const cartMatch = res.ok ? rawReply.match(CART_TAG_RE) : null;
+      const reply = rawReply
+        .split(MUTE_TAG).join('')
+        .replace(new RegExp(PRODUCT_TAG_RE.source, 'g'), '')
+        .replace(new RegExp(CART_TAG_RE.source, 'g'), '')
+        .trim();
+      if (cartMatch) {
+        const qty = Math.min(Math.max(parseInt(cartMatch[2], 10) || 1, 1), 99);
+        try { contextRef.current.onAddToCart?.(cartMatch[1], qty); } catch { /* el padre no pudo agregar */ }
+      } else if (productMatch) {
         try { contextRef.current.onOpenProduct?.(productMatch[1]); } catch { /* el padre no pudo abrir la ficha */ }
       }
-      if (productMatch && !reply) {
+      if ((productMatch || cartMatch) && !reply) {
         setPhase('idle');
         return;
       }

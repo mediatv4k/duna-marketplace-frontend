@@ -86,6 +86,7 @@ export default function MerchantStoreView({
 
   const [selectedProductDetail, setSelectedProductDetail] = useState<any>(null);
   const [isMasterModalOpen, setIsMasterModalOpen] = useState(false);
+  const [modalInitialQty, setModalInitialQty] = useState(1); // unidades con las que abre el modal (1 salvo pedido del asistente)
   const [loadingProduct, setLoadingProduct] = useState(false);
 
   const [deliveryMode, setDeliveryMode] = useState<'delivery' | 'pickup' | 'national'>('delivery');
@@ -263,7 +264,8 @@ export default function MerchantStoreView({
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
 
-  const handleProductClick = async (product: any) => {
+  const handleProductClick = async (product: any, initialQty: number = 1) => {
+    setModalInitialQty(initialQty);
     setLoadingProduct(true);
     try {
       const res = await getProduct(product.id);
@@ -754,9 +756,18 @@ export default function MerchantStoreView({
 
   // Comando del asistente [VER_PRODUCTO:id]: abre el modal del producto (el mismo del clic en la tarjeta). Solo ids que existen en el catálogo
   // cargado, así un id inventado por el modelo no hace nada.
-  const handleAssistantOpenProduct = (productId: string) => {
+  const handleAssistantOpenProduct = (productId: string, qty: number = 1) => {
     const product = (products as any[]).find((p: any) => String(p?.id) === String(productId));
-    if (product) handleProductClick(product);
+    if (product) handleProductClick(product, qty);
+  };
+
+  // Comando del asistente [AGREGAR_CARRITO:id:cantidad]. Por seguridad, en esta versión NO inyecta al carrito: muchos productos tienen variantes
+  // obligatorias (sabores, tamaño, extras) que el cliente debe confirmar, así que actúa igual que handleAssistantOpenProduct (abre el modal maestro).
+  // La cantidad pedida llega al modal como `initialQty`: el contador arranca en `qty` en lugar de 1.
+  // Arquitectura lista para el futuro: cuando el producto no tenga grupos de variantes obligatorios se podrá construir el ítem y guardarlo en
+  // localStorage['cart_data'] (vía updateCartStorage) sin tocar el asistente.
+  const handleAssistantAddToCart = (productId: string, qty: number) => {
+    handleAssistantOpenProduct(productId, qty);
   };
 
   const overlaysNode = (
@@ -792,6 +803,7 @@ export default function MerchantStoreView({
             onAddToCart={handleAddToCartFromModal}
             nicheEngine={modalEngine}
             bcvRate={bcvRate}
+            initialQty={modalInitialQty}
           />
         )}
 
@@ -855,7 +867,7 @@ export default function MerchantStoreView({
         />
 
         {/* Asistente de recuperación (aislado): vigila la inactividad de toda la tienda */}
-        <SalesRecoveryAssistant menuContext={assistantMenuContext} cartContext={assistantCartContext} onOpenProduct={handleAssistantOpenProduct} />
+        <SalesRecoveryAssistant menuContext={assistantMenuContext} cartContext={assistantCartContext} onOpenProduct={handleAssistantOpenProduct} onAddToCart={handleAssistantAddToCart} />
     </>
   );
 
@@ -881,6 +893,7 @@ export default function MerchantStoreView({
         isProductModalOpen={isMasterModalOpen}
         onCloseProductModal={() => setIsMasterModalOpen(false)}
         onAddToCart={handleAddToCartFromModal}
+        productInitialQty={modalInitialQty}
       >
         {contentNode}
         {overlaysNode}
