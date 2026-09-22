@@ -155,6 +155,7 @@ interface MasterProductModalProps {
   nicheEngine: string;
   bcvRate: number | null;
   onAddToCart: (payload: VariantSelectionPayload) => void;
+  initialQty?: number; // unidades con las que arranca el contador al abrir (p. ej. el pedido del asistente); por defecto 1
 }
 
 export default function MasterProductModal({
@@ -163,10 +164,13 @@ export default function MasterProductModal({
   product,
   nicheEngine,
   bcvRate,
-  onAddToCart
+  onAddToCart,
+  initialQty = 1
 }: MasterProductModalProps) {
+  // Cantidad válida: entero entre 1 y 99
+  const startQty = Math.min(Math.max(Math.floor(Number(initialQty)) || 1, 1), 99);
   const [step, setStep] = useState<number>(1);
-  const [qty, setQty] = useState<number>(1);
+  const [qty, setQty] = useState<number>(startQty);
 
   // Estados globales de variantes y exclusiones (modo estándar)
   const [selectedVariants, setSelectedVariants] = useState<Record<string, any>>({});
@@ -264,7 +268,7 @@ export default function MasterProductModal({
   useEffect(() => {
     if (product && isOpen) {
       setStep(1);
-      setQty(1);
+      setQty(startQty);
       setSelectedExclusions([]);
       setIsSlotCustomizationActive(false);
       setActiveSlotIndex(0);
@@ -290,7 +294,7 @@ export default function MasterProductModal({
       }
       setSlots(initialSlots);
     }
-  }, [product, isOpen, isCombo, baseSlotCount, availableGroups]);
+  }, [product, isOpen, isCombo, baseSlotCount, availableGroups, startQty]);
 
   useEffect(() => {
     if (isOpen) document.body.style.overflow = 'hidden';
