@@ -5,7 +5,7 @@
 > agente (Claude u otro) que trabaje en este repositorio debe leerlo ANTES de tocar código,
 > y actualizarlo DESPUÉS de cualquier cambio importante, refactorización o feature nueva.
 >
-> Última actualización: 2026-09-20
+> Última actualización: 2026-09-22
 
 ---
 
@@ -82,6 +82,23 @@
   moneda sigue aplicando el estado activo correctamente. **`HeroBannerCarousel.tsx` y las clases del marquee en
   `tailwind.config.js` no se tocaron** (`git diff` vacío en ambos) — el cintillo sigue exactamente como quedó
   aprobado.
+- **Logo blanco en la cabecera + borde corporativo en el buscador (2026-09-22, Fase "Ajustes Cosméticos de
+  Cabecera", `page.tsx`):** el logo de la franja oscura pasó de `logo-naranja-transparent.png` a
+  `/images/logo-blanco-transparent.png`; el contenedor del buscador de la sub-barra clara suma
+  `border border-[#FE6712]/50 focus-within:border-[#FE6712] focus-within:ring-1 focus-within:ring-[#FE6712]`
+  (antes `border-slate-200 focus-within:border-[#fe6712]`, sin ring). **`public/images/logo-blanco.png` (el
+  archivo que pedía la misión) resultó inservible:** es un PNG real (firma `89504E47`, 1284×459, RGBA) pero
+  sin ninguna imagen codificada — se muestreó el buffer crudo con `sharp` y el canal alfa es 255 (opaco) en
+  **toda** la imagen sin variación, y el valor RGB más oscuro de todo el archivo es `R=233` (rango total
+  233–255): no hay un logo real ahí, solo casi-blanco uniforme; componerlo sobre el fondo oscuro real
+  (`rgb(9,13,22)`) confirma que se ve en blanco. En vez de usarlo tal cual (el logo habría desaparecido) o
+  sustituirlo en silencio, se generó `public/images/logo-blanco-transparent.png` reutilizando la máscara alfa
+  ya verificada de `logo-naranja-transparent.png` (de la fase anterior) y recoloreando su RGB a blanco puro
+  (255,255,255) sin tocar el alfa — verificado componiéndolo sobre `rgb(9,13,22)`: wordmark blanco nítido, sin
+  flecos. `logo-blanco.png` queda sin usar en el repo (no se referencia desde ningún componente); no se borra
+  por si el usuario quiere reemplazarlo por un archivo real más adelante. Verificado en navegador (1366 px y
+  390 px, build de producción aislada): logo blanco nítido en ambos anchos, borde naranja visible en el
+  buscador en reposo, sin scroll horizontal, cintillo (`animate-marquee`) presente y sin tocar.
 - **[Histórico, reemplazado arriba] Cabecera del Home — barra única (2026-09-22, Fase "Unificación de Header", `page.tsx`):** reemplaza por completo el
   diseño de dos franjas oscuras apiladas de la Fase 10 (la barra fina de ubicación/moneda + un `<header>` aparte con
   logo/buscador) — **ahora es un solo contenedor** `sticky top-0 z-40 bg-[#090d16] border-b border-white/10` (ya no
