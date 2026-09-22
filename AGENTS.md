@@ -66,7 +66,23 @@
 - **Orden del listado de tiendas (Home):** prioridad **estrictamente por horario en tiempo real**: 1° abierta ahora, 2° por abrir (sub-ordenada por hora de apertura más cercana, ver abajo), 3° cerrada (el `status` administrativo no cuenta); orden estable dentro de cada grupo (se respeta el del backend). La píldora de horario de cada tarjeta (texto de `scheduleInfo`) es un botón que abre `StoreScheduleModal` (con `stopPropagation`, no abre la tienda).
   - **`storeOpenRank` ya NO confía en `scheduleStatus` (corregido 2026-09-22, Fase 12):** se verificó contra el backend real que ese campo miente — viene `"OPEN"` incluso en tiendas cuyo `scheduleInfo` (el mismo texto que se le muestra al cliente en la píldora) dice **"Hoy cerrado"** (casos reales en DEV: Proseco Bodegón Café, Lois es Más que Pollo, Big State — las tres con `status`/`scheduleStatus: "OPEN"` pero `scheduleInfo: "Hoy cerrado"`). Antes de esta fase, esas tiendas aparecían mezcladas entre las abiertas, arriba de tiendas genuinamente abiertas o por abrir — bug real, no hipotético. El rango ahora se calcula del **texto** de `scheduleInfo` primero (`/cerrado/i` → grupo 3, `/abre a las/i` → grupo 2, `/^abierto$/i` → grupo 1), y solo cae a `scheduleStatus` si no hay texto reconocible. `scheduleInfo` es la fuente de verdad más confiable porque es exactamente lo que ya se le muestra al cliente — nunca puede contradecir lo que ve en pantalla.
   - **Apertura más cercana (Fase 12):** dentro del grupo 2 ("por abrir"), `openingMinutes()` extrae la hora de `scheduleInfo` (patrón `HH:MM AM/PM`; sin patrón reconocible, la tienda queda al final del grupo) y `minutesUntilOpen()` calcula cuánto falta **desde la hora actual del dispositivo**, con *wrap-around* a mañana (si son las 11:00 PM y una tienda abre a las 12:00 AM, faltan 60 min, no "casi un día"). Verificado en navegador con las 47 tiendas reales de DEV: cero tiendas cerradas por encima de una abierta o por abrir, y el grupo "por abrir" queda ordenado 07:00 AM → 07:00 AM → 07:00 AM → 08:00 AM ×6 → 08:30 AM ×2… ascendente.
-- **Cabecera del Home — barra única (2026-09-22, Fase "Unificación de Header", `page.tsx`):** reemplaza por completo el
+- **Cabecera del Home — header solo-logo + sub-barra clara (2026-09-22, Fase "Redistribución de Navbar", `page.tsx`):**
+  reemplaza por completo la barra única de la Fase "Unificación de Header" (la de abajo), que mezclaba logo,
+  ubicación, moneda, BCV y buscador en un solo contenedor oscuro. Ahora son **dos bloques**: (1) la franja oscura
+  sticky (`bg-[#090d16]`) queda **solo con el logo** (`logo-naranja-transparent.png`, `h-10 md:h-12`), centrado,
+  con `py-4` de aire vertical — nada más ahí, ni buscador ni ubicación ni moneda; (2) justo debajo, una **sub-barra
+  clara** (`bg-white border-b border-slate-200`, **no sticky a propósito** — apilar dos barras sticky habría
+  recreado el "doble header" que se eliminó en la fase anterior) con el buscador a la izquierda (`md:max-w-md`,
+  fondo `bg-slate-50`, no cruza toda la pantalla en escritorio) y, agrupados a la derecha en escritorio (apilados
+  debajo del buscador en móvil): ubicación, selector de moneda (`Dual ($/Bs)` / `$ USD` / `Bs. VES`) y Tasa BCV —
+  los tres repintados en tema claro (antes vivían sobre fondo oscuro: `bg-white/10`→`bg-slate-100`,
+  `text-slate-300`→`text-slate-500`, etc.; el botón de moneda activo sigue en naranja pero ahora con
+  `text-white` explícito, ya que el texto base ya no hereda blanco de un contenedor oscuro). Verificado en
+  navegador (1366 px y 390 px): sin scroll horizontal, el buscador sigue filtrando tiendas en vivo, el selector de
+  moneda sigue aplicando el estado activo correctamente. **`HeroBannerCarousel.tsx` y las clases del marquee en
+  `tailwind.config.js` no se tocaron** (`git diff` vacío en ambos) — el cintillo sigue exactamente como quedó
+  aprobado.
+- **[Histórico, reemplazado arriba] Cabecera del Home — barra única (2026-09-22, Fase "Unificación de Header", `page.tsx`):** reemplaza por completo el
   diseño de dos franjas oscuras apiladas de la Fase 10 (la barra fina de ubicación/moneda + un `<header>` aparte con
   logo/buscador) — **ahora es un solo contenedor** `sticky top-0 z-40 bg-[#090d16] border-b border-white/10` (ya no
   existe la etiqueta `<header>`, verificado: 0 en el DOM). Fila 1, grid en escritorio (`md:grid-cols-[1fr_auto_1fr]`)

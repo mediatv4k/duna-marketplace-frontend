@@ -455,37 +455,47 @@ export default function MultitiendaHub() {
           un <header> aparte con logo/buscador) — se unificaron en un solo contenedor sticky, un solo fondo,
           un solo borde. Fila 1 (grid en escritorio, apilado en móvil): ubicación a la izquierda, logo naranja
           centrado geométricamente, moneda+BCV a la derecha. Fila 2: buscador compacto, mismo contenedor oscuro. */}
-      <div className="sticky top-0 z-40 bg-[#090d16] text-white border-b border-white/10 shadow-sm">
-        <div className="max-w-7xl mx-auto px-4 md:px-8 pt-2.5 pb-1.5 flex flex-col md:grid md:grid-cols-[1fr_auto_1fr] md:items-center gap-2 text-xs">
-          <div className="flex items-center gap-2 font-bold justify-center md:justify-start" suppressHydrationWarning>
-            <MapPin className="w-3.5 h-3.5 text-[#fe6712] shrink-0" />
-            <span className="truncate">Entregar en: <strong className="underline text-white">{userLocation ? userLocation.label : 'Cabimas, Estado Zulia'}</strong></span>
-            {userLocation && (
-              <button type="button" onClick={() => setIsFallbackModalOpen(true)} className="text-[10px] bg-white/10 px-2 py-0.5 rounded-full text-orange-200 cursor-pointer ml-1 shrink-0">Cambiar</button>
-            )}
-          </div>
-
-          <div onClick={() => { setActiveMerchantId(null); setSelectedCategory('ALL'); setSearchQuery(''); if(typeof window !== 'undefined') localStorage.removeItem('current_cart_store_id'); }} className="flex items-center justify-center cursor-pointer select-none md:justify-self-center">
-            <img src="/images/logo-naranja-transparent.png" alt="D'una Marketplace" className="h-9 md:h-10 w-auto object-contain" />
-          </div>
-
-          <div className="flex items-center gap-2 sm:gap-3 flex-wrap justify-center md:justify-self-end">
-            <div className="flex items-center bg-white/10 p-0.5 rounded-full border border-white/15 text-[10px] font-bold flex-wrap justify-center">
-              <button type="button" onClick={() => setCurrencyMode('DUAL')} className={`px-2 py-0.5 rounded-full cursor-pointer whitespace-nowrap ${currencyMode === 'DUAL' ? 'bg-[#fe6712]' : ''}`}>Dual ($/Bs)</button>
-              <button type="button" onClick={() => setCurrencyMode('USD')} className={`px-2 py-0.5 rounded-full cursor-pointer whitespace-nowrap ${currencyMode === 'USD' ? 'bg-[#fe6712]' : ''}`}>$ USD</button>
-              <button type="button" onClick={() => setCurrencyMode('VES')} className={`px-2 py-0.5 rounded-full cursor-pointer whitespace-nowrap ${currencyMode === 'VES' ? 'bg-[#fe6712]' : ''}`}>Bs. VES</button>
-            </div>
-            <div className="flex items-center gap-1.5 bg-white/5 px-2.5 py-0.5 rounded-full border border-white/10 text-slate-300 text-[11px]">
-              <Coins className="w-3 h-3 text-amber-400" />
-              <span>Tasa BCV: <strong className="text-white">{bcvRate ? `Bs. ${bcvRate.toFixed(2)}` : 'no disponible'}</strong></span>
-            </div>
+      {/* Franja superior — solo identidad (2026-09-22): antes compartía la barra oscura con ubicación, moneda,
+          BCV y buscador; ahora es exclusivamente el logo, centrado, con aire vertical propio. Todo lo funcional
+          bajó a la sub-barra clara de justo debajo (no sticky a propósito: apilar dos barras sticky habría
+          recreado el "doble header" que se eliminó en la misión anterior). */}
+      <div className="sticky top-0 z-40 bg-[#090d16] border-b border-white/10 shadow-sm">
+        <div className="max-w-7xl mx-auto px-4 md:px-8 py-4 flex items-center justify-center">
+          <div onClick={() => { setActiveMerchantId(null); setSelectedCategory('ALL'); setSearchQuery(''); if(typeof window !== 'undefined') localStorage.removeItem('current_cart_store_id'); }} className="flex items-center cursor-pointer select-none">
+            <img src="/images/logo-naranja-transparent.png" alt="D'una Marketplace" className="h-10 md:h-12 w-auto object-contain" />
           </div>
         </div>
+      </div>
 
-        <div className="max-w-7xl mx-auto px-4 md:px-8 pb-2.5">
-          <div className="relative flex items-center bg-white/10 rounded-2xl border border-white/10 focus-within:border-[#fe6712]/60 focus-within:bg-white/15 transition">
-            <Search className="absolute left-4 w-3.5 h-3.5 text-gray-400" />
-            <input type="text" value={searchQuery} onChange={(e) => setSearchQuery(e.target.value)} placeholder="Busca comercios y productos..." className="w-full bg-transparent text-xs font-semibold text-gray-200 pl-11 pr-8 py-2.5 focus:outline-none placeholder-gray-400" />
+      {/* Sub-barra funcional — buscador + ubicación/moneda/BCV (2026-09-22): fila clara justo debajo del header
+          oscuro. Escritorio: buscador a la izquierda (max-w-md, no cruza toda la pantalla) y el resto agrupado a
+          la derecha; móvil: apilado, buscador arriba. */}
+      <div className="bg-white border-b border-slate-200">
+        <div className="max-w-7xl mx-auto px-4 md:px-8 py-2.5 flex flex-col md:flex-row md:items-center md:justify-between gap-2">
+          <div className="w-full md:max-w-md">
+            <div className="relative flex items-center bg-slate-50 rounded-2xl border border-slate-200 focus-within:border-[#fe6712] focus-within:bg-white transition">
+              <Search className="absolute left-4 w-3.5 h-3.5 text-slate-400" />
+              <input type="text" value={searchQuery} onChange={(e) => setSearchQuery(e.target.value)} placeholder="Busca comercios y productos..." className="w-full bg-transparent text-xs font-semibold text-slate-800 pl-11 pr-8 py-2.5 focus:outline-none placeholder-slate-400" />
+            </div>
+          </div>
+
+          <div className="flex items-center gap-2 sm:gap-3 flex-wrap justify-center md:justify-end text-xs">
+            <div className="flex items-center gap-1.5 font-bold text-slate-600" suppressHydrationWarning>
+              <MapPin className="w-3.5 h-3.5 text-[#fe6712] shrink-0" />
+              <span className="truncate">Entregar en: <strong className="text-slate-900">{userLocation ? userLocation.label : 'Cabimas, Estado Zulia'}</strong></span>
+              {userLocation && (
+                <button type="button" onClick={() => setIsFallbackModalOpen(true)} className="text-[10px] bg-slate-100 px-2 py-0.5 rounded-full text-[#fe6712] cursor-pointer ml-1 shrink-0">Cambiar</button>
+              )}
+            </div>
+            <div className="flex items-center bg-slate-100 p-0.5 rounded-full border border-slate-200 text-[10px] font-bold flex-wrap justify-center">
+              <button type="button" onClick={() => setCurrencyMode('DUAL')} className={`px-2 py-0.5 rounded-full cursor-pointer whitespace-nowrap ${currencyMode === 'DUAL' ? 'bg-[#fe6712] text-white' : 'text-slate-600'}`}>Dual ($/Bs)</button>
+              <button type="button" onClick={() => setCurrencyMode('USD')} className={`px-2 py-0.5 rounded-full cursor-pointer whitespace-nowrap ${currencyMode === 'USD' ? 'bg-[#fe6712] text-white' : 'text-slate-600'}`}>$ USD</button>
+              <button type="button" onClick={() => setCurrencyMode('VES')} className={`px-2 py-0.5 rounded-full cursor-pointer whitespace-nowrap ${currencyMode === 'VES' ? 'bg-[#fe6712] text-white' : 'text-slate-600'}`}>Bs. VES</button>
+            </div>
+            <div className="flex items-center gap-1.5 bg-slate-50 px-2.5 py-0.5 rounded-full border border-slate-200 text-slate-500 text-[11px]">
+              <Coins className="w-3 h-3 text-amber-500" />
+              <span>Tasa BCV: <strong className="text-slate-900">{bcvRate ? `Bs. ${bcvRate.toFixed(2)}` : 'no disponible'}</strong></span>
+            </div>
           </div>
         </div>
       </div>
