@@ -109,6 +109,7 @@ export interface MerchantTemplateEngineProps {
   isProductModalOpen?: boolean;
   onCloseProductModal?: () => void;
   onAddToCart?: (payload: any) => void;
+  productInitialQty?: number; // cantidad inicial del modal de producto (asistente)
 }
 
 // Emoji decorativo para las categorías tipo "mood" del fast-food (solo estética)
@@ -172,6 +173,7 @@ export default function MerchantTemplateEngine({
   isProductModalOpen = false,
   onCloseProductModal = () => {},
   onAddToCart = () => {},
+  productInitialQty = 1,
 }: MerchantTemplateEngineProps) {
   const [isCartOpen, setIsCartOpen] = useState(false);
 
@@ -453,6 +455,7 @@ export default function MerchantTemplateEngine({
           nicheEngine={getModalEngine(storeNiche)}
           bcvRate={bcvRate ?? null}
           onAddToCart={onAddToCart}
+          initialQty={productInitialQty}
         />
       )}
     </div>
