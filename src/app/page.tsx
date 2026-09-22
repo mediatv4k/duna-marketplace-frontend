@@ -383,16 +383,58 @@ export default function MultitiendaHub() {
     }
   };
 
-  // Prioridad ESTRICTAMENTE por horario en tiempo real (scheduleStatus): 1° OPEN (despachando ahora), 2° OPENING (por abrir),
-  // 3° CLOSED / INACTIVE / sin horario activo. Array.sort es estable: dentro de cada grupo se conserva el orden del backend.
-  const storeOpenRank = (s: any): number =>
-    s.scheduleStatus === 'OPEN' ? 0 : (s.scheduleStatus === 'OPENING' ? 1 : 2);
+  // Prioridad ESTRICTAMENTE por horario en tiempo real: 1° abierto ahora, 2° por abrir, 3° cerrado. Array.sort es
+  // estable: dentro de cada grupo se conserva el orden del backend (salvo el grupo "por abrir", que además se
+  // ordena por hora de apertura — ver `openingMinutes` debajo).
+  // 2026-09-22: el rango YA NO se basa solo en `scheduleStatus` — se verificó contra el backend real que ese campo
+  // viene "OPEN" incluso en tiendas cuyo `scheduleInfo` dice "Hoy cerrado" (p. ej. Proseco Bodegón Café, Lois es
+  // Más que Pollo: status/scheduleStatus "OPEN" con scheduleInfo "Hoy cerrado" — inconsistencia real del backend,
+  // no un caso hipotético). `scheduleInfo` es el texto que además se le muestra al cliente en la píldora de cada
+  // tarjeta, así que es la fuente de verdad más confiable: se usa primero, y `scheduleStatus` solo como respaldo
+  // si no hay texto.
+  const storeOpenRank = (s: any): number => {
+    const label = String(s.scheduleInfo || '').trim();
+    if (/cerrado/i.test(label)) return 2;
+    if (/abre a las/i.test(label)) return 1;
+    if (/^abierto$/i.test(label)) return 0;
+    // Sin texto reconocible: se cae al campo crudo del backend
+    if (s.scheduleStatus === 'OPEN') return 0;
+    if (s.scheduleStatus === 'OPENING') return 1;
+    return 2;
+  };
+
+  // Minutos desde medianoche a partir de `scheduleInfo` ("Abre a las 12:00 PM"): el backend no manda una hora
+  // cruda de apertura, solo este texto ya formateado (ver AGENTS.md §1.2), así que se parsea el patrón "HH:MM AM/PM".
+  // `null` si el texto no trae una hora reconocible (esas tiendas quedan al final de su grupo, orden estable).
+  const openingMinutes = (s: any): number | null => {
+    const m = /(\d{1,2}):(\d{2})\s*(AM|PM)/i.exec(s.scheduleInfo || '');
+    if (!m) return null;
+    const hours = (parseInt(m[1], 10) % 12) + (/pm/i.test(m[3]) ? 12 : 0);
+    return hours * 60 + parseInt(m[2], 10);
+  };
+  // Minutos que faltan desde AHORA (hora del dispositivo) hasta esa hora de apertura, con wrap-around a mañana
+  // (p. ej. son las 11:00 PM y la tienda abre a las 12:00 AM → faltan 60 min, no "está muy lejos").
+  const minutesUntilOpen = (openMin: number): number => {
+    const now = new Date();
+    const nowMin = now.getHours() * 60 + now.getMinutes();
+    return ((openMin - nowMin) % 1440 + 1440) % 1440;
+  };
 
   const filteredMerchants = realStores.filter(m =>
     (selectedCategory === 'ALL' || m.categories?.includes(selectedCategory)) &&
     (m.name.toLowerCase().includes(searchQuery.toLowerCase()) ||
     (m.categoriesName || '').toLowerCase().includes(searchQuery.toLowerCase()))
-  ).sort((a, b) => storeOpenRank(a) - storeOpenRank(b));
+  ).sort((a, b) => {
+    const rankDiff = storeOpenRank(a) - storeOpenRank(b);
+    if (rankDiff !== 0) return rankDiff;
+    if (storeOpenRank(a) !== 1) return 0; // solo el grupo "por abrir" (Nivel 2) se sub-ordena por hora
+    const ma = openingMinutes(a);
+    const mb = openingMinutes(b);
+    if (ma === null && mb === null) return 0;
+    if (ma === null) return 1; // sin hora reconocible: al final del grupo
+    if (mb === null) return -1;
+    return minutesUntilOpen(ma) - minutesUntilOpen(mb); // apertura más cercana desde ahora, primero
+  });
 
   // Regla de negocio: solo promos de tiendas actualmente abiertas. Cruce limpio por
   // storeCode contra realStores (que sí trae status crudo de GET /store/find).

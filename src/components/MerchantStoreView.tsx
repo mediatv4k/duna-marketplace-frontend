@@ -482,7 +482,12 @@ export default function MerchantStoreView({
   );
   const heroNode = (
     <>
-        <div className={`${isFarma ? 'lg:hidden' : ''} relative w-full h-52 lg:h-44 bg-slate-900 overflow-hidden`}>
+        {/* Proporción consistente (2026-09-22): antes era una altura fija (h-52 lg:h-44) contra un ancho a sangre
+            (todo el viewport, sin max-w) — en escritorio eso forzaba una relación ~7:1 u más, muy lejos de los
+            banners reales (2.4:1–3:1 verificado en varias tiendas), así que `object-cover` recortaba el arte de
+            forma agresiva. `aspect-[3/1]` se acerca al promedio real (recorte mínimo, arriba/abajo, ya no de lado)
+            y escala con el ancho en vez de quedar fija; `max-h` evita que crezca sin límite en monitores ultra anchos. */}
+        <div className={`${isFarma ? 'lg:hidden' : ''} relative w-full aspect-[3/1] max-h-[420px] bg-slate-900 overflow-hidden`}>
           {merchant.banner ? (
             <img src={merchant.banner} alt={merchant.name} className="w-full h-full object-cover" />
           ) : (
