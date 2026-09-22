@@ -20,6 +20,7 @@ import {
 } from 'lucide-react';
 import { parseDescriptionTags } from '@/lib/productTags';
 import ProductTagBadges from './ProductTagBadges';
+import ShareButton from './ShareButton';
 
 export interface ComboSlot {
   id: number;
@@ -158,6 +159,7 @@ interface MasterProductModalProps {
   bcvRate: number | null;
   onAddToCart: (payload: VariantSelectionPayload) => void;
   initialQty?: number; // unidades con las que arranca el contador al abrir (p. ej. el pedido del asistente); por defecto 1
+  store?: { name: string; code: string } | null; // para el botón "Compartir" (nombre y slug reales de la tienda)
 }
 
 export default function MasterProductModal({
@@ -167,7 +169,8 @@ export default function MasterProductModal({
   nicheEngine,
   bcvRate,
   onAddToCart,
-  initialQty = 1
+  initialQty = 1,
+  store
 }: MasterProductModalProps) {
   // Cantidad válida: entero entre 1 y 99
   const startQty = Math.min(Math.max(Math.floor(Number(initialQty)) || 1, 1), 99);
@@ -751,9 +754,20 @@ export default function MasterProductModal({
             </div>
             <h3 className="text-lg md:text-2xl font-black text-slate-900 leading-tight">{product.name}</h3>
           </div>
-          <button onClick={onClose} className="w-9 h-9 rounded-full bg-slate-100 hover:bg-slate-200 flex items-center justify-center text-slate-500 transition shrink-0 cursor-pointer">
-            <X className="w-4 h-4" />
-          </button>
+          <div className="flex items-center gap-2 shrink-0">
+            {store?.code && (
+              <ShareButton
+                title={product.name}
+                text={`¡Mira esto en ${store.name}!`}
+                url={`${typeof window !== 'undefined' ? window.location.origin : ''}/store/${store.code}/product/${product.id}`}
+                ariaLabel="Compartir producto"
+                className="w-9 h-9 rounded-full bg-slate-100 hover:bg-slate-200 flex items-center justify-center text-slate-500 transition cursor-pointer"
+              />
+            )}
+            <button onClick={onClose} className="w-9 h-9 rounded-full bg-slate-100 hover:bg-slate-200 flex items-center justify-center text-slate-500 transition shrink-0 cursor-pointer">
+              <X className="w-4 h-4" />
+            </button>
+          </div>
         </div>
 
         <div className="flex-1 overflow-y-auto">

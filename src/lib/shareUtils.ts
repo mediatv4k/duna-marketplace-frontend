@@ -29,3 +29,23 @@ export function shareProductWhatsApp(product: { name: string; price: number; cod
 export function copyToClipboard(text: string): Promise<boolean> {
   return navigator.clipboard.writeText(text).then(() => true).catch(() => false);
 }
+
+// Compartir nativo (2026-09-22): abre el selector nativo del sistema (`navigator.share`, WhatsApp/Instagram/Mail/
+// lo que el usuario tenga instalado) en vez de forzar WhatsApp como los helpers de arriba. Sin soporte (la mayoría
+// de navegadores de escritorio) o si el usuario cancela, cae a copiar el enlace al portapapeles. Nunca lanza: el
+// botón que lo llama decide cómo avisar el resultado (`ok: 'shared' | 'copied' | 'failed'`).
+export type NativeShareResult = { ok: 'shared' | 'copied' | 'failed' };
+
+export async function shareNative(data: { title: string; text: string; url: string }): Promise<NativeShareResult> {
+  try {
+    if (typeof navigator !== 'undefined' && typeof navigator.share === 'function') {
+      await navigator.share(data);
+      return { ok: 'shared' };
+    }
+  } catch (err: any) {
+    // AbortError: el usuario cerró el selector nativo sin elegir nada — no es un error real, no se cae a copiar
+    if (err?.name === 'AbortError') return { ok: 'failed' };
+  }
+  const copied = await copyToClipboard(data.url).catch(() => false);
+  return { ok: copied ? 'copied' : 'failed' };
+}

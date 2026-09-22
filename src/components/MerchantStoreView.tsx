@@ -4,6 +4,7 @@ import React, { useState } from 'react';
 import { ShoppingBag, ChevronRight, Search, Star, Clock, MapPin, Sparkles, FileText, X, ZoomIn, Bike } from 'lucide-react';
 import { parseDescriptionTags } from '@/lib/productTags';
 import ProductTagBadges from './ProductTagBadges';
+import ShareButton from './ShareButton';
 import CartModal from './CartModal';
 import LocationPickerModal from './LocationPickerModal';
 import MasterProductModal from './MasterProductModal';
@@ -501,6 +502,15 @@ export default function MerchantStoreView({
                 <span className="bg-white/20 backdrop-blur-md text-white text-xs font-semibold px-3 py-1.5 rounded-full flex items-center gap-1"><Star className="w-3 h-3 fill-current" /> {merchant.rating || '5.0'}</span>
                 {merchant.deliveryFee && <span className="bg-white/20 backdrop-blur-md text-white text-xs font-semibold px-3 py-1.5 rounded-full flex items-center gap-1"><Bike className="w-3 h-3" /> {merchant.deliveryFee}</span>}
                 {merchant.badge && <span className="bg-white/20 backdrop-blur-md text-white text-xs font-semibold px-3 py-1.5 rounded-full flex items-center gap-1"><Clock className="w-3 h-3" /> {merchant.badge}</span>}
+                {merchant.code && (
+                  <ShareButton
+                    title={merchant.name}
+                    text={`¡Visita el catálogo de ${merchant.name} y pide ahora!`}
+                    url={`${typeof window !== 'undefined' ? window.location.origin : ''}/store/${merchant.code}`}
+                    ariaLabel="Compartir tienda"
+                    className="bg-white/20 backdrop-blur-md hover:bg-white/30 text-white p-1.5 rounded-full transition"
+                  />
+                )}
               </div>
             </div>
           </div>
@@ -849,6 +859,7 @@ export default function MerchantStoreView({
             nicheEngine={modalEngine}
             bcvRate={bcvRate}
             initialQty={modalInitialQty}
+            store={{ name: merchant.name, code: merchant.code }}
           />
         )}
 
@@ -949,6 +960,7 @@ export default function MerchantStoreView({
         niche={templateNiche}
         storeNiche={storeNiche}
         merchantName={merchant.name}
+        storeCode={merchant.code}
         hero={heroNode}
         bcvRate={bcvRate}
         products={products}
