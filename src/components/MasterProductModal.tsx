@@ -18,6 +18,8 @@ import {
   ChevronRight,
   UtensilsCrossed
 } from 'lucide-react';
+import { parseDescriptionTags } from '@/lib/productTags';
+import ProductTagBadges from './ProductTagBadges';
 
 export interface ComboSlot {
   id: number;
@@ -178,6 +180,13 @@ export default function MasterProductModal({
   const [upsellSelections, setUpsellSelections] = useState<Record<string, any>>({});
 
   // Detección si el producto es un Combo
+  // Metadatos ocultos en la descripción (ver src/lib/productTags.ts): sin etiquetas `[CLAVE: Valor]`, `tags` queda
+  // vacío y `cleanDescription` es la descripción real, sin tocar (los productos sin corchetes no se ven afectados)
+  const { cleanDescription, tags: descriptionTags } = useMemo(
+    () => parseDescriptionTags(product?.desc || product?.description),
+    [product]
+  );
+
   const isCombo = useMemo(() => {
     if (!product) return false;
     if (product.isCombo) return true;
@@ -776,7 +785,8 @@ export default function MasterProductModal({
                       <Check className="w-3 h-3" /> Disponible
                     </span>
                   </div>
-                  <p className="text-xs text-slate-600 font-medium leading-snug line-clamp-2 sm:line-clamp-none">{product.desc || product.description || 'Configura las opciones para este artículo.'}</p>
+                  <p className="text-xs text-slate-600 font-medium leading-snug line-clamp-2 sm:line-clamp-none">{cleanDescription || 'Configura las opciones para este artículo.'}</p>
+                  <ProductTagBadges tags={descriptionTags} className="mt-2" />
 
                   <div className="flex items-center justify-between pt-2 border-t border-gray-100">
                     <span className="text-xs font-bold text-slate-700">Cantidad (Unidades):</span>

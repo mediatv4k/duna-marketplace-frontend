@@ -2,6 +2,8 @@
 
 import React, { useState } from 'react';
 import { ShoppingBag, ChevronRight, Search, Star, Clock, MapPin, Sparkles, FileText, X, ZoomIn } from 'lucide-react';
+import { parseDescriptionTags } from '@/lib/productTags';
+import ProductTagBadges from './ProductTagBadges';
 import CartModal from './CartModal';
 import LocationPickerModal from './LocationPickerModal';
 import MasterProductModal from './MasterProductModal';
@@ -597,6 +599,9 @@ export default function MerchantStoreView({
                   : product.isGeneric
                     ? { label: 'GENÉRICO', className: 'bg-emerald-100 text-emerald-700' }
                     : null;
+                // Metadatos ocultos en la descripción (ver src/lib/productTags.ts): sin etiquetas `[CLAVE: Valor]`
+                // (todos los productos reales verificados hoy, incl. farmacia), `tags` queda vacío y no se dibuja nada extra
+                const { cleanDescription, tags: descriptionTags } = parseDescriptionTags(product.desc || product.description);
                 return (
                   <div
                     key={product.id || product.code}
@@ -636,6 +641,10 @@ export default function MerchantStoreView({
                       {product.internalCategory && (
                         <p className="text-[9px] font-semibold text-brand-orange mt-0.5">{product.internalCategory}</p>
                       )}
+                      {cleanDescription && (
+                        <p className="text-[9px] text-slate-400 line-clamp-1 mt-0.5">{cleanDescription}</p>
+                      )}
+                      <ProductTagBadges tags={descriptionTags} className="mt-1.5" />
                     </div>
                     <div>
                       <div className="flex justify-between items-end mt-2">
