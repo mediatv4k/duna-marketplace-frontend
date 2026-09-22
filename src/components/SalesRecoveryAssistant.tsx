@@ -18,6 +18,16 @@ const CART_TAG_RE = /\[AGREGAR_CARRITO:([a-zA-Z0-9_-]+):(\d+)\]/; // comando de 
 const PRODUCT_TAG_RE = /\[VER_PRODUCTO:([a-zA-Z0-9_-]+)\]/; // comando de navegación: abre la ficha del producto
 const MUTE_STORAGE_KEY = 'duna_assistant_muted'; // silencio para el resto de la sesión (sessionStorage)
 
+// Regla 6 (FORMATO ESTRICTO DE VOZ): Gemini a veces igual devuelve Markdown pese al prompt. Se limpia antes de mostrarlo
+// en el globo o de pasarlo al sintetizador de voz, que si no lee los símbolos en voz alta ("asterisco asterisco Hola…").
+function stripMarkdown(text: string): string {
+  return text
+    .replace(/[*_#]/g, '')
+    .replace(/[ \t]{2,}/g, ' ')
+    .replace(/\n{3,}/g, '\n\n')
+    .trim();
+}
+
 type Phase = 'idle' | 'listening' | 'thinking' | 'speaking';
 
 const PHASE_LABEL: Record<Phase, string> = {
@@ -169,11 +179,13 @@ export default function SalesRecoveryAssistant({ idleMs = IDLE_MS, onAccept, men
       const productMatch = res.ok ? rawReply.match(PRODUCT_TAG_RE) : null;
       // Comando [AGREGAR_CARRITO:id:cantidad]: mismo trato; si vienen los dos comandos, manda el de venta (no se abre la ficha dos veces)
       const cartMatch = res.ok ? rawReply.match(CART_TAG_RE) : null;
-      const reply = rawReply
+      const taglessReply = rawReply
         .split(MUTE_TAG).join('')
         .replace(new RegExp(PRODUCT_TAG_RE.source, 'g'), '')
         .replace(new RegExp(CART_TAG_RE.source, 'g'), '')
         .trim();
+      // El globo y la voz solo ven texto ya purificado de Markdown
+      const reply = stripMarkdown(taglessReply);
       if (cartMatch) {
         const qty = Math.min(Math.max(parseInt(cartMatch[2], 10) || 1, 1), 99);
         try { contextRef.current.onAddToCart?.(cartMatch[1], qty); } catch { /* el padre no pudo agregar */ }
