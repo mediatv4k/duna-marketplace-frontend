@@ -65,6 +65,14 @@ export default function MerchantStoreView({
   const [isCartOpen, setIsCartOpen] = useState(false);
   // Lightbox de la grilla de productos: clic en la foto (no en el resto de la tarjeta) la amplía; no toca el carrito ni abre el modal del producto
   const [lightboxImage, setLightboxImage] = useState<{ url: string; name: string } | null>(null);
+
+  // Reset de scroll al entrar a una tienda (2026-09-22): `page.tsx` monta este componente con `key={activeMerchantId}`,
+  // así que cambia de tienda = remonte completo = este efecto corre de nuevo. Sin esto, si el cliente venía con
+  // scroll bajado en el Home (o cambiando de una tienda a otra), la vista nueva podía abrir a mitad de página.
+  React.useEffect(() => {
+    if (typeof window !== 'undefined') window.scrollTo({ top: 0, left: 0, behavior: 'instant' });
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []);
   React.useEffect(() => {
     if (forceOpenCartTrigger && forceOpenCartTrigger > 0) {
       setIsCartOpen(true);
@@ -482,12 +490,16 @@ export default function MerchantStoreView({
   );
   const heroNode = (
     <>
-        {/* Proporción consistente (2026-09-22): antes era una altura fija (h-52 lg:h-44) contra un ancho a sangre
-            (todo el viewport, sin max-w) — en escritorio eso forzaba una relación ~7:1 u más, muy lejos de los
-            banners reales (2.4:1–3:1 verificado en varias tiendas), así que `object-cover` recortaba el arte de
-            forma agresiva. `aspect-[3/1]` se acerca al promedio real (recorte mínimo, arriba/abajo, ya no de lado)
-            y escala con el ancho en vez de quedar fija; `max-h` evita que crezca sin límite en monitores ultra anchos. */}
-        <div className={`${isFarma ? 'lg:hidden' : ''} relative w-full aspect-[3/1] max-h-[420px] bg-slate-900 overflow-hidden`}>
+        {/* Proporción consistente (2026-09-22): antes una altura fija (h-52 lg:h-44) contra un ancho a sangre forzaba
+            una relación ~7:1 en escritorio, muy lejos de los banners reales (2.4:1–3:1), así que `object-cover`
+            recortaba el arte de forma agresiva. `aspect-[3/1]` se acerca al promedio real y escala con el ancho.
+            Ancho contenido en pantallas grandes (2026-09-22, corrección): en vez de dejar el banner a sangre en TODO
+            el viewport en escritorio (con `max-h` como único freno, y aun así se sentía tosco/desbalanceado en
+            monitores anchos), a partir de `lg:` se lo acota a `max-w-7xl` — el mismo ancho de contenido que usa el
+            resto de la tienda — y se redondea como una tarjeta (`lg:rounded-2xl`, con margen propio arriba). En
+            móvil sigue a sangre (borde a borde), que ahí se ve bien y no hay ancho de sobra que balancear. */}
+        <div className={`${isFarma ? 'lg:hidden' : ''} lg:max-w-7xl lg:mx-auto lg:px-8 lg:pt-4`}>
+        <div className="relative w-full aspect-[3/1] max-h-[420px] bg-slate-900 overflow-hidden lg:rounded-2xl">
           {merchant.banner ? (
             <img src={merchant.banner} alt={merchant.name} className="w-full h-full object-cover" />
           ) : (
@@ -519,6 +531,7 @@ export default function MerchantStoreView({
               </div>
             </div>
           </div>
+        </div>
         </div>
 
         {searchNode}

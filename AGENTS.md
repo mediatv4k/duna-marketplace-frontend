@@ -442,6 +442,20 @@ Orden visual de arriba hacia abajo:
    alto (tope por `max-h`, ratio final 3.25); 390 px → 130 px de alto (ratio 3.00 exacto, sin tope);
    el arte y los overlays (isologo, avatar, nombre, badges, botón de compartir) se ven completos y
    legibles en ambos tamaños, sin scroll horizontal.
+   **Ancho contenido en escritorio (2026-09-22, corrección):** el compromiso de la Fase 12 (dejarlo a
+   sangre en escritorio, solo `max-h` como freno) resultó "tosco" en monitores anchos — se corrigió
+   envolviendo el banner en `lg:max-w-7xl lg:mx-auto lg:px-8 lg:pt-4` (mismo ancho de contenido que el
+   resto de la tienda) y redondeándolo como tarjeta (`lg:rounded-2xl`); en móvil sigue a sangre, sin
+   cambios. Con el ancho ya acotado, `max-h-[420px]` deja de ser el freno real la mayoría del tiempo
+   (a 1216 px de ancho contenido, `aspect-[3/1]` da ~405 px, por debajo del tope) — se dejó igual, es
+   inofensivo. Verificado en navegador (Franela Store, 1366 px): banner en tarjeta redondeada con
+   margen a ambos lados (405 px de alto, 1216 px de ancho, ya no a sangre), sin scroll horizontal.
+   **Reset de scroll al entrar a una tienda (2026-09-22):** nuevo `useEffect` en `MerchantStoreView`
+   (`window.scrollTo({top:0, left:0, behavior:'instant'})`, deps `[]`) — como `page.tsx` monta este
+   componente con `key={activeMerchantId}`, cambiar de tienda es un remonte completo y el efecto corre
+   de nuevo en cada una. Sin esto, si el cliente entraba con el Home scrolleado, la tienda podía abrir
+   a mitad de página. Verificado: Home scrolleado a 1500 px → entrar a una tienda → `scrollY` cae a 0;
+   repetido volviendo atrás, scrolleando de nuevo y entrando a una tienda **distinta** → también 0.
 2. **Tarjeta de info** de la tienda (avatar real, categoría, rating, tiempo, delivery).
 3. **Badges de confianza:** **eliminados de la vista de tienda (2026-09-21)** — ni la cinta bajo las categorías (`MerchantStoreView` ni `MerchantTemplateEngine`) ni chips tipo "Cadena de Frío Garantizada". `nicheConfig.trustBadges` sigue definido; solo se consume en la tarjeta "Garantía D'una" del aside de farmacia. El motor ya no dibuja el contenedor de cabecera si `renderNicheHeader()` devuelve `null` (sin espacio muerto).
 4. **Promociones Imperdibles** (`PromotionsCarousel`). Click → abre el modal del producto
