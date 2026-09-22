@@ -5,7 +5,7 @@
 > agente (Claude u otro) que trabaje en este repositorio debe leerlo ANTES de tocar código,
 > y actualizarlo DESPUÉS de cualquier cambio importante, refactorización o feature nueva.
 >
-> Última actualización: 2026-09-22 (Fase "Marquee Inverso en Promociones")
+> Última actualización: 2026-09-22 (Fase "Rediseño de Categorías a Píldoras")
 
 ---
 
@@ -66,6 +66,32 @@
 - **Orden del listado de tiendas (Home):** prioridad **estrictamente por horario en tiempo real**: 1° abierta ahora, 2° por abrir (sub-ordenada por hora de apertura más cercana, ver abajo), 3° cerrada (el `status` administrativo no cuenta); orden estable dentro de cada grupo (se respeta el del backend). La píldora de horario de cada tarjeta (texto de `scheduleInfo`) es un botón que abre `StoreScheduleModal` (con `stopPropagation`, no abre la tienda).
   - **`storeOpenRank` ya NO confía en `scheduleStatus` (corregido 2026-09-22, Fase 12):** se verificó contra el backend real que ese campo miente — viene `"OPEN"` incluso en tiendas cuyo `scheduleInfo` (el mismo texto que se le muestra al cliente en la píldora) dice **"Hoy cerrado"** (casos reales en DEV: Proseco Bodegón Café, Lois es Más que Pollo, Big State — las tres con `status`/`scheduleStatus: "OPEN"` pero `scheduleInfo: "Hoy cerrado"`). Antes de esta fase, esas tiendas aparecían mezcladas entre las abiertas, arriba de tiendas genuinamente abiertas o por abrir — bug real, no hipotético. El rango ahora se calcula del **texto** de `scheduleInfo` primero (`/cerrado/i` → grupo 3, `/abre a las/i` → grupo 2, `/^abierto$/i` → grupo 1), y solo cae a `scheduleStatus` si no hay texto reconocible. `scheduleInfo` es la fuente de verdad más confiable porque es exactamente lo que ya se le muestra al cliente — nunca puede contradecir lo que ve en pantalla.
   - **Apertura más cercana (Fase 12):** dentro del grupo 2 ("por abrir"), `openingMinutes()` extrae la hora de `scheduleInfo` (patrón `HH:MM AM/PM`; sin patrón reconocible, la tienda queda al final del grupo) y `minutesUntilOpen()` calcula cuánto falta **desde la hora actual del dispositivo**, con *wrap-around* a mañana (si son las 11:00 PM y una tienda abre a las 12:00 AM, faltan 60 min, no "casi un día"). Verificado en navegador con las 47 tiendas reales de DEV: cero tiendas cerradas por encima de una abierta o por abrir, y el grupo "por abrir" queda ordenado 07:00 AM → 07:00 AM → 07:00 AM → 08:00 AM ×6 → 08:30 AM ×2… ascendente.
+- **Selector de categorías del Home — píldoras horizontales (2026-09-22, Fase "Rediseño de Categorías", `page.tsx`,
+  sección `#categorias-tiendas`):** reemplaza por completo las cajas cuadradas verticales anteriores (`w-20 sm:w-22`,
+  icono en círculo de 56 px arriba + etiqueta debajo, `flex-col`) por **cápsulas horizontales** (`rounded-full`,
+  `flex items-center gap-2 px-4 py-2 text-sm`, icono `w-4 h-4` a la izquierda del texto en la misma línea). Estado
+  inactivo: `bg-slate-50 border-slate-200/70 text-slate-700 font-medium`; hover: `hover:border-[#fe6712]/40`;
+  estado activo: `bg-[#fe6712] text-white border-[#fe6712] shadow-sm shadow-[#fe6712]/25 font-semibold` (antes el
+  activo mantenía fondo blanco con anillo — `ring-2 ring-[#fe6712]/20` — y solo el ícono interior se pintaba de
+  naranja; ahora es la píldora completa la que se pinta sólida, más el pedido de la misión). Los `<div role="button"
+  tabIndex={0}>` pasaron a `<button type="button">` reales (más correcto semánticamente: foco/teclado nativos, sin
+  cambiar el comportamiento al clic). El contenedor (`categoryRailRef`, mismo ref de antes, usado por los botones
+  `‹`/`›` de `scrollCategories()`) pasó de `flex gap-2.5 ... snap-x` (con `snap-start` por tarjeta) a `flex items-center
+  gap-2.5 overflow-x-auto no-scrollbar scroll-smooth py-2` — se quitó el `snap-x`/`snap-start` porque con píldoras de
+  ancho variable (según el largo del nombre) el scroll-snap por tarjeta se sentía más brusco que un scroll libre;
+  `no-scrollbar` es la utilidad real del proyecto (`globals.css`) — la misión pedía `scrollbar-none`, que no es una
+  clase de Tailwind base en este repo (no hay plugin de scrollbar instalado), así que se usó la utilidad ya existente
+  para el mismo efecto en vez de dejar una clase sin efecto. **Altura compacta:** la fila pasó de ~90 px de alto (icono
+  56 px + etiqueta + padding) a **54 px** en escritorio, medido en navegador — la grilla de tiendas sube de inmediato,
+  como pedía la misión. Los íconos de categoría del backend (`cat.image`, cuando existen) se dibujan a `w-4 h-4
+  object-contain` (antes `w-10 h-10` dentro de un círculo de 56 px); sin imagen, cae al mismo `Tag` de `lucide-react`
+  de antes, también reducido a `w-4 h-4`. **Sin tocar la lógica de filtrado:** `selectedCategory`/`setSelectedCategory`
+  y el `onClick` de cada píldora (`() => setSelectedCategory(cat.code)` / `'ALL'`) son exactamente los mismos que antes,
+  ni una línea de `realCategories`/`filteredMerchants` se tocó. Verificado en navegador (1366 px y 390 px, build de
+  producción aislada, datos reales): 23 píldoras reales cargaron sin desbordes; clic en "Fast Food" pintó esa píldora
+  de naranja sólido, devolvió "Todos" a su estilo inactivo y el contador de tiendas cambió de "Tiendas (47)" a "Tiendas
+  (13)" en vivo (confirma que el filtrado real sigue intacto, no solo el estilo); sin scroll horizontal de página en
+  ningún viewport (el scroll horizontal *interno* de la fila de píldoras es el esperado/deseado).
 - **Cabecera del Home — header solo-logo + sub-barra clara (2026-09-22, Fase "Redistribución de Navbar", `page.tsx`):**
   reemplaza por completo la barra única de la Fase "Unificación de Header" (la de abajo), que mezclaba logo,
   ubicación, moneda, BCV y buscador en un solo contenedor oscuro. Ahora son **dos bloques**: (1) la franja oscura

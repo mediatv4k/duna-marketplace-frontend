@@ -528,27 +528,32 @@ export default function MultitiendaHub() {
             </div>
           </div>
           
-          <div ref={categoryRailRef} className="flex gap-2.5 overflow-x-auto pb-1.5 pt-0.5 scroll-smooth no-scrollbar snap-x">
-            <div role="button" tabIndex={0} onClick={() => setSelectedCategory('ALL')} className={`flex-shrink-0 snap-start flex flex-col items-center justify-center w-20 sm:w-22 py-2.5 px-1 rounded-2xl border transition-all duration-200 cursor-pointer group select-none ${selectedCategory === 'ALL' ? 'bg-white border-[#fe6712] ring-2 ring-[#fe6712]/20 shadow-md -translate-y-0.5' : 'bg-white border-slate-200 hover:border-orange-300'}`}>
-              <div className={`w-13 h-13 sm:w-14 sm:h-14 rounded-2xl flex items-center justify-center mb-1.5 p-1 ${selectedCategory === 'ALL' ? 'bg-[#fe6712] text-white shadow-xs' : 'bg-orange-50/70 text-[#fe6712] group-hover:bg-orange-100'}`}>
-                 <Sparkles className="w-6 h-6 sm:w-7 sm:h-7" />
-              </div>
-              <span className={`text-[10px] sm:text-[11px] font-bold text-center leading-tight truncate w-full px-0.5 ${selectedCategory === 'ALL' ? 'text-[#fe6712] font-black' : 'text-slate-700 group-hover:text-[#fe6712]'}`}>Todos</span>
-            </div>
+          <div ref={categoryRailRef} className="flex items-center gap-2.5 overflow-x-auto no-scrollbar scroll-smooth py-2">
+            <button
+              type="button"
+              onClick={() => setSelectedCategory('ALL')}
+              className={`flex-shrink-0 flex items-center gap-2 px-4 py-2 rounded-full border text-sm transition-all duration-200 cursor-pointer select-none whitespace-nowrap ${selectedCategory === 'ALL' ? 'bg-[#fe6712] text-white border-[#fe6712] shadow-sm shadow-[#fe6712]/25 font-semibold' : 'bg-slate-50 border-slate-200/70 text-slate-700 font-medium hover:border-[#fe6712]/40'}`}
+            >
+              <Sparkles className="w-4 h-4 shrink-0" />
+              Todos
+            </button>
 
             {realCategories.map(cat => {
               const isActive = selectedCategory === cat.code;
               return (
-                <div key={cat.id} role="button" tabIndex={0} onClick={() => setSelectedCategory(cat.code)} className={`flex-shrink-0 snap-start flex flex-col items-center justify-center w-20 sm:w-22 py-2.5 px-1 rounded-2xl border transition-all duration-200 cursor-pointer group select-none ${isActive ? 'bg-white border-[#fe6712] ring-2 ring-[#fe6712]/20 shadow-md -translate-y-0.5' : 'bg-white border-slate-200 hover:border-orange-300'}`}>
-                  <div className={`w-13 h-13 sm:w-14 sm:h-14 rounded-2xl flex items-center justify-center mb-1.5 p-1 overflow-hidden ${isActive ? 'bg-[#fe6712] text-white shadow-xs' : 'bg-orange-50/70 text-[#fe6712] group-hover:bg-orange-100'}`}>
-                    {cat.image ? (
-                      <img src={cat.image} alt={cat.name} className="w-10 h-10 object-contain" />
-                    ) : (
-                      <Tag className="w-5 h-5" />
-                    )}
-                  </div>
-                  <span className={`text-[10px] sm:text-[11px] font-bold text-center leading-tight truncate w-full px-0.5 ${isActive ? 'text-[#fe6712] font-black' : 'text-slate-700 group-hover:text-[#fe6712]'}`}>{cat.name}</span>
-                </div>
+                <button
+                  key={cat.id}
+                  type="button"
+                  onClick={() => setSelectedCategory(cat.code)}
+                  className={`flex-shrink-0 flex items-center gap-2 px-4 py-2 rounded-full border text-sm transition-all duration-200 cursor-pointer select-none whitespace-nowrap ${isActive ? 'bg-[#fe6712] text-white border-[#fe6712] shadow-sm shadow-[#fe6712]/25 font-semibold' : 'bg-slate-50 border-slate-200/70 text-slate-700 font-medium hover:border-[#fe6712]/40'}`}
+                >
+                  {cat.image ? (
+                    <img src={cat.image} alt="" className="w-4 h-4 object-contain shrink-0" />
+                  ) : (
+                    <Tag className="w-4 h-4 shrink-0" />
+                  )}
+                  {cat.name}
+                </button>
               );
             })}
           </div>
