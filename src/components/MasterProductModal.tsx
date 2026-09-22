@@ -231,8 +231,12 @@ export default function MasterProductModal({
     return isCombo ? 5 : 1;
   }, [product, isCombo]);
 
+  // Ranuras/personalización por unidad: solo tiene sentido en nichos de comida (sabores, combos, "sin cebolla"…);
+  // en licores, farmacia, bodegón o tecnología no aporta nada y solo agrega un paso extra al pedido (2026-09-22).
+  const isFoodNiche = nicheEngine === 'FOOD_FAST' || nicheEngine === 'FOOD_SWEET';
+
   const [isSlotCustomizationActive, setIsSlotCustomizationActive] = useState<boolean>(false);
-  const isSlotMode = isCombo || (qty > 1 && isSlotCustomizationActive);
+  const isSlotMode = isFoodNiche && (isCombo || (qty > 1 && isSlotCustomizationActive));
   // Nombre visible de cada unidad: el del producto ("Perro Sencillo #1"), nunca la palabra genérica "Ranura"
   const unitLabel = product?.name || 'Unidad';
 
@@ -793,8 +797,9 @@ export default function MasterProductModal({
                 <ProductTagBadges tags={descriptionTags} className="mb-4" />
               </div>
 
-              {/* Banner de personalización por unidad: arriba (debajo de la cantidad), visible sin scroll */}
-                {qty > 1 && !isCombo && !isSlotMode && (
+              {/* Banner de personalización por unidad: arriba (debajo de la cantidad), visible sin scroll.
+                  Solo nichos de comida (isFoodNiche); en el resto ni se ofrece la opción. */}
+                {isFoodNiche && qty > 1 && !isCombo && !isSlotMode && (
                   <div className="py-2 border-b border-gray-100 flex justify-between items-center gap-3">
                     <div>
                       <span className="text-xs font-black text-slate-900 block">¿Personalizar cada unidad por separado?</span>
