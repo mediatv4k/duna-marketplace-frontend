@@ -785,9 +785,6 @@ export default function MasterProductModal({
                       <Check className="w-3 h-3" /> Disponible
                     </span>
                   </div>
-                  <p className="text-xs text-slate-600 font-medium leading-snug line-clamp-2 sm:line-clamp-none">{cleanDescription || 'Configura las opciones para este artículo.'}</p>
-                  <ProductTagBadges tags={descriptionTags} className="mt-2" />
-
                   <div className="flex items-center justify-between pt-2 border-t border-gray-100">
                     <span className="text-xs font-bold text-slate-700">Cantidad (Unidades):</span>
                     <div className="flex items-center gap-3 bg-white px-2 py-1 rounded-xl border border-slate-200 shadow-sm">
@@ -801,6 +798,13 @@ export default function MasterProductModal({
                     </div>
                   </div>
                 </div>
+              </div>
+
+              {/* Descripción expandida (2026-09-22): antes vivía angosta, junto al precio/cantidad; ahora a todo lo ancho,
+                  debajo del bloque de imagen+precio+cantidad, sin truncar (el cliente la lee completa). */}
+              <div className="w-full">
+                <p className="w-full text-sm text-gray-600 mt-4 mb-4 leading-relaxed whitespace-pre-line">{cleanDescription || 'Configura las opciones para este artículo.'}</p>
+                <ProductTagBadges tags={descriptionTags} className="mb-4" />
               </div>
 
               {/* Banner de personalización por unidad: arriba (debajo de la cantidad), visible sin scroll */}

@@ -511,15 +511,17 @@ export default function MerchantStoreView({
   );
   {/* Isologo D'una (2026-09-21): fixed en vez de absolute dentro del banner — flota sobre toda la vista, visible
       aunque se haga scroll, y ya no depende de que el banner esté presente (útil en escritorio de farmacia, donde
-      el banner se oculta). Sigue ejecutando el mismo onBack. */}
+      el banner se oculta). Sigue ejecutando el mismo onBack.
+      Círculo perfecto (2026-09-22): sin fondo blanco propio; el borde de marca y la sombra dan el contraste,
+      y la imagen en `object-cover` llena el círculo sin dejar bordes cuadrados. */}
   const isologoNode = (
     <button
       type="button"
       onClick={onBack}
       aria-label="Volver al inicio"
-      className="fixed top-4 right-4 z-50 bg-white/95 backdrop-blur-sm p-1.5 rounded-2xl shadow-md hover:scale-105 transition-transform duration-200 cursor-pointer"
+      className="fixed top-4 right-4 z-50 w-12 h-12 rounded-full overflow-hidden shadow-lg border-2 border-[#FE6712] flex items-center justify-center hover:scale-105 transition-transform duration-200 cursor-pointer"
     >
-      <img src="/images/duna-isologo.png" alt="D'una Marketplace" className="w-8 h-8 md:w-10 md:h-10 object-contain" />
+      <img src="/images/duna-isologo.png" alt="D'una Marketplace" className="w-full h-full object-cover" />
     </button>
   );
   // Datos reales de la tienda para el diseño con barra lateral
