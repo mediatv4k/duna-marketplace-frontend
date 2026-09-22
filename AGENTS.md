@@ -5,7 +5,7 @@
 > agente (Claude u otro) que trabaje en este repositorio debe leerlo ANTES de tocar código,
 > y actualizarlo DESPUÉS de cualquier cambio importante, refactorización o feature nueva.
 >
-> Última actualización: 2026-09-22 (Fase "Rediseño de Categorías a Píldoras")
+> Última actualización: 2026-09-22 (Fase "Toggle y Carrusel Circular en Categorías")
 
 ---
 
@@ -92,6 +92,55 @@
   de naranja sólido, devolvió "Todos" a su estilo inactivo y el contador de tiendas cambió de "Tiendas (47)" a "Tiendas
   (13)" en vivo (confirma que el filtrado real sigue intacto, no solo el estilo); sin scroll horizontal de página en
   ningún viewport (el scroll horizontal *interno* de la fila de píldoras es el esperado/deseado).
+- **Toggle de desmarcado + bucle infinito manual en las píldoras (2026-09-22, Fase "Toggle y Carrusel Circular",
+  `page.tsx`, misma sección `#categorias-tiendas`):**
+  - **Toggle:** `handleCategorySelect(code, el?)` sustituye los `onClick` directos de cada píldora. Si `code ===
+    selectedCategory` (la categoría ya estaba activa), desmarca volviendo a `setSelectedCategory('ALL')` — el
+    estado sigue siendo el string `'ALL'`, no `null` (la mission sugería cualquiera de los dos; se mantuvo el tipo
+    `useState<string>('ALL')` existente para no tocar `filteredMerchants`/`storeOpenRank` ni el resto de la lógica
+    de filtrado, que ya comparaba contra `'ALL'`). Si no, selecciona la categoría y centra su píldora
+    (`el.scrollIntoView({ behavior: 'smooth', inline: 'center', block: 'nearest' })`, `el` = el propio `<button>`
+    clickeado vía `e.currentTarget`). Se usa para **ambos** — "Todos" y las categorías reales — así que reclickear
+    "Todos" mientras ya está activo es una operación idempotente (vuelve a `'ALL'`, sin efecto visible).
+  - **Bucle infinito manual (sin CSS ni `setInterval`, a diferencia del cintillo del hero y de las promociones —
+    aquí el movimiento es 100% del usuario, arrastre/rueda nativos):** el riel dibuja **3 copias idénticas** de
+    "Todos" + `realCategories`, cada una envuelta en su propio `<div className="flex items-center gap-2.5
+    shrink-0">` ("grupo"). `categoryGroupStartRef`/`categoryGroupNextRef` apuntan al 1er y 2do grupo;
+    `categoryRepeatWidth()` = `next.offsetLeft - start.offsetLeft` = el ancho exacto de "una vuelta" completa
+    (medido en vivo, no hardcodeado, así sigue siendo correcto sin importar cuántas categorías reales lleguen del
+    backend). Un `useLayoutEffect` (dependencia `[realCategories.length]`, con guardia `categoryRailInitializedRef`
+    para correr una sola vez) centra el `scrollLeft` inicial exactamente en `repeatWidth` — el usuario arranca
+    viendo la copia del medio, indistinguible de las otras dos. El `onScroll` del riel
+    (`handleCategoryRailScroll`) es el corazón de la técnica: si `scrollLeft` se acerca al borde real izquierdo o
+    derecho de la pista triplicada (margen `edgeBuffer = min(240, repeatWidth / 3)` — no unos pocos px: un fling
+    rápido en móvil puede mover el scroll varios cientos de px entre dos eventos `scroll` consecutivos, y un
+    margen angosto dejaría ver el borde real por un instante antes del reajuste), suma o resta `repeatWidth` a
+    `scrollLeft` **sin animación** (asignación directa; la clase `scroll-smooth` se quitó a propósito del
+    contenedor — con ella, el CSS `scroll-behavior: smooth` también anima las reasignaciones programáticas de
+    `scrollLeft`, lo que habría vuelto visible el salto que debe ser imperceptible; los scrolls que sí deben
+    animarse — flechas `‹`/`›`, `scrollIntoView` del toggle — siguen pidiendo `behavior: 'smooth'` explícito en su
+    propia llamada, que tiene prioridad sobre la ausencia de la clase CSS). Como las 3 copias son idénticas, saltar
+    por `repeatWidth` reposiciona al usuario en el punto visualmente equivalente de la copia vecina — el contenido
+    en pantalla no cambia, solo el offset interno. Las flechas `‹`/`›` (`scrollCategories`) se simplificaron: ya no
+    tienen su propio wrap-around manual (`if scrollLeft <= 15 → scrollTo(maxScroll)`, pensado para una sola copia);
+    ahora es un `scrollBy({left: ±240, behavior:'smooth'})` liso, porque el wrap real ya lo resuelve el `onScroll`
+    de la pista triplicada por debajo. **Duplicados marcados `aria-hidden`/`tabIndex={-1}`** (grupos 0 y 2; el
+    grupo 1, el del medio, es el único tabulable) — mismo patrón ya aprobado en `HeroBannerCarousel.tsx` y
+    `PromotionsCarousel.tsx`, con la misma limitación heredada y ya documentada ahí: durante parte del ciclo el
+    par visible en pantalla puede ser uno de los `aria-hidden` mientras el tabulable está fuera de vista.
+  - **Verificado en navegador** (1366 px y 390 px, build de producción aislada, datos reales — 8 categorías, 25
+    píldoras en el DOM entre las 3 copias): clic en una píldora inactiva la activa (clase naranja) y filtra
+    (`Tiendas (47)` → `Tiendas (13)` en "Fast Food"); un segundo clic sobre esa misma píldora ya activa la
+    desmarca (vuelve a la clase inactiva), "Todos" se reactiva y el contador vuelve a `Tiendas (47)` — el toggle
+    funciona en ambos sentidos. Para el bucle: arrastrar `scrollLeft` mucho más allá del ancho total de la pista
+    tripliclicada (ensayado con incrementos directos muy por encima de cualquier gesto humano real, sin pausas
+    entre eventos) nunca deja al usuario clavado en un extremo — el peor caso observado bajo esa presión
+    artificial fue tocar por un instante el borde real (`scrollLeft` exactamente en 0 o en el máximo) antes de que
+    el siguiente evento `scroll` disparara el reajuste y el contenido siguiera fluyendo con normalidad; con
+    entrada real (rueda del mouse, dedo) los eventos `scroll` llegan espaciados por el propio ritmo del navegador
+    (~cada frame), muy por debajo de la velocidad del test sintético, así que en uso normal el reajuste ocurre
+    bien antes de acercarse siquiera al borde real. Sin scroll horizontal de página en ningún viewport (el interno
+    del riel es el esperado).
 - **Cabecera del Home — header solo-logo + sub-barra clara (2026-09-22, Fase "Redistribución de Navbar", `page.tsx`):**
   reemplaza por completo la barra única de la Fase "Unificación de Header" (la de abajo), que mezclaba logo,
   ubicación, moneda, BCV y buscador en un solo contenedor oscuro. Ahora son **dos bloques**: (1) la franja oscura
