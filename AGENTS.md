@@ -5,7 +5,7 @@
 > agente (Claude u otro) que trabaje en este repositorio debe leerlo ANTES de tocar código,
 > y actualizarlo DESPUÉS de cualquier cambio importante, refactorización o feature nueva.
 >
-> Última actualización: 2026-09-22 (Fix urgente de producción: error #300 en el centrado de categorías)
+> Última actualización: 2026-09-22 (Fase "Toggle y Carrusel Circular en Categorías")
 
 ---
 
@@ -108,10 +108,9 @@
     shrink-0">` ("grupo"). `categoryGroupStartRef`/`categoryGroupNextRef` apuntan al 1er y 2do grupo;
     `categoryRepeatWidth()` = `next.offsetLeft - start.offsetLeft` = el ancho exacto de "una vuelta" completa
     (medido en vivo, no hardcodeado, así sigue siendo correcto sin importar cuántas categorías reales lleguen del
-    backend). Un `useEffect` (dependencia `[realCategories.length]`, con guardia `categoryRailInitializedRef` para
-    correr una sola vez — ver nota de hidratación más abajo, era `useLayoutEffect` hasta el 2026-09-22) centra el
-    `scrollLeft` inicial exactamente en `repeatWidth` — el usuario arranca viendo la copia del medio,
-    indistinguible de las otras dos. El `onScroll` del riel
+    backend). Un `useLayoutEffect` (dependencia `[realCategories.length]`, con guardia `categoryRailInitializedRef`
+    para correr una sola vez) centra el `scrollLeft` inicial exactamente en `repeatWidth` — el usuario arranca
+    viendo la copia del medio, indistinguible de las otras dos. El `onScroll` del riel
     (`handleCategoryRailScroll`) es el corazón de la técnica: si `scrollLeft` se acerca al borde real izquierdo o
     derecho de la pista triplicada (margen `edgeBuffer = min(240, repeatWidth / 3)` — no unos pocos px: un fling
     rápido en móvil puede mover el scroll varios cientos de px entre dos eventos `scroll` consecutivos, y un
@@ -142,24 +141,6 @@
     (~cada frame), muy por debajo de la velocidad del test sintético, así que en uso normal el reajuste ocurre
     bien antes de acercarse siquiera al borde real. Sin scroll horizontal de página en ningún viewport (el interno
     del riel es el esperado).
-  - **Fix de hidratación en producción — error #300 (2026-09-22, urgente):** el centrado inicial de arriba estaba
-    en un `useLayoutEffect`, que React ejecuta de forma **síncrona** justo después de aplicar el DOM y antes de
-    que el navegador pinte. En build/`next start` local (verificación de este repo) nunca dio problema, pero en
-    producción real (Vercel) tronó con `Minified React error #300` (client-side exception) — la lectura de
-    `offsetLeft` que hace `categoryRepeatWidth()` fuerza un layout síncrono sobre nodos recién hidratados, y eso
-    compitió con el propio proceso de reconciliación SSR→cliente de Next.js en ese entorno. Se cambió a un
-    `useEffect` normal (asíncrono, corre después del primer paint, ya fuera de la ventana de hidratación) +
-    guardia `if (typeof window === 'undefined') return` (cinturón de seguridad extra, aunque un efecto por
-    definición solo corre en cliente) + un `setTimeout` de 50 ms adicional dentro del efecto antes de medir y
-    asignar `scrollLeft`, para darle margen al navegador a terminar de pintar el riel triplicado. El toggle
-    (`handleCategorySelect`) y el bucle manual (`handleCategoryRailScroll`) no se tocaron — sólo el momento y la
-    forma en que se dispara el centrado inicial. **No reproducido en local** (ni en `next dev` ni en el
-    `next build && next start` de la verificación aislada de este repo, en ninguna fase anterior): es
-    específicamente un problema de timing de hidratación que solo se manifestó en el entorno de producción real de
-    Vercel. Verificado tras el fix (build de producción aislada, `next start`): cero errores de consola y cero
-    `pageerror` capturados por el navegador headless durante la carga inicial y la interacción (toggle + arrastre
-    forzado del riel), el centrado inicial sigue funcionando (`scrollLeft` arranca en `repeatWidth`, confirmado en
-    navegador) y el toggle sigue filtrando tiendas con normalidad (47 → 13 → 47).
 - **Cabecera del Home — header solo-logo + sub-barra clara (2026-09-22, Fase "Redistribución de Navbar", `page.tsx`):**
   reemplaza por completo la barra única de la Fase "Unificación de Header" (la de abajo), que mezclaba logo,
   ubicación, moneda, BCV y buscador en un solo contenedor oscuro. Ahora son **dos bloques**: (1) la franja oscura
