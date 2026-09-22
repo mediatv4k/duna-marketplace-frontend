@@ -717,28 +717,14 @@ export default function MasterProductModal({
     onClose();
   };
 
-  const getUpsellsByNiche = () => {
-    if (nicheEngine === 'FOOD_FAST') {
-      return [
-        { code: 'UP-FRIES', name: 'Ración de Papas Fritas', price: 4.50, icon: '🍟' },
-        { code: 'UP-DRINK', name: 'Refresco Frío (Lata)', price: 2.50, icon: '🥤' }
-      ];
-    }
-    if (nicheEngine === 'FOOD_SWEET') {
-      return [
-        { code: 'UP-CHOC', name: 'Topping de Chocolate Extra', price: 1.50, icon: '🍫' },
-        { code: 'UP-CONES', name: 'Paquete de Conos (6 Und)', price: 2.00, icon: '🍦' }
-      ];
-    }
-    if (nicheEngine === 'BODEGON_MARKET') {
-      return [
-        { code: 'UP-ICE', name: 'Bolsa de Hielo Gourmet', price: 3.00, icon: '🧊' },
-        { code: 'UP-GIFT', name: 'Empaque de Regalo VIP', price: 5.00, icon: '🎁' }
-      ];
-    }
-    return [];
-  };
-  const currentUpsells = getUpsellsByNiche();
+  // Barrido anti-demo (2026-09-22): antes esta función devolvía upsells 100% inventados por nicho ("Ración de
+  // Papas Fritas" código UP-FRIES, etc.) — productos que no existen en el catálogo real del backend, con códigos
+  // que el backend rechazaría si llegaran a un pedido real. Se elimina esa data ficticia por completo: la
+  // plataforma solo debe ofrecer venta cruzada si viene de datos reales (p. ej. `product.upsells`/
+  // `product.metadata.upsells` del backend, el día que exista ese campo). Hasta entonces, sin upsells reales,
+  // `currentUpsells` queda vacío y las dos secciones que lo consumen abajo (`currentUpsells.length > 0`) ya no
+  // renderizan nada — sin espacios en blanco ni pasos rotos.
+  const currentUpsells: { code: string; name: string; price: number; icon?: string }[] = [];
 
   if (!isOpen || !product) return null;
 

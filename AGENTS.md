@@ -430,12 +430,27 @@ Orden visual de arriba hacia abajo:
     roto la Comanda POS y el Recibo. Los símbolos ✓/✕ sueltos de `OrderTimelinePanel.tsx` (puntos de estado del
     timeline) tampoco se tocaron: son glifos tipográficos monocromos, no emoji a color, y no estaban en los
     ejemplos de la tarea.
-  - **Se detectó, pero no se corrigió (fuera del alcance de "emojis"):** `MasterProductModal.tsx`
-    (`getUpsellsByNiche`) tiene upsells 100% inventados con códigos que no existen en el backend real
-    ("UP-FRIES", "UP-DRINK", etc., con sus propios emoji `icon:`), la misma clase de problema que el barrido
-    anti-demo de la Fase 4 corrigió en `availableGroups`. No se tocó porque esta misión era sobre emojis, no sobre
-    datos ficticios — **pendiente de decisión del usuario** si también hay que purgarlo o conectarlo a upsells
-    reales del backend.
+  - **Corregido en la Fase 7 (2026-09-22):** los upsells inventados de `getUpsellsByNiche()` que se detectaron
+    aquí durante la Fase 6 (ver más abajo, "Purga de upsells falsos").
+- **Purga de upsells falsos (2026-09-22, Fase 7):** `getUpsellsByNiche()` en `MasterProductModal.tsx` devolvía
+  productos 100% inventados por `nicheEngine` — "Ración de Papas Fritas" (`UP-FRIES`), "Refresco Frío"
+  (`UP-DRINK`), "Topping de Chocolate Extra" (`UP-CHOC`), "Paquete de Conos" (`UP-CONES`), "Bolsa de Hielo
+  Gourmet" (`UP-ICE`), "Empaque de Regalo VIP" (`UP-GIFT`) — con códigos que no existen en el catálogo real del
+  backend (el mismo tipo de problema que el barrido anti-demo de la Fase 4 corrigió en `availableGroups`, ver
+  `MasterProductModal.tsx` en la tabla de componentes). Se eliminó la función y sus arreglos por completo; `const
+  currentUpsells: {...}[] = []` queda tipado y vacío, lista para conectarse a upsells reales del backend el día
+  que existan (p. ej. `product.upsells`/`product.metadata.upsells`). Las dos secciones que lo consumen ya estaban
+  gateadas por `currentUpsells.length > 0` (paso "1-Tap" de step 2 y el botón "Continuar" del footer en step 1),
+  así que con el arreglo vacío desaparecen solas — **sin espacios en blanco ni pasos rotos**, el modal va directo
+  de la selección de variantes al botón "Agregar al Pedido". Nota aparte: el paso 2 (pantalla de upsells) ya
+  estaba deshabilitado desde antes por un comentario `// TEMPORAL` en `handleNextStep` (saltaba directo a
+  `handleAddToCart()` sin pasar por `setStep(2)`), así que en la práctica esta pantalla no era alcanzable de
+  todos modos; ahora, sin datos falsos que mostrar, tampoco hay razón para reactivarla hasta que haya upsells
+  reales. `upsellSelections`/`toggleUpsell` y su suma en el precio total quedan intactos (no son la fuente falsa,
+  solo consumían lo que devolvía `getUpsellsByNiche`): con `currentUpsells` vacío nunca se selecciona nada, así
+  que no afectan el cálculo. Verificado en navegador (Papá Helado, producto combo): sin ninguno de los nombres
+  falsos en pantalla, sin la pantalla "¡Excelente elección!", el footer muestra "Agregar al Pedido" directo, sin
+  scroll horizontal.
 
 ### Deuda técnica conocida (a 2026-09-20)
 
