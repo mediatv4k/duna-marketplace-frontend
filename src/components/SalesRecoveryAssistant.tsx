@@ -14,6 +14,7 @@ const ACTIVITY_EVENTS: (keyof WindowEventMap)[] = ['mousemove', 'touchstart', 'k
 const GREETING = 'Hola, ¿te puedo ayudar con esta fase y dirigirte en el proceso hasta que hagas tu compra?';
 
 const MUTE_TAG = '[MUTE_ASSISTANT]';
+const PRODUCT_TAG_RE = /\[VER_PRODUCTO:([a-zA-Z0-9_-]+)\]/; // comando de navegación: abre la ficha del producto
 const MUTE_STORAGE_KEY = 'duna_assistant_muted'; // silencio para el resto de la sesión (sessionStorage)
 
 type Phase = 'idle' | 'listening' | 'thinking' | 'speaking';
@@ -30,6 +31,7 @@ interface SalesRecoveryAssistantProps {
   onAccept?: () => void; // acción extra opcional al aceptar la ayuda
   menuContext?: string; // catálogo resumido de la tienda actual (lo arma el padre; el asistente no lee el catálogo)
   cartContext?: string; // carrito actual resumido (lo arma el padre; el asistente no lee ni toca el carrito)
+  onOpenProduct?: (productId: string) => void; // el padre abre la ficha del producto (la app no tiene rutas /store/.../product: la ficha es un modal)
 }
 
 function speak(text: string, onEnd: () => void): boolean {
@@ -49,7 +51,7 @@ function speak(text: string, onEnd: () => void): boolean {
   }
 }
 
-export default function SalesRecoveryAssistant({ idleMs = IDLE_MS, onAccept, menuContext, cartContext }: SalesRecoveryAssistantProps) {
+export default function SalesRecoveryAssistant({ idleMs = IDLE_MS, onAccept, menuContext, cartContext, onOpenProduct }: SalesRecoveryAssistantProps) {
   const [isIdle, setIsIdle] = useState(false);
   const [chatOpen, setChatOpen] = useState(false);
   const [phase, setPhase] = useState<Phase>('idle');
@@ -64,8 +66,8 @@ export default function SalesRecoveryAssistant({ idleMs = IDLE_MS, onAccept, men
   const abortRef = useRef<AbortController | null>(null);
   const aliveRef = useRef(true);
   // El último contexto siempre disponible para `ask` sin recrear el callback en cada cambio del carrito
-  const contextRef = useRef({ menuContext, cartContext });
-  contextRef.current = { menuContext, cartContext };
+  const contextRef = useRef({ menuContext, cartContext, onOpenProduct });
+  contextRef.current = { menuContext, cartContext, onOpenProduct };
 
   const restartTimer = useCallback(() => {
     if (timerRef.current) clearTimeout(timerRef.current);
@@ -161,7 +163,16 @@ export default function SalesRecoveryAssistant({ idleMs = IDLE_MS, onAccept, men
       const rawReply = typeof data?.reply === 'string' ? data.reply : '';
       const wantsMute = res.ok && rawReply.includes(MUTE_TAG);
       // La etiqueta es una señal interna: nunca se muestra ni se lee en voz alta
-      const reply = rawReply.split(MUTE_TAG).join('').trim();
+      // Comando [VER_PRODUCTO:id]: se extrae el id y la etiqueta se quita del texto (ni se muestra ni se lee)
+      const productMatch = res.ok ? rawReply.match(PRODUCT_TAG_RE) : null;
+      const reply = rawReply.split(MUTE_TAG).join('').replace(new RegExp(PRODUCT_TAG_RE.source, 'g'), '').trim();
+      if (productMatch) {
+        try { contextRef.current.onOpenProduct?.(productMatch[1]); } catch { /* el padre no pudo abrir la ficha */ }
+      }
+      if (productMatch && !reply) {
+        setPhase('idle');
+        return;
+      }
       if (wantsMute) {
         try { sessionStorage.setItem(MUTE_STORAGE_KEY, '1'); } catch { /* sin sessionStorage */ }
       }

@@ -722,7 +722,7 @@ export default function MerchantStoreView({
     const parts: string[] = [];
     let total = 0;
     for (const p of products as any[]) {
-      if (!p?.name || !(Number(p?.price) > 0) || p?.outOfStock === true) continue;
+      if (!p?.name || p?.id == null || !(Number(p?.price) > 0) || p?.outOfStock === true) continue;
       const name = String(p.name).trim(); // sin corte por nombre: el tope es el total del texto
       // `metadata.variants` (grupos con `items[].title`); se omiten las opciones INACTIVE (sin stock)
       const groups = Array.isArray(p.metadata?.variants) ? p.metadata.variants : Array.isArray(p.variants) ? p.variants : [];
@@ -734,7 +734,7 @@ export default function MerchantStoreView({
         .slice(0, 8);
       const desc = String(p.description || '').replace(/\s+/g, ' ').trim().slice(0, 60);
       const detail = flavors.length > 0 ? `Opciones: ${flavors.join(', ')}` : desc && desc.toLowerCase() !== name.toLowerCase() ? desc : '';
-      const entry = `${name}${detail ? ` (${detail})` : ''} ($${Number(p.price).toFixed(2)})`;
+      const entry = `${name}${detail ? ` (${detail})` : ''} ($${Number(p.price).toFixed(2)}) [ID ${p.id}]`;
       if (total + entry.length + 2 > MAX_CHARS) break;
       parts.push(entry);
       total += entry.length + 2;
@@ -751,6 +751,13 @@ export default function MerchantStoreView({
           return `${qty}x ${String(item.name || 'Producto').trim().slice(0, 40)} ($${Number(line).toFixed(2)})`;
         })
         .join(', ') + `. Total: $${subtotalUSD.toFixed(2)}`;
+
+  // Comando del asistente [VER_PRODUCTO:id]: abre el modal del producto (el mismo del clic en la tarjeta). Solo ids que existen en el catálogo
+  // cargado, así un id inventado por el modelo no hace nada.
+  const handleAssistantOpenProduct = (productId: string) => {
+    const product = (products as any[]).find((p: any) => String(p?.id) === String(productId));
+    if (product) handleProductClick(product);
+  };
 
   const overlaysNode = (
     <>
@@ -848,7 +855,7 @@ export default function MerchantStoreView({
         />
 
         {/* Asistente de recuperación (aislado): vigila la inactividad de toda la tienda */}
-        <SalesRecoveryAssistant menuContext={assistantMenuContext} cartContext={assistantCartContext} />
+        <SalesRecoveryAssistant menuContext={assistantMenuContext} cartContext={assistantCartContext} onOpenProduct={handleAssistantOpenProduct} />
     </>
   );
 
