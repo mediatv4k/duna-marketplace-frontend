@@ -8,6 +8,12 @@ import { Mic, X } from 'lucide-react';
 // navegador (Web Speech API). Con "Sí, ayúdame" se vuelve interactivo: el cliente dicta con el micrófono, el texto viaja a
 // POST /api/assistant (Gemini; la API key vive solo en el servidor) y la respuesta se muestra en un globo y se lee en voz alta.
 // Los navegadores pueden bloquear la voz si la página aún no recibió ninguna interacción del usuario.
+//
+// Blindaje anti-bucles (revisado 2026-09-21): ningún useEffect depende de un estado que él mismo actualice
+// (restartTimer solo depende de idleMs/muted; el saludo solo depende de isIdle/muted y se autolimita con
+// hasSpokenRef). `contextRef` se muta directamente en cada render y nunca dispara un re-render por sí sola,
+// así que no puede formar un ciclo. La única fuente real de fetches repetidos era el usuario disparando `ask()`
+// más de una vez (doble tap, eco del reconocimiento): ver `isProcessingRef`/`isProcessing` más abajo.
 
 const IDLE_MS = 15000;
 const ACTIVITY_EVENTS: (keyof WindowEventMap)[] = ['mousemove', 'touchstart', 'keydown', 'scroll'];
@@ -72,12 +78,17 @@ export default function SalesRecoveryAssistant({ idleMs = IDLE_MS, onAccept, men
   const [canListen, setCanListen] = useState(false);
   const [muted, setMuted] = useState(false); // el cliente prefiere comprar solo: el asistente desaparece el resto de la sesión
   const [farewell, setFarewell] = useState(false); // despedida en curso: micrófono deshabilitado hasta que se oculte
+  const [isProcessing, setIsProcessing] = useState(false); // hay una consulta en curso (fetch real o simulada): micrófono bloqueado
   const timerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
   const hasSpokenRef = useRef(false);
   const recognitionRef = useRef<any>(null);
   const abortRef = useRef<AbortController | null>(null);
   const aliveRef = useRef(true);
+  // Espejo síncrono de `isProcessing`: el estado de React tarda un render en reflejarse y `ask` necesita el valor
+  // ya actualizado en la misma llamada (si no, dos disparos seguidos —doble tap, eco del reconocimiento— entrarían los dos).
+  const isProcessingRef = useRef(false);
   // El último contexto siempre disponible para `ask` sin recrear el callback en cada cambio del carrito
+  // (es una ref mutada en cada render, no un estado: no dispara re-render ni puede formar un bucle).
   const contextRef = useRef({ menuContext, cartContext, onOpenProduct, onAddToCart });
   contextRef.current = { menuContext, cartContext, onOpenProduct, onAddToCart };
 
@@ -159,26 +170,46 @@ export default function SalesRecoveryAssistant({ idleMs = IDLE_MS, onAccept, men
   }, [stopEverything]);
 
   const ask = useCallback(async (text: string) => {
+    // Blindaje anti-bucles: una consulta ya en curso ignora cualquier otra (doble tap, eco del reconocimiento,
+    // o una segunda llamada mientras la primera todavía espera la API). La función de envío corta aquí mismo.
+    if (isProcessingRef.current) return;
+    isProcessingRef.current = true;
+    setIsProcessing(true);
     setPhase('thinking');
     setNotice('');
     const controller = new AbortController();
     abortRef.current = controller;
     try {
-      const res = await fetch('/api/assistant', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ message: text, menuContext: contextRef.current.menuContext, cartContext: contextRef.current.cartContext }),
-        signal: controller.signal,
-      });
-      const data = await res.json().catch(() => null);
-      if (!aliveRef.current) return;
-      const rawReply = typeof data?.reply === 'string' ? data.reply : '';
-      const wantsMute = res.ok && rawReply.includes(MUTE_TAG);
+      let ok = true;
+      let rawReply = '';
+      let apiError: string | undefined;
+
+      // Modo simulador: la palabra exacta "TEST" prueba todo el flujo (globo, voz, comandos, silencio) sin llamar a
+      // Gemini ni gastar cuota — útil para QA repetida. Comparación sin distinguir mayúsculas: la voz suele transcribir en minúsculas.
+      if (text.trim().toUpperCase() === 'TEST') {
+        await new Promise((resolve) => setTimeout(resolve, 1000));
+        if (!aliveRef.current) return;
+        rawReply = 'Respuesta de prueba [AGREGAR_CARRITO:2172:3]';
+      } else {
+        const res = await fetch('/api/assistant', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ message: text, menuContext: contextRef.current.menuContext, cartContext: contextRef.current.cartContext }),
+          signal: controller.signal,
+        });
+        const data = await res.json().catch(() => null);
+        if (!aliveRef.current) return;
+        ok = res.ok;
+        rawReply = typeof data?.reply === 'string' ? data.reply : '';
+        apiError = data?.error;
+      }
+
+      const wantsMute = ok && rawReply.includes(MUTE_TAG);
       // La etiqueta es una señal interna: nunca se muestra ni se lee en voz alta
       // Comando [VER_PRODUCTO:id]: se extrae el id y la etiqueta se quita del texto (ni se muestra ni se lee)
-      const productMatch = res.ok ? rawReply.match(PRODUCT_TAG_RE) : null;
+      const productMatch = ok ? rawReply.match(PRODUCT_TAG_RE) : null;
       // Comando [AGREGAR_CARRITO:id:cantidad]: mismo trato; si vienen los dos comandos, manda el de venta (no se abre la ficha dos veces)
-      const cartMatch = res.ok ? rawReply.match(CART_TAG_RE) : null;
+      const cartMatch = ok ? rawReply.match(CART_TAG_RE) : null;
       const taglessReply = rawReply
         .split(MUTE_TAG).join('')
         .replace(new RegExp(PRODUCT_TAG_RE.source, 'g'), '')
@@ -203,9 +234,9 @@ export default function SalesRecoveryAssistant({ idleMs = IDLE_MS, onAccept, men
         muteNow();
         return;
       }
-      if (!res.ok || !reply) {
+      if (!ok || !reply) {
         setBubble('');
-        setNotice(data?.error || 'No pude responder ahora. Intenta de nuevo.');
+        setNotice(apiError || 'No pude responder ahora. Intenta de nuevo.');
         setPhase('idle');
         return;
       }
@@ -227,11 +258,17 @@ export default function SalesRecoveryAssistant({ idleMs = IDLE_MS, onAccept, men
       setBubble('');
       setNotice('No pude conectarme. Intenta de nuevo.');
       setPhase('idle');
+    } finally {
+      // Se libera apenas se conoce el resultado (no espera a que termine de hablar): así el micrófono ya
+      // permite interrumpir la voz, igual que antes de este blindaje.
+      isProcessingRef.current = false;
+      setIsProcessing(false);
     }
   }, [muteNow]);
 
   const toggleMic = () => {
-    if (farewell) return;
+    // El botón ya queda `disabled` en estos casos; el guardia se repite aquí por si se dispara por otra vía (defensivo)
+    if (farewell || isProcessing) return;
     try {
       if (phase === 'listening') {
         recognitionRef.current?.stop();
@@ -345,7 +382,7 @@ export default function SalesRecoveryAssistant({ idleMs = IDLE_MS, onAccept, men
                 onClick={toggleMic}
                 aria-label={phase === 'listening' ? 'Dejar de escuchar' : phase === 'idle' ? 'Hablar con el asistente' : 'Detener'}
                 aria-pressed={phase === 'listening'}
-                disabled={farewell}
+                disabled={farewell || isProcessing}
                 className={`flex h-11 w-11 shrink-0 items-center justify-center rounded-full transition cursor-pointer disabled:cursor-default disabled:opacity-60 ${
                   phase === 'listening'
                     ? 'bg-[#fe6712] text-white animate-pulse shadow-md shadow-orange-500/30'
