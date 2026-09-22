@@ -1,6 +1,6 @@
 ﻿'use client';
 
-import React, { useState, useRef, useEffect, useLayoutEffect } from 'react';
+import React, { useState, useRef, useEffect } from 'react';
 import MerchantStoreView from '@/components/MerchantStoreView';
 import CheckoutModal from '@/components/CheckoutModal';
 import OrderTrackingModal from '@/components/OrderTrackingModal';
@@ -429,14 +429,29 @@ export default function MultitiendaHub() {
 
   // Centra el scroll inicial en la copia del medio en cuanto las categorías reales llegan del backend (antes de
   // eso el riel solo tiene "Todos" ×3, un `repeatWidth` mínimo que no vale la pena centrar). Solo corre una vez.
-  useLayoutEffect(() => {
+  // 2026-09-22 (fix de hidratación, error #300 en producción/Vercel): esto era un `useLayoutEffect`, que corre
+  // de forma síncrona justo después de aplicar el DOM y ANTES de que el navegador pinte — en el primer render
+  // post-hidratación de Next.js eso compite con el propio proceso de reconciliación SSR→cliente, y la lectura de
+  // `offsetLeft` (que fuerza layout) sobre nodos recién hidratados disparó el error minificado #300 en Vercel
+  // (no reproducido en local con `next dev`/`next start`, solo se vio en producción real). Se cambió a
+  // `useEffect` normal (asíncrono, corre después de pintar, ya fuera del ciclo de hidratación) + guardia
+  // `typeof window === 'undefined'` (no debería hacer falta en un efecto, que solo corre en cliente, pero la
+  // misión lo pidió explícitamente como cinturón de seguridad) + un `setTimeout` de 50ms adicional para dar
+  // margen a que el navegador termine de pintar el riel triplicado antes de medir `offsetLeft`. El toggle
+  // (`handleCategorySelect`) y el bucle manual (`handleCategoryRailScroll`) no se tocaron.
+  useEffect(() => {
+    if (typeof window === 'undefined') return;
     if (categoryRailInitializedRef.current) return;
     if (realCategories.length === 0) return;
-    const el = categoryRailRef.current;
-    const repeatWidth = categoryRepeatWidth();
-    if (!el || repeatWidth <= 0) return;
-    el.scrollLeft = repeatWidth;
-    categoryRailInitializedRef.current = true;
+    const timer = setTimeout(() => {
+      if (categoryRailInitializedRef.current) return;
+      const el = categoryRailRef.current;
+      const repeatWidth = categoryRepeatWidth();
+      if (!el || repeatWidth <= 0) return;
+      el.scrollLeft = repeatWidth;
+      categoryRailInitializedRef.current = true;
+    }, 50);
+    return () => clearTimeout(timer);
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [realCategories.length]);
 
