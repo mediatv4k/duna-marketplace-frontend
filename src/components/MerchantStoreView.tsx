@@ -1,7 +1,7 @@
 ﻿'use client';
 
 import React, { useState } from 'react';
-import { ShoppingBag, ChevronRight, Search, Star, Clock, MapPin, Sparkles, FileText } from 'lucide-react';
+import { ShoppingBag, ChevronRight, Search, Star, Clock, MapPin, Sparkles, FileText, X, ZoomIn } from 'lucide-react';
 import CartModal from './CartModal';
 import LocationPickerModal from './LocationPickerModal';
 import MasterProductModal from './MasterProductModal';
@@ -60,6 +60,8 @@ export default function MerchantStoreView({
   });
 
   const [isCartOpen, setIsCartOpen] = useState(false);
+  // Lightbox de la grilla de productos: clic en la foto (no en el resto de la tarjeta) la amplía; no toca el carrito ni abre el modal del producto
+  const [lightboxImage, setLightboxImage] = useState<{ url: string; name: string } | null>(null);
   React.useEffect(() => {
     if (forceOpenCartTrigger && forceOpenCartTrigger > 0) {
       setIsCartOpen(true);
@@ -605,12 +607,26 @@ export default function MerchantStoreView({
                       {badge && (
                         <span className={`absolute top-2 left-2 px-2 py-0.5 rounded-md text-[8px] font-bold ${badge.className}`}>{badge.label}</span>
                       )}
-                      <div className="w-full h-24 md:h-32 flex items-center justify-center mb-2 mt-4">
+                      <div
+                        role="button"
+                        aria-label={`Ampliar foto de ${product.name}`}
+                        onClick={(e) => {
+                          e.stopPropagation();
+                          setLightboxImage({
+                            url: product.image || 'https://images.unsplash.com/photo-1560008511-11c63416e52d',
+                            name: product.name || 'Producto',
+                          });
+                        }}
+                        className="relative w-full aspect-square mb-2 mt-4 p-2 bg-white rounded-xl border border-slate-100 overflow-hidden cursor-zoom-in"
+                      >
                         <img
                           src={product.image || 'https://images.unsplash.com/photo-1560008511-11c63416e52d'}
                           alt={product.name}
-                          className="max-h-full max-w-full object-contain"
+                          className="w-full h-full object-cover rounded-lg"
                         />
+                        <span className="absolute bottom-3 right-3 flex h-6 w-6 items-center justify-center rounded-full bg-black/30 text-white backdrop-blur-sm">
+                          <ZoomIn className="h-3.5 w-3.5" />
+                        </span>
                       </div>
                       <p className="text-[8px] text-slate-400 uppercase tracking-wide mb-0.5">
                         {product.brand || product.laboratory || product.category || 'GENERAL'}
@@ -885,6 +901,31 @@ export default function MerchantStoreView({
 
         {/* Asistente de recuperación (aislado): vigila la inactividad de toda la tienda */}
         <SalesRecoveryAssistant menuContext={assistantMenuContext} cartContext={assistantCartContext} onOpenProduct={handleAssistantOpenProduct} onAddToCart={handleAssistantAddToCart} />
+
+        {/* Lightbox: solo visor de la foto en alta resolución, no toca el carrito ni el modal del producto */}
+        {lightboxImage && (
+          <div
+            role="dialog"
+            aria-label={`Foto ampliada de ${lightboxImage.name}`}
+            onClick={() => setLightboxImage(null)}
+            className="fixed inset-0 z-50 flex items-center justify-center bg-black/80 p-4"
+          >
+            <button
+              type="button"
+              onClick={() => setLightboxImage(null)}
+              aria-label="Cerrar imagen"
+              className="absolute top-4 right-4 flex h-10 w-10 items-center justify-center rounded-full bg-white/10 text-white hover:bg-white/20 transition cursor-pointer"
+            >
+              <X className="h-5 w-5" />
+            </button>
+            <img
+              src={lightboxImage.url}
+              alt={lightboxImage.name}
+              onClick={(e) => e.stopPropagation()}
+              className="max-h-[85vh] max-w-full object-contain rounded-2xl shadow-2xl"
+            />
+          </div>
+        )}
     </>
   );
 
