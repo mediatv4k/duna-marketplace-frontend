@@ -13,7 +13,7 @@
 import React, { useState } from 'react';
 import {
   X, Bike, Store, Navigation, MapPin,
-  Trash2, ArrowRight, Gift, Truck
+  Trash2, ArrowRight, Gift, Truck, PartyPopper, Flame, Package
 } from 'lucide-react';
 
 export interface CartItem {
@@ -143,9 +143,9 @@ export default function CartModal({
 
               <p className="text-[9px] font-medium text-slate-600">
                 {esEnvioGratis ? (
-                  <span>🎉 ¡Felicidades! Desbloqueaste tu <strong className="text-[#fe6712]">Delivery 100% GRATIS</strong></span>
+                  <span className="inline-flex items-center gap-1"><PartyPopper className="w-3 h-3 shrink-0" /> ¡Felicidades! Desbloqueaste tu <strong className="text-[#fe6712]">Delivery 100% GRATIS</strong></span>
                 ) : (
-                  <span>🔥 ¡Agrega <strong className="text-[#fe6712]">${faltaParaEnvioGratis.toFixed(2)}</strong> más en productos para <strong className="text-[#fe6712]">Delivery GRATIS</strong>!</span>
+                  <span className="inline-flex items-center gap-1"><Flame className="w-3 h-3 shrink-0" /> ¡Agrega <strong className="text-[#fe6712]">${faltaParaEnvioGratis.toFixed(2)}</strong> más en productos para <strong className="text-[#fe6712]">Delivery GRATIS</strong>!</span>
                 )}
               </p>
             </div>
@@ -248,7 +248,7 @@ export default function CartModal({
             {deliveryMode === 'national' ? (
               <div className="bg-sky-50/80 rounded-2xl py-1.5 px-3 border border-sky-200 flex items-center justify-between gap-2">
                 <span className="text-[11px] font-bold text-sky-900 flex items-center gap-1 shrink-0">
-                  📦 Courier:
+                  <Package className="w-3 h-3" /> Courier:
                 </span>
                 <select
                   value={selectedAgency}
@@ -283,7 +283,7 @@ export default function CartModal({
                 </div>
 
                 <div className="bg-slate-50 rounded-full py-1 px-3 text-center border border-slate-200 flex items-center justify-center gap-1">
-                  <span>📍</span>
+                  <MapPin className="w-3 h-3 shrink-0" />
                   {deliveryMode === 'delivery' ? (
                     <span className={`text-[10px] font-bold truncate ${quoteStatus === 'blocked' || locationError ? 'text-red-600' : 'text-slate-700'}`}>
                       {isLocating

@@ -3,8 +3,17 @@
 import React, { useState, useEffect } from 'react';
 import {
   ArrowRight, ArrowLeft, X, HeartHandshake, Check, Copy, Upload,
-  CheckCircle2, Info, Clock, FileText, Loader2, Gift, Bookmark, MessageCircle
+  CheckCircle2, Info, Clock, FileText, Loader2, Gift, Bookmark, MessageCircle,
+  CreditCard, Bike, Car, Truck
 } from 'lucide-react';
+
+// Ícono del vehículo asignado por el motor logístico (antes emoji de `logisticsEngine.icono`): moto → Bike,
+// sedán/baúl → Car, resto (camioneta/camión/gandola) → Truck. Solo presentación; no toca `logisticsResult`.
+function VehicleIcon({ vehicleId, className }: { vehicleId: string; className?: string }) {
+  if (vehicleId === 'moto') return <Bike className={className} />;
+  if (vehicleId === 'auto') return <Car className={className} />;
+  return <Truck className={className} />;
+}
 
 import { submitPurchaseOrder, getStorePaymentInfo, uploadPaymentReference } from '@/services/marketplaceService';
 import { calculateLogistics, PhysicalItem } from '@/lib/logisticsEngine';
@@ -535,7 +544,7 @@ export default function CheckoutModal({
           <div className="px-5 py-3 space-y-3 flex-1 overflow-y-auto no-scrollbar flex flex-col justify-between">
             {orderSummary.metodoEntrega === 'delivery' && (
               <div className="shrink-0 bg-slate-50/70 p-2.5 rounded-xl border border-slate-100 flex items-center gap-2">
-                <span className="text-lg shrink-0">{logisticsResult.vehiculoAsignado.icono}</span>
+                <VehicleIcon vehicleId={logisticsResult.vehiculoAsignado.id} className="w-5 h-5 shrink-0 text-slate-600" />
                 <div className="min-w-0">
                   <p className="text-[10px] font-black text-slate-800 leading-tight">
                     Vehículo asignado: {vehicleType === 'MOTO' ? 'Moto Express' : 'Sedán por volumen'}
@@ -726,8 +735,8 @@ export default function CheckoutModal({
                     </div>
                   )
                 ) : (
-                  <p className="text-[8.5px] font-bold text-slate-600 leading-tight">
-                    🎁 ¡Estás a solo <span className="text-[#fe6712] font-black">1 pedido</span> de destapar tu cupón sorpresa!
+                  <p className="text-[8.5px] font-bold text-slate-600 leading-tight flex items-center gap-1">
+                    <Gift className="w-3 h-3 shrink-0" /> ¡Estás a solo <span className="text-[#fe6712] font-black">1 pedido</span> de destapar tu cupón sorpresa!
                   </p>
                 )}
               </div>
@@ -804,7 +813,7 @@ export default function CheckoutModal({
                 }`}
               >
                 {nombreArchivo ? <CheckCircle2 className="h-3.5 w-3.5 text-emerald-600" /> : <Upload className="h-3.5 w-3.5" />}
-                <span className="truncate">{nombreArchivo ? `✓ ${nombreArchivo}` : 'Adjuntar Comprobante (Imagen)'}</span>
+                <span className="truncate">{nombreArchivo || 'Adjuntar Comprobante (Imagen)'}</span>
                 <input type="file" accept="image/*" onChange={handleFileChange} className="hidden" />
               </label>
             </div>
@@ -816,7 +825,7 @@ export default function CheckoutModal({
             <div className="w-14 h-14 bg-orange-50 rounded-full flex items-center justify-center mb-2 shrink-0">
               <Check className="w-7 h-7 text-[#fe6712] stroke-[3]" />
             </div>
-            <h3 className="text-lg font-black text-slate-900 leading-tight mb-1">¡Tu pedido ya está en la cocina! 🚀</h3>
+            <h3 className="text-lg font-black text-slate-900 leading-tight mb-1">¡Tu pedido ya está en la cocina!</h3>
             <p className="text-[12px] text-slate-500 font-medium mb-3">
               En D&apos;una tú tienes el control. Elige cómo prefieres pagar:
             </p>
@@ -846,9 +855,9 @@ export default function CheckoutModal({
             <button
               type="button"
               onClick={() => { setSubmitError(null); setPasoVista('instrucciones'); }}
-              className="w-full mt-3 rounded-xl border border-slate-200 bg-slate-50 hover:bg-slate-100 py-2 px-3 text-[12px] font-black text-slate-700 transition cursor-pointer"
+              className="w-full mt-3 rounded-xl border border-slate-200 bg-slate-50 hover:bg-slate-100 py-2 px-3 text-[12px] font-black text-slate-700 transition cursor-pointer flex items-center justify-center gap-1.5"
             >
-              💳 ¡Prefiero pagar ahora mismo en la plataforma!
+              <CreditCard className="w-3.5 h-3.5" /> ¡Prefiero pagar ahora mismo en la plataforma!
             </button>
           </div>
         )}
@@ -951,7 +960,8 @@ export default function CheckoutModal({
             <div className="space-y-1.5">
               {pagoPendiente ? (
                 <button type="button" onClick={onViewTracking} className="w-full flex items-center justify-center gap-2 rounded-full bg-[#fe6712] hover:bg-[#e0580d] py-2 text-xs font-black text-white shadow-md">
-                  <span>🕒 Ver seguimiento de pedido</span>
+                  <Clock className="h-4 w-4" />
+                  <span>Ver seguimiento de pedido</span>
                 </button>
               ) : (
                 <button type="button" onClick={onViewTracking} className="w-full flex items-center justify-center gap-2 rounded-full bg-[#fe6712] hover:bg-[#e0580d] py-2 text-xs font-black text-white shadow-md">

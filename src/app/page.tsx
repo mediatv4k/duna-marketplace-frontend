@@ -13,7 +13,7 @@ import { getBCVRate } from '@/lib/bcvRate';
 
 import {
   Clock, ChevronLeft, ChevronRight, Sparkles, MapPin, X, Navigation,
-  Loader2, Home, Compass, ShoppingBag, Coins, Truck, Bike, ClipboardList
+  Loader2, Home, Compass, ShoppingBag, Coins, Truck, Bike, ClipboardList, Search, Tag, Star
 } from 'lucide-react';
 
 const API_BASE = process.env.NEXT_PUBLIC_API_URL || 'https://dev.carjos-marketplace.cloud';
@@ -359,7 +359,7 @@ export default function MultitiendaHub() {
               onClick={() => setIsTrackingOpen(true)}
               className="bg-[#fe6712] hover:bg-amber-600 text-white font-black px-5 py-3 rounded-full shadow-2xl flex items-center gap-2 animate-bounce border-2 border-white cursor-pointer"
             >
-              🛵 Ver mi Pedido
+              <Bike className="w-4 h-4" /> Ver mi Pedido
             </button>
           </div>
         )}
@@ -439,7 +439,7 @@ export default function MultitiendaHub() {
           </div>
           <div className="flex-1 max-w-xl w-full">
             <div className="relative flex items-center bg-slate-100 rounded-2xl border border-slate-200 focus-within:border-[#fe6712] focus-within:bg-white transition shadow-2xs">
-              <span className="absolute left-4 text-slate-400">🔍</span>
+              <Search className="absolute left-4 w-3.5 h-3.5 text-slate-400" />
               <input type="text" value={searchQuery} onChange={(e) => setSearchQuery(e.target.value)} placeholder="Busca comercios y productos..." className="w-full bg-transparent text-xs font-semibold text-slate-800 pl-11 pr-8 py-2.5 focus:outline-none placeholder-slate-400" />
             </div>
           </div>
@@ -478,7 +478,7 @@ export default function MultitiendaHub() {
                     {cat.image ? (
                       <img src={cat.image} alt={cat.name} className="w-10 h-10 object-contain" />
                     ) : (
-                      <span className="text-xl">🏷️</span>
+                      <Tag className="w-5 h-5" />
                     )}
                   </div>
                   <span className={`text-[10px] sm:text-[11px] font-bold text-center leading-tight truncate w-full px-0.5 ${isActive ? 'text-[#fe6712] font-black' : 'text-slate-700 group-hover:text-[#fe6712]'}`}>{cat.name}</span>
@@ -522,7 +522,7 @@ export default function MultitiendaHub() {
                     <div className="flex-1 min-w-0 flex flex-col justify-center space-y-1 overflow-hidden">
                       <div className="flex items-start justify-between gap-1">
                         <h4 className="text-sm font-black text-slate-900 group-hover:text-[#fe6712] transition-colors truncate">{merchant.name}</h4>
-                        <span className="flex-shrink-0 bg-amber-50 text-amber-700 px-1.5 py-0.5 rounded-md text-[10px] font-black border border-amber-200 shadow-2xs">⭐ {merchant.storeScoring || 5.0}</span>
+                        <span className="flex-shrink-0 flex items-center gap-0.5 bg-amber-50 text-amber-700 px-1.5 py-0.5 rounded-md text-[10px] font-black border border-amber-200 shadow-2xs"><Star className="w-2.5 h-2.5 fill-current" /> {merchant.storeScoring || 5.0}</span>
                       </div>
 
                       <p className="text-[11px] font-bold text-slate-400 truncate">{merchant.categoriesName || 'Comercio'}</p>
@@ -539,12 +539,12 @@ export default function MultitiendaHub() {
                         </button>
 
                         {userLocation && calculatedFeeText ? (
-                          <span className="px-2 py-0.5 rounded-md bg-orange-50 text-[#fe6712] border border-orange-200 font-black text-[10px] whitespace-nowrap ml-auto">
-                            🛵 {calculatedFeeText} ({distanceKm} km)
+                          <span className="px-2 py-0.5 rounded-md bg-orange-50 text-[#fe6712] border border-orange-200 font-black text-[10px] whitespace-nowrap ml-auto flex items-center gap-1">
+                            <Bike className="w-3 h-3" /> {calculatedFeeText} ({distanceKm} km)
                           </span>
                         ) : (
                           <button type="button" onClick={handleTriggerGpsCalculation} disabled={isLocating} className="px-2 py-0.5 rounded-md bg-orange-50 hover:bg-orange-100 text-[#fe6712] border border-orange-200 font-black text-[10px] flex items-center gap-1 ml-auto">
-                            {isLocating ? <Loader2 className="w-3 h-3 animate-spin" /> : <span>🛵 Flete</span>}
+                            {isLocating ? <Loader2 className="w-3 h-3 animate-spin" /> : <><Bike className="w-3 h-3" /> Flete</>}
                           </button>
                         )}
                       </div>
@@ -569,7 +569,7 @@ export default function MultitiendaHub() {
             <div className="space-y-1.5 max-h-60 overflow-y-auto pr-1">
               {cabimasSectores.map(sector => (
                 <div key={sector.id} onClick={() => { setUserLocation({ lat: sector.coords.lat, lng: sector.coords.lng, label: sector.name }); setIsFallbackModalOpen(false); }} className="p-3 rounded-xl border border-slate-200 bg-slate-50 hover:bg-orange-50 text-slate-700 text-xs font-bold flex justify-between items-center cursor-pointer">
-                  <span>📍 {sector.name}</span> <span className="text-[11px] font-black text-slate-400">Elegir →</span>
+                  <span className="flex items-center gap-1"><MapPin className="w-3.5 h-3.5 text-slate-400" /> {sector.name}</span> <span className="text-[11px] font-black text-slate-400">Elegir →</span>
                 </div>
               ))}
             </div>

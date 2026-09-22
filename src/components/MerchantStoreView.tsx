@@ -1,7 +1,7 @@
 ﻿'use client';
 
 import React, { useState } from 'react';
-import { ShoppingBag, ChevronRight, Search, Star, Clock, MapPin, Sparkles, FileText, X, ZoomIn } from 'lucide-react';
+import { ShoppingBag, ChevronRight, Search, Star, Clock, MapPin, Sparkles, FileText, X, ZoomIn, Bike } from 'lucide-react';
 import { parseDescriptionTags } from '@/lib/productTags';
 import ProductTagBadges from './ProductTagBadges';
 import CartModal from './CartModal';
@@ -498,9 +498,9 @@ export default function MerchantStoreView({
             <div className="min-w-0 flex-1">
               <h1 className="text-2xl font-bold text-white tracking-tight truncate">{merchant.name}</h1>
               <div className="mt-2 flex flex-wrap items-center gap-2">
-                <span className="bg-white/20 backdrop-blur-md text-white text-xs font-semibold px-3 py-1.5 rounded-full flex items-center gap-1">⭐ {merchant.rating || '5.0'}</span>
-                {merchant.deliveryFee && <span className="bg-white/20 backdrop-blur-md text-white text-xs font-semibold px-3 py-1.5 rounded-full flex items-center gap-1">🛵 {merchant.deliveryFee}</span>}
-                {merchant.badge && <span className="bg-white/20 backdrop-blur-md text-white text-xs font-semibold px-3 py-1.5 rounded-full flex items-center gap-1">🕒 {merchant.badge}</span>}
+                <span className="bg-white/20 backdrop-blur-md text-white text-xs font-semibold px-3 py-1.5 rounded-full flex items-center gap-1"><Star className="w-3 h-3 fill-current" /> {merchant.rating || '5.0'}</span>
+                {merchant.deliveryFee && <span className="bg-white/20 backdrop-blur-md text-white text-xs font-semibold px-3 py-1.5 rounded-full flex items-center gap-1"><Bike className="w-3 h-3" /> {merchant.deliveryFee}</span>}
+                {merchant.badge && <span className="bg-white/20 backdrop-blur-md text-white text-xs font-semibold px-3 py-1.5 rounded-full flex items-center gap-1"><Clock className="w-3 h-3" /> {merchant.badge}</span>}
               </div>
             </div>
           </div>
@@ -558,7 +558,7 @@ export default function MerchantStoreView({
                       : 'bg-slate-100 text-slate-600 hover:bg-slate-200'
                   }`}
                 >
-                  {cat === 'ALL' ? '✨ Todos' : cat}
+                  {cat === 'ALL' ? 'Todos' : cat}
                 </button>
               ))}
             </div>

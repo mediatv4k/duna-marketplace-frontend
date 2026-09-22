@@ -1,7 +1,7 @@
 'use client';
 
 import React, { useEffect, useState } from 'react';
-import { Star, X } from 'lucide-react';
+import { Star, X, Bike, KeyRound } from 'lucide-react';
 import { friendlyStatus, getTrackingState, parseCoords, toWhatsAppNumber } from '@/lib/orderTracking';
 import LiveOrderMap from './LiveOrderMap';
 
@@ -27,7 +27,7 @@ export default function OrderTimelinePanel({ remote, trackingError }: OrderTimel
   const vehicleColor = String(remote?.delivery_vehicle_color || '').trim();
   const vehiclePlate = String(remote?.delivery_vehicle_license || '').trim();
   const hasDriver = !!(driverName || driverPhoneRaw);
-  const initials = driverName.split(/\s+/).filter(Boolean).slice(0, 2).map((w) => w[0]?.toUpperCase()).join('') || '🛵';
+  const initials = driverName.split(/\s+/).filter(Boolean).slice(0, 2).map((w) => w[0]?.toUpperCase()).join('');
 
   // El bloque del repartidor solo existe mientras el pedido está en curso (se oculta al entregarse/cancelarse)
   const showDriver = hasDriver && !isFinal && phase !== 'delivered';
@@ -103,7 +103,7 @@ export default function OrderTimelinePanel({ remote, trackingError }: OrderTimel
       {/* Código de entrega: 100% oculto hasta que el repartidor llega a sitio */}
       {phase === 'arrived' && !isFinal && (
         <div className="rounded-2xl border-2 border-amber-400 bg-amber-50 p-3.5 text-center space-y-1 animate-pulse shadow-md shadow-amber-200/60">
-          <p className="text-[13px] font-black text-amber-900 leading-tight">🔑 ¡TU REPARTIDOR ESTÁ EN LA PUERTA!</p>
+          <p className="text-[13px] font-black text-amber-900 leading-tight flex items-center justify-center gap-1.5"><KeyRound className="w-4 h-4 shrink-0" /> ¡TU REPARTIDOR ESTÁ EN LA PUERTA!</p>
           {deliveryCode && (
             <p className="text-[15px] font-black text-slate-900">
               Código de entrega: <span className="font-mono tracking-widest text-[#fe6712]">[ {deliveryCode} ]</span>
@@ -128,7 +128,7 @@ export default function OrderTimelinePanel({ remote, trackingError }: OrderTimel
               />
             ) : (
               <div className="w-11 h-11 rounded-full bg-orange-100 text-[#fe6712] flex items-center justify-center text-sm font-black shrink-0">
-                {initials}
+                {initials || <Bike className="w-5 h-5" />}
               </div>
             )}
             <div className="min-w-0">
@@ -175,7 +175,7 @@ export default function OrderTimelinePanel({ remote, trackingError }: OrderTimel
           onClick={() => setShowMap(true)}
           className="w-full flex items-center justify-center gap-1.5 rounded-full border border-[#fe6712] bg-white hover:bg-orange-50 py-1.5 text-[11px] font-black text-[#fe6712] cursor-pointer"
         >
-          🛵 Sigue tu pedido en línea
+          <Bike className="w-3.5 h-3.5" /> Sigue tu pedido en línea
         </button>
       )}
 

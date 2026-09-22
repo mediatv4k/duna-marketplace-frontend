@@ -979,8 +979,8 @@ export default function MasterProductModal({
                             className="text-[10px] font-black text-[#fe6712] hover:bg-orange-50 px-2.5 py-1.5 rounded-xl border border-orange-200 transition cursor-pointer flex items-center gap-1.5 shrink-0 self-end sm:self-auto"
                             title="Aplica variantes y exclusiones de esta unidad a todas"
                           >
-                            <Copy className="w-3.5 h-3.5" />
-                            <span>{copiedFeedback ? '✓ ¡Copiado a todas!' : 'Copiar a todas'}</span>
+                            {copiedFeedback ? <Check className="w-3.5 h-3.5" /> : <Copy className="w-3.5 h-3.5" />}
+                            <span>{copiedFeedback ? '¡Copiado a todas!' : 'Copiar a todas'}</span>
                           </button>
                         )}
                       </div>
