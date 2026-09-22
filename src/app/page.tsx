@@ -5,6 +5,7 @@ import MerchantStoreView from '@/components/MerchantStoreView';
 import CheckoutModal from '@/components/CheckoutModal';
 import OrderTrackingModal from '@/components/OrderTrackingModal';
 import PromotionsCarousel from '@/components/PromotionsCarousel';
+import HeroBannerCarousel from '@/components/HeroBannerCarousel';
 import StoreScheduleModal from '@/components/StoreScheduleModal';
 
 import { submitPurchaseOrder, getProductsByStore, getStorePromotions, getOrderPublic } from '@/services/marketplaceService';
@@ -450,12 +451,24 @@ export default function MultitiendaHub() {
 
       <main className="max-w-7xl mx-auto w-full px-4 md:px-8 py-4 flex-1 space-y-6">
 
+        <HeroBannerCarousel
+          slides={[
+            { image: '/images/banner-commer.png', alt: 'Registra tu comercio y aumenta tus ventas', href: 'https://tr.ee/aJWg3IoL3q' },
+            { image: '/images/banner-delivery.png', alt: 'Sé parte de nuestro equipo Delivery', href: 'https://tr.ee/O553DC8j5Q' },
+            {
+              image: '/images/banner-cliente.png',
+              alt: 'Tus antojos con solo un click',
+              onClick: () => document.getElementById('categorias-tiendas')?.scrollIntoView({ behavior: 'smooth' }),
+            },
+          ]}
+        />
+
         <PromotionsCarousel
           promotions={homePromotionsOpenOnly}
           onSelectPromotion={handleHomePromotionClick}
         />
 
-        <section className="space-y-2.5 pt-0.5">
+        <section id="categorias-tiendas" className="space-y-2.5 pt-0.5 scroll-mt-24">
           <div className="flex justify-between items-center">
             <h3 className="text-sm md:text-base font-black text-slate-900 tracking-tight">Categorías</h3>
             <div className="hidden sm:flex items-center gap-1.5">
