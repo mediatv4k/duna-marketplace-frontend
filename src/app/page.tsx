@@ -1,6 +1,6 @@
 ﻿'use client';
 
-import React, { useState, useRef, useEffect, useLayoutEffect } from 'react';
+import React, { useState, useRef, useEffect } from 'react';
 import MerchantStoreView from '@/components/MerchantStoreView';
 import CheckoutModal from '@/components/CheckoutModal';
 import OrderTrackingModal from '@/components/OrderTrackingModal';
@@ -99,14 +99,6 @@ export default function MultitiendaHub() {
   const [scheduleStore, setScheduleStore] = useState<{ id: number | string; name: string } | null>(null);
 
   const categoryRailRef = useRef<HTMLDivElement>(null);
-  // Bucle infinito manual del riel de categorías (2026-09-22): el riel dibuja 3 copias idénticas de la lista
-  // ("Todos" + `realCategories`), cada una envuelta en un grupo propio. `categoryGroupStartRef`/`categoryGroupNextRef`
-  // apuntan al primer y segundo grupo — su distancia (`offsetLeft`) es el ancho exacto de "una vuelta" (`repeatWidth`),
-  // usado tanto para centrar el scroll inicial en la copia del medio como para el reajuste silencioso al acercarse
-  // a los bordes reales de la pista (ver `handleCategoryRailScroll`).
-  const categoryGroupStartRef = useRef<HTMLDivElement>(null);
-  const categoryGroupNextRef = useRef<HTMLDivElement>(null);
-  const categoryRailInitializedRef = useRef(false);
 
   // Pedido activo (FAB): id guardado por onFinalizeOrder; se oculta cuando el backend lo reporta en estado final
   const [savedOrderId, setSavedOrderId] = useState<string>('');
@@ -381,64 +373,15 @@ export default function MultitiendaHub() {
   const scrollCategories = (dir: 'left' | 'right') => {
     if (!categoryRailRef.current) return;
     const el = categoryRailRef.current;
-    if (dir === 'right') el.scrollBy({ left: 240, behavior: 'smooth' });
-    else el.scrollBy({ left: -240, behavior: 'smooth' });
-  };
-
-  // Toggle: clic en la categoría ya activa la desmarca (vuelve a 'ALL' = Todos, muestra todas las tiendas);
-  // clic en una categoría inactiva la selecciona y centra su píldora en el riel visible.
-  const handleCategorySelect = (code: string, el?: HTMLElement | null) => {
-    if (selectedCategory === code) {
-      setSelectedCategory('ALL');
-      return;
-    }
-    setSelectedCategory(code);
-    el?.scrollIntoView({ behavior: 'smooth', inline: 'center', block: 'nearest' });
-  };
-
-  // Ancho de "una vuelta" del riel de categorías: distancia entre el inicio de la 1ª y la 2ª copia idéntica
-  // (ver el triplicado en el JSX). Con 3 copias iguales, saltar `scrollLeft` por este valor exacto reposiciona
-  // al usuario en el punto visualmente idéntico de la copia vecina, así que el salto es imperceptible.
-  const categoryRepeatWidth = () => {
-    const start = categoryGroupStartRef.current;
-    const next = categoryGroupNextRef.current;
-    if (!start || !next) return 0;
-    return next.offsetLeft - start.offsetLeft;
-  };
-
-  // Bucle infinito manual (2026-09-22): sin animación ni CSS keyframes — el usuario arrastra/desliza libremente
-  // (scroll nativo) y, solo al acercarse a los bordes REALES de la pista triplicada (que con el margen de una
-  // vuelta completa de sobra a cada lado casi nunca se alcanzan en un gesto normal), se reajusta `scrollLeft` en
-  // silencio para devolver al usuario a la copia del medio, preservando su posición relativa dentro del ciclo.
-  const handleCategoryRailScroll = () => {
-    const el = categoryRailRef.current;
-    if (!el) return;
-    const repeatWidth = categoryRepeatWidth();
-    if (repeatWidth <= 0) return;
     const maxScroll = el.scrollWidth - el.clientWidth;
-    // Margen generoso (no solo unos px): un fling rápido en móvil puede mover el scroll varios cientos de px
-    // entre dos eventos `scroll` consecutivos, y si el margen fuera muy angosto el usuario podría, en ese caso
-    // extremo, alcanzar a ver el borde real de la pista por un instante antes del reajuste.
-    const edgeBuffer = Math.min(240, repeatWidth / 3);
-    if (el.scrollLeft <= edgeBuffer) {
-      el.scrollLeft += repeatWidth;
-    } else if (el.scrollLeft >= maxScroll - edgeBuffer) {
-      el.scrollLeft -= repeatWidth;
+    if (dir === 'right') {
+      if (el.scrollLeft >= maxScroll - 15) el.scrollTo({ left: 0, behavior: 'smooth' });
+      else el.scrollBy({ left: 240, behavior: 'smooth' });
+    } else {
+      if (el.scrollLeft <= 15) el.scrollTo({ left: maxScroll, behavior: 'smooth' });
+      else el.scrollBy({ left: -240, behavior: 'smooth' });
     }
   };
-
-  // Centra el scroll inicial en la copia del medio en cuanto las categorías reales llegan del backend (antes de
-  // eso el riel solo tiene "Todos" ×3, un `repeatWidth` mínimo que no vale la pena centrar). Solo corre una vez.
-  useLayoutEffect(() => {
-    if (categoryRailInitializedRef.current) return;
-    if (realCategories.length === 0) return;
-    const el = categoryRailRef.current;
-    const repeatWidth = categoryRepeatWidth();
-    if (!el || repeatWidth <= 0) return;
-    el.scrollLeft = repeatWidth;
-    categoryRailInitializedRef.current = true;
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [realCategories.length]);
 
   // Prioridad ESTRICTAMENTE por horario en tiempo real: 1° abierto ahora, 2° por abrir, 3° cerrado. Array.sort es
   // estable: dentro de cada grupo se conserva el orden del backend (salvo el grupo "por abrir", que además se
@@ -585,53 +528,34 @@ export default function MultitiendaHub() {
             </div>
           </div>
           
-          <div
-            ref={categoryRailRef}
-            onScroll={handleCategoryRailScroll}
-            className="flex items-center gap-2.5 overflow-x-auto no-scrollbar py-2"
-          >
-            {/* Bucle infinito manual: 3 copias idénticas de "Todos" + `realCategories`, cada una en su propio grupo
-                (ver refs/handlers arriba). El usuario nunca ve la costura: arranca centrado en la copia del medio
-                y, al acercarse a los bordes reales de la pista, el `onScroll` reajusta `scrollLeft` en silencio. */}
-            {[0, 1, 2].map((groupIdx) => (
-              <div
-                key={groupIdx}
-                ref={groupIdx === 0 ? categoryGroupStartRef : groupIdx === 1 ? categoryGroupNextRef : undefined}
-                className="flex items-center gap-2.5 shrink-0"
-              >
-                <button
-                  type="button"
-                  onClick={(e) => handleCategorySelect('ALL', e.currentTarget)}
-                  aria-hidden={groupIdx !== 1}
-                  tabIndex={groupIdx !== 1 ? -1 : 0}
-                  className={`flex-shrink-0 flex items-center gap-2 px-4 py-2 rounded-full border text-sm transition-all duration-200 cursor-pointer select-none whitespace-nowrap ${selectedCategory === 'ALL' ? 'bg-[#fe6712] text-white border-[#fe6712] shadow-sm shadow-[#fe6712]/25 font-semibold' : 'bg-slate-50 border-slate-200/70 text-slate-700 font-medium hover:border-[#fe6712]/40'}`}
-                >
-                  <Sparkles className="w-4 h-4 shrink-0" />
-                  Todos
-                </button>
+          <div ref={categoryRailRef} className="flex items-center gap-2.5 overflow-x-auto no-scrollbar scroll-smooth py-2">
+            <button
+              type="button"
+              onClick={() => setSelectedCategory('ALL')}
+              className={`flex-shrink-0 flex items-center gap-2 px-4 py-2 rounded-full border text-sm transition-all duration-200 cursor-pointer select-none whitespace-nowrap ${selectedCategory === 'ALL' ? 'bg-[#fe6712] text-white border-[#fe6712] shadow-sm shadow-[#fe6712]/25 font-semibold' : 'bg-slate-50 border-slate-200/70 text-slate-700 font-medium hover:border-[#fe6712]/40'}`}
+            >
+              <Sparkles className="w-4 h-4 shrink-0" />
+              Todos
+            </button>
 
-                {realCategories.map(cat => {
-                  const isActive = selectedCategory === cat.code;
-                  return (
-                    <button
-                      key={`${groupIdx}-${cat.id}`}
-                      type="button"
-                      onClick={(e) => handleCategorySelect(cat.code, e.currentTarget)}
-                      aria-hidden={groupIdx !== 1}
-                      tabIndex={groupIdx !== 1 ? -1 : 0}
-                      className={`flex-shrink-0 flex items-center gap-2 px-4 py-2 rounded-full border text-sm transition-all duration-200 cursor-pointer select-none whitespace-nowrap ${isActive ? 'bg-[#fe6712] text-white border-[#fe6712] shadow-sm shadow-[#fe6712]/25 font-semibold' : 'bg-slate-50 border-slate-200/70 text-slate-700 font-medium hover:border-[#fe6712]/40'}`}
-                    >
-                      {cat.image ? (
-                        <img src={cat.image} alt="" className="w-4 h-4 object-contain shrink-0" />
-                      ) : (
-                        <Tag className="w-4 h-4 shrink-0" />
-                      )}
-                      {cat.name}
-                    </button>
-                  );
-                })}
-              </div>
-            ))}
+            {realCategories.map(cat => {
+              const isActive = selectedCategory === cat.code;
+              return (
+                <button
+                  key={cat.id}
+                  type="button"
+                  onClick={() => setSelectedCategory(cat.code)}
+                  className={`flex-shrink-0 flex items-center gap-2 px-4 py-2 rounded-full border text-sm transition-all duration-200 cursor-pointer select-none whitespace-nowrap ${isActive ? 'bg-[#fe6712] text-white border-[#fe6712] shadow-sm shadow-[#fe6712]/25 font-semibold' : 'bg-slate-50 border-slate-200/70 text-slate-700 font-medium hover:border-[#fe6712]/40'}`}
+                >
+                  {cat.image ? (
+                    <img src={cat.image} alt="" className="w-4 h-4 object-contain shrink-0" />
+                  ) : (
+                    <Tag className="w-4 h-4 shrink-0" />
+                  )}
+                  {cat.name}
+                </button>
+              );
+            })}
           </div>
         </section>
 
