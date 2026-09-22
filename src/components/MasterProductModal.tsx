@@ -231,12 +231,17 @@ export default function MasterProductModal({
     return isCombo ? 5 : 1;
   }, [product, isCombo]);
 
-  // Ranuras/personalización por unidad: solo tiene sentido en nichos de comida (sabores, combos, "sin cebolla"…);
-  // en licores, farmacia, bodegón o tecnología no aporta nada y solo agrega un paso extra al pedido (2026-09-22).
-  const isFoodNiche = nicheEngine === 'FOOD_FAST' || nicheEngine === 'FOOD_SWEET';
+  // Ranuras/personalización por unidad (2026-09-22, corregido): el criterio ya NO es el nicho de la tienda
+  // (`isFoodNiche`, revertido) sino si el producto en sí trae un grupo de exclusiones tipo "SIN" (backend real:
+  // { name: "SIN", items: [{ title: "SIN TOCINETA" }, ...] }, ver product/{id}/web). Sin ese grupo —cualquier
+  // nicho, incluidas heladerías o combos sin exclusiones— las ranuras quedan completamente ocultas.
+  const hasSinVariant = useMemo(
+    () => availableGroups.some((g: any) => /\bsin\b/i.test(String(g?.name || g?.title || g?.label || ''))),
+    [availableGroups]
+  );
 
   const [isSlotCustomizationActive, setIsSlotCustomizationActive] = useState<boolean>(false);
-  const isSlotMode = isFoodNiche && (isCombo || (qty > 1 && isSlotCustomizationActive));
+  const isSlotMode = hasSinVariant && (isCombo || (qty > 1 && isSlotCustomizationActive));
   // Nombre visible de cada unidad: el del producto ("Perro Sencillo #1"), nunca la palabra genérica "Ranura"
   const unitLabel = product?.name || 'Unidad';
 
@@ -798,8 +803,8 @@ export default function MasterProductModal({
               </div>
 
               {/* Banner de personalización por unidad: arriba (debajo de la cantidad), visible sin scroll.
-                  Solo nichos de comida (isFoodNiche); en el resto ni se ofrece la opción. */}
-                {isFoodNiche && qty > 1 && !isCombo && !isSlotMode && (
+                  Solo si el producto trae un grupo "SIN" (hasSinVariant); en el resto ni se ofrece la opción. */}
+                {hasSinVariant && qty > 1 && !isCombo && !isSlotMode && (
                   <div className="py-2 border-b border-gray-100 flex justify-between items-center gap-3">
                     <div>
                       <span className="text-xs font-black text-slate-900 block">¿Personalizar cada unidad por separado?</span>
