@@ -451,16 +451,25 @@ export default function MultitiendaHub() {
   return (
     <div suppressHydrationWarning className="min-h-screen flex flex-col bg-slate-50 text-slate-900 font-sans pb-16 md:pb-0">
       
-      <div className="bg-[#090d16] text-white text-xs py-2 px-4 md:px-8 border-b border-white/10">
-        <div className="max-w-7xl mx-auto flex flex-col sm:flex-row justify-between items-center gap-2">
-          <div className="flex items-center gap-2 font-bold" suppressHydrationWarning>
-            <MapPin className="w-3.5 h-3.5 text-[#fe6712]" />
-            <span>Entregar en: <strong className="underline text-white">{userLocation ? userLocation.label : 'Cabimas, Estado Zulia'}</strong></span>
+      {/* Cabecera única (2026-09-22): antes eran dos franjas oscuras apiladas (la barra fina de ubicación/moneda +
+          un <header> aparte con logo/buscador) — se unificaron en un solo contenedor sticky, un solo fondo,
+          un solo borde. Fila 1 (grid en escritorio, apilado en móvil): ubicación a la izquierda, logo naranja
+          centrado geométricamente, moneda+BCV a la derecha. Fila 2: buscador compacto, mismo contenedor oscuro. */}
+      <div className="sticky top-0 z-40 bg-[#090d16] text-white border-b border-white/10 shadow-sm">
+        <div className="max-w-7xl mx-auto px-4 md:px-8 pt-2.5 pb-1.5 flex flex-col md:grid md:grid-cols-[1fr_auto_1fr] md:items-center gap-2 text-xs">
+          <div className="flex items-center gap-2 font-bold justify-center md:justify-start" suppressHydrationWarning>
+            <MapPin className="w-3.5 h-3.5 text-[#fe6712] shrink-0" />
+            <span className="truncate">Entregar en: <strong className="underline text-white">{userLocation ? userLocation.label : 'Cabimas, Estado Zulia'}</strong></span>
             {userLocation && (
-              <button type="button" onClick={() => setIsFallbackModalOpen(true)} className="text-[10px] bg-white/10 px-2 py-0.5 rounded-full text-orange-200 cursor-pointer ml-1">Cambiar</button>
+              <button type="button" onClick={() => setIsFallbackModalOpen(true)} className="text-[10px] bg-white/10 px-2 py-0.5 rounded-full text-orange-200 cursor-pointer ml-1 shrink-0">Cambiar</button>
             )}
           </div>
-          <div className="flex items-center gap-2 sm:gap-3 flex-wrap justify-center">
+
+          <div onClick={() => { setActiveMerchantId(null); setSelectedCategory('ALL'); setSearchQuery(''); if(typeof window !== 'undefined') localStorage.removeItem('current_cart_store_id'); }} className="flex items-center justify-center cursor-pointer select-none md:justify-self-center">
+            <img src="/images/logo-naranja-transparent.png" alt="D'una Marketplace" className="h-9 md:h-10 w-auto object-contain" />
+          </div>
+
+          <div className="flex items-center gap-2 sm:gap-3 flex-wrap justify-center md:justify-self-end">
             <div className="flex items-center bg-white/10 p-0.5 rounded-full border border-white/15 text-[10px] font-bold flex-wrap justify-center">
               <button type="button" onClick={() => setCurrencyMode('DUAL')} className={`px-2 py-0.5 rounded-full cursor-pointer whitespace-nowrap ${currencyMode === 'DUAL' ? 'bg-[#fe6712]' : ''}`}>Dual ($/Bs)</button>
               <button type="button" onClick={() => setCurrencyMode('USD')} className={`px-2 py-0.5 rounded-full cursor-pointer whitespace-nowrap ${currencyMode === 'USD' ? 'bg-[#fe6712]' : ''}`}>$ USD</button>
@@ -472,24 +481,14 @@ export default function MultitiendaHub() {
             </div>
           </div>
         </div>
-      </div>
 
-      <header className="sticky top-0 z-40 bg-gray-900/95 backdrop-blur-md border-b border-white/10 shadow-sm">
-        <div className="max-w-7xl mx-auto px-4 md:px-8 py-3 flex flex-col md:grid md:grid-cols-[1fr_auto_1fr] md:items-center gap-3">
-          <div className="hidden md:block" aria-hidden="true" />
-          <div className="flex items-center justify-center md:justify-self-center">
-            <div onClick={() => { setActiveMerchantId(null); setSelectedCategory('ALL'); setSearchQuery(''); if(typeof window !== 'undefined') localStorage.removeItem('current_cart_store_id'); }} className="flex items-center cursor-pointer select-none bg-white rounded-xl px-3 py-1.5 shadow-sm">
-              <img src="/images/logo-duna.png" alt="D'una" className="h-8 md:h-9 w-auto object-contain" />
-            </div>
-          </div>
-          <div className="w-full max-w-xl md:justify-self-end">
-            <div className="relative flex items-center bg-white/10 rounded-2xl border border-white/10 focus-within:border-[#fe6712]/60 focus-within:bg-white/15 transition">
-              <Search className="absolute left-4 w-3.5 h-3.5 text-gray-400" />
-              <input type="text" value={searchQuery} onChange={(e) => setSearchQuery(e.target.value)} placeholder="Busca comercios y productos..." className="w-full bg-transparent text-xs font-semibold text-gray-200 pl-11 pr-8 py-2.5 focus:outline-none placeholder-gray-400" />
-            </div>
+        <div className="max-w-7xl mx-auto px-4 md:px-8 pb-2.5">
+          <div className="relative flex items-center bg-white/10 rounded-2xl border border-white/10 focus-within:border-[#fe6712]/60 focus-within:bg-white/15 transition">
+            <Search className="absolute left-4 w-3.5 h-3.5 text-gray-400" />
+            <input type="text" value={searchQuery} onChange={(e) => setSearchQuery(e.target.value)} placeholder="Busca comercios y productos..." className="w-full bg-transparent text-xs font-semibold text-gray-200 pl-11 pr-8 py-2.5 focus:outline-none placeholder-gray-400" />
           </div>
         </div>
-      </header>
+      </div>
 
       <main className="max-w-7xl mx-auto w-full px-4 md:px-8 py-4 flex-1 space-y-6">
 
