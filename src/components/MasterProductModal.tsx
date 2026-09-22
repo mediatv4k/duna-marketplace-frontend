@@ -187,7 +187,11 @@ export default function MasterProductModal({
     return false;
   }, [product]);
 
-  // Grupos disponibles para variantes en ranura
+  // Grupos disponibles para variantes en ranura. Estricta y únicamente datos reales del backend (`product.groups`/
+  // `product.slotGroups`, normalizados en MerchantStoreView desde `metadata.variants` real): antes, sin esos datos,
+  // se inventaba un grupo demo ("Tocineta Crocante", "Queso Amarillo Extra") para cualquier combo o tienda FOOD_FAST/
+  // FOOD_SWEET — datos ficticios llegando a clientes reales, contra la regla de oro "Datos 100% reales" de AGENTS.md.
+  // Un producto sin variantes reales simplemente no muestra esta sección (los `.length > 0` que la consumen ya lo cubren).
   const availableGroups = useMemo(() => {
     if (product?.groups && Array.isArray(product.groups) && product.groups.length > 0) {
       return product.groups;
@@ -195,22 +199,8 @@ export default function MasterProductModal({
     if (product?.slotGroups && Array.isArray(product.slotGroups) && product.slotGroups.length > 0) {
       return product.slotGroups;
     }
-    if (['FOOD_FAST', 'FOOD_SWEET'].includes(nicheEngine) || isCombo) {
-      return [
-        {
-          title: "Sabores / Variantes",
-          subtitle: "Selecciona las cantidades para cada opción",
-          type: "QUANTITY_GRID",
-          options: [
-            { code: "VAR-STD", name: "Estándar / Clásico", price: 0 },
-            { code: "VAR-BACON", name: "Tocineta Crocante", price: 1.50 },
-            { code: "VAR-CHEESE", name: "Queso Amarillo Extra", price: 1.00 }
-          ]
-        }
-      ];
-    }
     return [];
-  }, [product, nicheEngine, isCombo]);
+  }, [product]);
 
   // Cantidad base de ranuras si es combo
   const baseSlotCount = useMemo(() => {
@@ -1032,7 +1022,8 @@ export default function MasterProductModal({
                       })}
 
                       {/* Exclusiones de la Ranura Activa */}
-                      {product.exclusions && product.exclusions.length > 0 && (
+                      {/* Firma D'una (exclusiones): solo comida rápida (nicheEngine FOOD_FAST) — no aplica a heladerías, bodegones, etc. */}
+                      {nicheEngine === 'FOOD_FAST' && product.exclusions && product.exclusions.length > 0 && (
                         <div className="space-y-2 pt-2 border-t border-slate-100">
                           <div className="flex justify-between items-center">
                             <span className="text-[10px] font-black text-[#fe6712] uppercase tracking-wider flex items-center gap-1">
@@ -1112,7 +1103,8 @@ export default function MasterProductModal({
                 /* Modo Estándar */
                 <div className="space-y-4">
 
-                  {product.exclusions && product.exclusions.length > 0 && (
+                  {/* Firma D'una (exclusiones): solo comida rápida (nicheEngine FOOD_FAST) — no aplica a heladerías, bodegones, etc. */}
+                  {nicheEngine === 'FOOD_FAST' && product.exclusions && product.exclusions.length > 0 && (
                     <div className="pb-4 border-b border-gray-100 space-y-3">
                       <label className="text-xs font-black text-slate-900 uppercase tracking-wider flex items-center gap-1.5">
                         <Sparkles className="w-4 h-4 text-[#fe6712]" /> Firma D&apos;una (Exclusiones):

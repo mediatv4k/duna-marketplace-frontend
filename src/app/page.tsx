@@ -353,7 +353,7 @@ export default function MultitiendaHub() {
 
         {/* Botón flotante persistente en la tienda: recupera el seguimiento cuando el modal está cerrado (el id de la orden vive en savedOrderId) */}
         {savedOrderId && !savedOrderFinal && !isTrackingOpen && (
-          <div className="fixed bottom-24 right-4 md:bottom-6 md:right-6 z-50">
+          <div className="fixed bottom-24 md:bottom-6 right-4 z-50">
             <button
               type="button"
               onClick={() => setIsTrackingOpen(true)}

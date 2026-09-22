@@ -64,7 +64,7 @@ export default function PromotionsCarousel({ promotions, onSelectPromotion }: Pr
               key={promo.id ?? idx}
               type="button"
               onClick={() => onSelectPromotion(promo)}
-              className="shrink-0 w-40 md:w-44 bg-white rounded-2xl border border-slate-100 shadow-sm hover:shadow-md hover:border-orange-200 transition-all overflow-hidden text-left cursor-pointer"
+              className="shrink-0 w-28 md:w-32 bg-white rounded-2xl border border-slate-100 shadow-sm hover:shadow-md hover:border-orange-200 transition-all overflow-hidden text-left cursor-pointer"
             >
               <div className="w-full aspect-[2/3] bg-slate-50">
                 <img

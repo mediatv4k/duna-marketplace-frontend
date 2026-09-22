@@ -456,7 +456,27 @@ export default function MerchantStoreView({
   const isFarma = templateNiche === 'farma';
   // Barra lateral de departamentos + productos en escritorio: TODAS las tiendas (la portada se conserva; solo farmacia la oculta)
   const sidebarLayout = true;
+  // Buscador reubicado (2026-09-21): antes vivía dentro del catálogo, debajo de promociones/tabs; ahora va pegado
+  // al banner principal, antes de cualquier otro contenido. Ya no es sticky (perdía sentido sin la franja superior
+  // fija que le daba un "top" de referencia; ver nota de MerchantTemplateEngine) y usa su propio padding horizontal
+  // (antes usaba el truco `-mx-4 px-4`, que asumía vivir dentro de un contenedor ya paddeado en 16px).
+  const searchNode = (
+    <div className={`${sidebarLayout ? 'max-w-7xl md:px-8' : 'max-w-4xl'} mx-auto px-4 pt-4`}>
+      <div className="relative">
+        <Search className="absolute left-4 top-4 w-4 h-4 text-slate-400" />
+        <input
+          type="text"
+          placeholder="Buscar productos, sabores, combos o especialidades..."
+          value={searchQuery}
+          onChange={(e) => setSearchQuery(e.target.value)}
+          className="w-full pl-12 pr-14 py-3.5 rounded-2xl bg-white border border-slate-200 text-sm font-bold text-slate-800 shadow-sm focus:outline-none focus:border-[#fe6712] focus:ring-2 focus:ring-orange-100 transition"
+        />
+        <VoiceSearchButton onResult={setSearchQuery} className="absolute right-2 top-1/2 -translate-y-1/2" />
+      </div>
+    </div>
+  );
   const heroNode = (
+    <>
         <div className={`${isFarma ? 'lg:hidden' : ''} relative w-full h-52 lg:h-44 bg-slate-900 overflow-hidden`}>
           {merchant.banner ? (
             <img src={merchant.banner} alt={merchant.name} className="w-full h-full object-cover" />
@@ -464,14 +484,6 @@ export default function MerchantStoreView({
             <div className="w-full h-full bg-gradient-to-r from-[#fe6712] to-amber-600" />
           )}
           <div className="absolute inset-0 bg-gradient-to-t from-black/80 via-black/20 to-transparent" />
-          <button
-            type="button"
-            onClick={onBack}
-            aria-label="Volver al inicio"
-            className="absolute top-4 right-4 z-20 bg-white/95 backdrop-blur-sm p-1.5 rounded-2xl shadow-md hover:scale-105 transition-transform duration-200 cursor-pointer"
-          >
-            <img src="/images/duna-isologo.png" alt="D'una Marketplace" className="w-8 h-8 md:w-10 md:h-10 object-contain" />
-          </button>
 
           <div className="absolute bottom-0 left-0 right-0 p-4 flex items-end gap-3">
             <img
@@ -489,6 +501,22 @@ export default function MerchantStoreView({
             </div>
           </div>
         </div>
+
+        {searchNode}
+    </>
+  );
+  {/* Isologo D'una (2026-09-21): fixed en vez de absolute dentro del banner — flota sobre toda la vista, visible
+      aunque se haga scroll, y ya no depende de que el banner esté presente (útil en escritorio de farmacia, donde
+      el banner se oculta). Sigue ejecutando el mismo onBack. */}
+  const isologoNode = (
+    <button
+      type="button"
+      onClick={onBack}
+      aria-label="Volver al inicio"
+      className="fixed top-4 right-4 z-50 bg-white/95 backdrop-blur-sm p-1.5 rounded-2xl shadow-md hover:scale-105 transition-transform duration-200 cursor-pointer"
+    >
+      <img src="/images/duna-isologo.png" alt="D'una Marketplace" className="w-8 h-8 md:w-10 md:h-10 object-contain" />
+    </button>
   );
   // Datos reales de la tienda para el diseño con barra lateral
   const storeWa = toWhatsAppNumber(merchant?.phone);
@@ -542,19 +570,7 @@ export default function MerchantStoreView({
             </a>
           )}
 
-          <div className={`mt-6 lg:sticky ${templateNiche ? 'top-[61px]' : 'top-0'} z-40 -mx-4 px-4 bg-white/95 backdrop-blur-md border-b border-gray-100 py-3 shadow-sm`}>
-            <div className="relative">
-              <Search className="absolute left-4 top-4 w-4 h-4 text-slate-400" />
-              <input
-                type="text"
-                placeholder="Buscar productos, sabores, combos o especialidades..."
-                value={searchQuery}
-                onChange={(e) => setSearchQuery(e.target.value)}
-                className="w-full pl-12 pr-14 py-3.5 rounded-2xl bg-white border border-slate-200 text-sm font-bold text-slate-800 shadow-sm focus:outline-none focus:border-[#fe6712] focus:ring-2 focus:ring-orange-100 transition"
-              />
-              <VoiceSearchButton onResult={setSearchQuery} className="absolute right-2 top-1/2 -translate-y-1/2" />
-            </div>
-          </div>
+          {/* El buscador ahora vive pegado al banner (ver `searchNode`, justo debajo de `heroNode`); ya no se repite aquí. */}
 
           <div className="mt-8">
             <div className="flex items-center justify-between mb-4">
@@ -629,7 +645,8 @@ export default function MerchantStoreView({
 
       {/* Catálogo: barra lateral + productos */}
       <div className="grid grid-cols-1 lg:grid-cols-4 gap-8">
-        <aside className={`hidden lg:block lg:col-span-1 space-y-6 sticky ${templateNiche ? 'top-24 max-h-[calc(100vh-6rem)]' : 'top-6 max-h-[calc(100vh-3rem)]'} self-start overflow-y-auto no-scrollbar -mx-1 px-1 pt-1 pb-3`}>
+        {/* Offset uniforme (2026-09-21): sin la franja superior del motor (eliminada), ya no hace falta el `top-24` extra para plantillas */}
+        <aside className="hidden lg:block lg:col-span-1 space-y-6 sticky top-6 max-h-[calc(100vh-3rem)] self-start overflow-y-auto no-scrollbar -mx-1 px-1 pt-1 pb-3">
           {isFarma && recipeHref && (
             <a
               href={recipeHref}
@@ -873,6 +890,8 @@ export default function MerchantStoreView({
 
   if (templateNiche) {
     return (
+      <>
+      {isologoNode}
       <MerchantTemplateEngine
         niche={templateNiche}
         storeNiche={storeNiche}
@@ -898,11 +917,13 @@ export default function MerchantStoreView({
         {contentNode}
         {overlaysNode}
       </MerchantTemplateEngine>
+      </>
     );
   }
 
   return (
     <div className="min-h-screen bg-slate-50 pb-28">
+      {isologoNode}
       {heroNode}
 
       <div className={`${sidebarLayout ? 'max-w-7xl' : 'max-w-4xl'} mx-auto w-full px-4 md:px-8 py-6 relative z-10`}>
