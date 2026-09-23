@@ -16,7 +16,8 @@ import {
   CheckCircle2,
   ChevronLeft,
   ChevronRight,
-  UtensilsCrossed
+  UtensilsCrossed,
+  Snowflake
 } from 'lucide-react';
 import { parseDescriptionTags } from '@/lib/productTags';
 import ProductTagBadges from './ProductTagBadges';
@@ -814,6 +815,121 @@ export default function MasterProductModal({
               <div className="w-full">
                 <p className="w-full text-sm text-gray-600 mt-4 mb-4 leading-relaxed whitespace-pre-line">{cleanDescription || 'Configura las opciones para este artículo.'}</p>
                 <ProductTagBadges tags={descriptionTags} className="mb-4" />
+
+                {/* Bloque Clínico Farmacia */}
+                {(() => {
+                  let farmaciaData = null;
+                  try {
+                    const rawMeta = product?.metadata;
+                    const parsedMeta = typeof rawMeta === 'string' ? JSON.parse(rawMeta) : rawMeta;
+                    farmaciaData = parsedMeta?.farmacia || null;
+                  } catch (e) {
+                    farmaciaData = null;
+                  }
+
+
+
+                  const categoryStr = String(product?.categoria || product?.category || product?.cat || '').toUpperCase();
+                  const isPharmacyCategory = categoryStr.includes('FARMACIA') || categoryStr.includes('MEDICAMENTO') || categoryStr.includes('SALUD') || categoryStr.includes('ANTIALERGICO');
+
+                  // Si existe el bloque explícito metadata.farmacia, lo usamos.
+                  // Si no, si la categoría es de farmacia, intentamos extraer los campos directamente de metadata o del propio producto.
+                  let clinicalData = farmaciaData;
+                  if (!clinicalData && isPharmacyCategory) {
+                     const parsedMeta = (typeof product?.metadata === 'string' ? JSON.parse(product?.metadata || '{}') : product?.metadata) || {};
+                     clinicalData = {
+                       principioActivo: parsedMeta.principioActivo || product?.principioActivo,
+                       concentracion: parsedMeta.concentracion || product?.concentracion,
+                       presentacion: parsedMeta.presentacion || product?.presentacion,
+                       laboratorio: parsedMeta.laboratorio || product?.laboratorio,
+                       registroSanitario: parsedMeta.registroSanitario || product?.registroSanitario,
+                       condicionVenta: parsedMeta.condicionVenta || product?.condicionVenta,
+                       cadenaFrio: parsedMeta.cadenaFrio || product?.cadenaFrio
+                     };
+                  }
+
+                  // Limpiar empty values
+                  if (clinicalData && typeof clinicalData === 'object') {
+                    const hasAnyValue = Object.values(clinicalData).some(v => v !== undefined && v !== null && v !== '');
+                    if (!hasAnyValue) clinicalData = null;
+                  }
+
+                  if (!clinicalData?.principioActivo) {
+                    if (!isPharmacyCategory) return null;
+                    return (
+                      <div className="mb-4 bg-white border border-slate-200 rounded-2xl overflow-hidden">
+                        <div className="p-3 border-b border-slate-100 flex justify-between items-center bg-slate-50">
+                          <span className="text-xs font-bold text-slate-500 uppercase tracking-wider">Información Clínica</span>
+                          <span className="text-[10px] font-black px-2.5 py-0.5 rounded-md uppercase tracking-wider bg-emerald-100 text-emerald-700 border border-emerald-200">
+                            Medicamento / Venta Libre
+                          </span>
+                        </div>
+                        <div className="p-4 space-y-3">
+                          <div>
+                            <span className="block text-[10px] font-bold text-slate-400 uppercase">Registro / Código</span>
+                            <span className="block text-xs font-semibold text-slate-700 mt-0.5">{product?.code || 'S/N'}</span>
+                          </div>
+                          <div className="pt-3 border-t border-slate-100">
+                            <p className="text-xs font-medium text-slate-600 italic">
+                              Consulte a su médico o farmacéutico antes de consumir.
+                            </p>
+                          </div>
+                        </div>
+                      </div>
+                    );
+                  }
+
+                  return (
+                    <div className="mb-4 bg-white border border-slate-200 rounded-2xl overflow-hidden">
+                      <div className="p-3 border-b border-slate-100 flex justify-between items-center bg-slate-50">
+                        <span className="text-xs font-bold text-slate-500 uppercase tracking-wider">Información Clínica</span>
+                        {clinicalData.condicionVenta && (
+                          <span className={`text-[10px] font-black px-2.5 py-0.5 rounded-md uppercase tracking-wider ${
+                            clinicalData.condicionVenta.toLowerCase().includes('receta') 
+                              ? 'bg-amber-100 text-amber-700 border border-amber-200' 
+                              : 'bg-emerald-100 text-emerald-700 border border-emerald-200'
+                          }`}>
+                            {clinicalData.condicionVenta}
+                          </span>
+                        )}
+                      </div>
+                      <div className="p-4 space-y-3">
+                        <div>
+                          <h4 className="text-sm font-black text-slate-900">{clinicalData.principioActivo}</h4>
+                          {clinicalData.concentracion && (
+                            <p className="text-xs font-bold text-slate-500 mt-0.5">{clinicalData.concentracion}</p>
+                          )}
+                        </div>
+                        <div className="grid grid-cols-2 gap-3 pt-3 border-t border-slate-100">
+                          {clinicalData.laboratorio && (
+                            <div>
+                              <span className="block text-[10px] font-bold text-slate-400 uppercase">Laboratorio</span>
+                              <span className="block text-xs font-semibold text-slate-700 mt-0.5">{clinicalData.laboratorio}</span>
+                            </div>
+                          )}
+                          {clinicalData.presentacion && (
+                            <div>
+                              <span className="block text-[10px] font-bold text-slate-400 uppercase">Presentación</span>
+                              <span className="block text-xs font-semibold text-slate-700 mt-0.5">{clinicalData.presentacion}</span>
+                            </div>
+                          )}
+                          {clinicalData.registroSanitario && (
+                            <div className="col-span-2">
+                              <span className="block text-[10px] font-bold text-slate-400 uppercase">Registro Sanitario</span>
+                              <span className="block text-xs font-semibold text-slate-700 mt-0.5">{clinicalData.registroSanitario}</span>
+                            </div>
+                          )}
+                        </div>
+                        {clinicalData.cadenaFrio && (
+                          <div className="mt-3 bg-blue-50 border border-blue-100 rounded-xl p-2.5 flex items-start gap-2">
+                            <Snowflake className="w-4 h-4 text-blue-500 shrink-0 mt-0.5" />
+                            <span className="text-xs font-bold text-blue-800">Requiere refrigeración (Cadena de frío)</span>
+                          </div>
+                        )}
+                      </div>
+                    </div>
+                  );
+                })()}
               </div>
 
               {/* Banner de personalización por unidad: arriba (debajo de la cantidad), visible sin scroll.
