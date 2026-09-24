@@ -468,11 +468,52 @@ export default function MultitiendaHub() {
   return (
     <div suppressHydrationWarning className="min-h-screen flex flex-col bg-slate-50 text-slate-900 font-sans pb-16 md:pb-0">
       
-      {/* ── Navbar Principal — Single-Row Glass Blanca ────────────────────────────────────────────
-           3 columnas en una sola fila: Logo ← Buscador+Cercanos (centro flex-1) → Utilidades
+      {/* ── Navbar Principal — Glass Blanca ───────────────────────────────────────────────────────
+           Desktop (md:): 3 columnas en una sola fila (Logo, Buscador+Cercanos, Utilidades).
+           Móvil (< md): Fila 1 (Logo Centrado Institucional) / Fila 2 (Buscador + Selector Divisa).
            Paleta corporativa #FE6712. Logo naranja sobre blanco. */}
       <div className="sticky top-0 z-40 bg-white/95 backdrop-blur-md border-b border-slate-100 shadow-sm">
-        <div className="max-w-7xl mx-auto px-4 md:px-8 flex items-center justify-between gap-4 py-2.5 w-full">
+        {/* Cabecera Móvil (< md) */}
+        <div className="md:hidden flex flex-col w-full pb-2">
+          {/* Fila 1: Logo Centrado Institucional */}
+          <div className="w-full flex justify-center py-2">
+            <div
+              onClick={() => { setActiveMerchantId(null); setSelectedCategory('ALL'); setSearchQuery(''); if(typeof window !== 'undefined') localStorage.removeItem('current_cart_store_id'); }}
+              className="flex items-center cursor-pointer select-none"
+            >
+              <img
+                src="/images/logo-naranja-transparent.png"
+                alt="D'una Marketplace"
+                className="h-10 w-auto object-contain"
+              />
+            </div>
+          </div>
+
+          {/* Fila 2: Buscador Integrado con Selector de Moneda */}
+          <div className="flex items-center gap-2 px-4 py-1.5 w-full">
+            <div className="flex-1 flex items-center bg-slate-50 border border-slate-200/90 rounded-full px-3.5 py-1.5 shadow-inner focus-within:border-[#FE6712] focus-within:bg-white transition-all gap-2 min-w-0">
+              <svg className="w-3.5 h-3.5 text-slate-400 shrink-0" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}>
+                <path strokeLinecap="round" strokeLinejoin="round" d="M21 21l-4.35-4.35M17 11A6 6 0 1 1 5 11a6 6 0 0 1 12 0z" />
+              </svg>
+              <input
+                type="text"
+                value={searchQuery}
+                onChange={(e) => setSearchQuery(e.target.value)}
+                placeholder="Busca comercios o productos..."
+                className="flex-1 bg-transparent text-xs font-semibold text-slate-800 focus:outline-none placeholder-slate-400 min-w-0"
+              />
+            </div>
+
+            <div className="flex items-center bg-slate-100 p-0.5 rounded-full border border-slate-200 text-[10px] font-bold shrink-0">
+              <button type="button" onClick={() => setCurrencyMode('DUAL')} className={`px-2.5 py-1 rounded-full cursor-pointer whitespace-nowrap transition ${currencyMode === 'DUAL' ? 'bg-[#fe6712] text-white shadow-sm' : 'text-slate-600 hover:text-slate-900'}`}>$/Bs</button>
+              <button type="button" onClick={() => setCurrencyMode('USD')} className={`px-2.5 py-1 rounded-full cursor-pointer whitespace-nowrap transition ${currencyMode === 'USD' ? 'bg-[#fe6712] text-white shadow-sm' : 'text-slate-600 hover:text-slate-900'}`}>USD</button>
+              <button type="button" onClick={() => setCurrencyMode('VES')} className={`px-2.5 py-1 rounded-full cursor-pointer whitespace-nowrap transition ${currencyMode === 'VES' ? 'bg-[#fe6712] text-white shadow-sm' : 'text-slate-600 hover:text-slate-900'}`}>Bs</button>
+            </div>
+          </div>
+        </div>
+
+        {/* Cabecera Desktop (>= md) */}
+        <div className="hidden md:flex max-w-7xl mx-auto px-4 md:px-8 items-center justify-between gap-4 py-2.5 w-full">
 
           {/* COL IZQUIERDA — Logo institucional */}
           <div
@@ -487,7 +528,7 @@ export default function MultitiendaHub() {
           </div>
 
           {/* COL CENTRAL — Buscador pill + botón Cercanos */}
-          <div className="flex-1 max-w-xl mx-auto hidden sm:flex">
+          <div className="flex-1 max-w-xl mx-auto flex">
             <div className="w-full flex items-center bg-slate-50 border border-slate-200/90 rounded-full px-3.5 py-1.5 shadow-inner focus-within:border-[#FE6712] focus-within:bg-white transition-all gap-2">
               <svg className="w-3.5 h-3.5 text-slate-400 shrink-0" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}>
                 <path strokeLinecap="round" strokeLinejoin="round" d="M21 21l-4.35-4.35M17 11A6 6 0 1 1 5 11a6 6 0 0 1 12 0z" />
@@ -532,22 +573,6 @@ export default function MultitiendaHub() {
             </div>
           </div>
 
-        </div>
-
-        {/* Buscador móvil — visible solo en xs (< sm) debajo de la fila única */}
-        <div className="sm:hidden px-4 pb-2.5">
-          <div className="w-full flex items-center bg-slate-50 border border-slate-200/90 rounded-full px-3.5 py-1.5 shadow-inner focus-within:border-[#FE6712] focus-within:bg-white transition-all gap-2">
-            <svg className="w-3.5 h-3.5 text-slate-400 shrink-0" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}>
-              <path strokeLinecap="round" strokeLinejoin="round" d="M21 21l-4.35-4.35M17 11A6 6 0 1 1 5 11a6 6 0 0 1 12 0z" />
-            </svg>
-            <input
-              type="text"
-              value={searchQuery}
-              onChange={(e) => setSearchQuery(e.target.value)}
-              placeholder="Busca comercios o productos..."
-              className="flex-1 bg-transparent text-xs font-semibold text-slate-800 focus:outline-none placeholder-slate-400 min-w-0"
-            />
-          </div>
         </div>
       </div>
 
