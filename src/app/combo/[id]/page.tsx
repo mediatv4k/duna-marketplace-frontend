@@ -2,31 +2,31 @@
 
 import React, { useState, useEffect, useCallback, useRef } from 'react';
 import { getProduct } from '@/services/marketplaceService';
-/* ─── Tipos espejo del backend ───────────────────────────────────────────── */
-interface ComboSlotState {
-  slotIndex: number;
-  guestName: string;
-  selectedVariants: Record<string, any>;
+
+interface ParticipantClaim {
+  id: string;
+  name: string;
+  unitsCount: number;
   exclusions: string[];
+  selectedVariants: Record<string, any>;
+  subtotalUsd: number;
+  isHost: boolean;
   completedAt: string | null;
 }
 
-interface ComboRoom {
+interface ComboRoomData {
   id: string;
   productId: string | number;
   productName: string;
   storeName: string;
   storeCode: string;
-  totalSlots: number;
-  groups: any[];
-  slots: ComboSlotState[];
+  totalUnits: number;
+  unitPriceUsd: number;
+  claimedUnits: number;
+  participants: ParticipantClaim[];
   createdAt: string;
   hostName: string;
-}
-
-/* ─── Helpers ────────────────────────────────────────────────────────────── */
-function slotLabel(i: number) {
-  return `Ítem ${i + 1}`;
+  groups?: any[]; // Re-hidrated on client
 }
 
 function OptionCapsule({
@@ -106,27 +106,24 @@ function OptionCapsule({
   );
 }
 
-/* ─── Página Principal ───────────────────────────────────────────────────── */
 export default function ComboRoomPage({ params }: { params: { id: string } }) {
   const roomId = params.id;
 
-  const [room, setRoom] = useState<ComboRoom | null>(null);
+  const [room, setRoom] = useState<ComboRoomData | null>(null);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
 
-  // Paso del flujo del invitado
-  const [phase, setPhase] = useState<'pick-slot' | 'customize' | 'done'>('pick-slot');
+  const [phase, setPhase] = useState<'pick' | 'customize' | 'done'>('pick');
   const [guestName, setGuestName] = useState('');
-  const [chosenSlot, setChosenSlot] = useState<number | null>(null);
+  const [qty, setQty] = useState(1);
+  const [myClaim, setMyClaim] = useState<ParticipantClaim | null>(null);
 
-  // Variantes seleccionadas por este invitado
   const [localVariants, setLocalVariants] = useState<Record<string, any[]>>({});
   const [localExclusions, setLocalExclusions] = useState<string[]>([]);
 
   const [saving, setSaving] = useState(false);
   const [saveError, setSaveError] = useState<string | null>(null);
 
-  const [hasDeadRoomInStorage, setHasDeadRoomInStorage] = useState(false);
   const [deadRoomStoreSlug, setDeadRoomStoreSlug] = useState<string | null>(null);
 
   useEffect(() => {
@@ -137,7 +134,6 @@ export default function ComboRoomPage({ params }: { params: { id: string } }) {
           if (stored) {
             const parsed = JSON.parse(stored);
             if (parsed.roomId === roomId) {
-              setHasDeadRoomInStorage(true);
               setDeadRoomStoreSlug(parsed.storeSlug || null);
             }
           }
@@ -153,7 +149,6 @@ export default function ComboRoomPage({ params }: { params: { id: string } }) {
     }
   };
 
-  // Helper to normalize product groups (like MasterProductModal)
   const normalizeGroups = (product: any) => {
     if (!product) return [];
     let rawList: any[] = [];
@@ -218,7 +213,6 @@ export default function ComboRoomPage({ params }: { params: { id: string } }) {
 
   const productCacheRef = useRef<any>(null);
 
-  /* ── Cargar sala ── */
   const loadRoom = useCallback(async () => {
     try {
       const res = await fetch(`/api/combo/${roomId}`);
@@ -226,7 +220,6 @@ export default function ComboRoomPage({ params }: { params: { id: string } }) {
       const data = await res.json();
       if (data.ok) {
         const fetchedRoom = data.room;
-        // Hidratación por referencia: Buscar producto para inyectar options
         if (!productCacheRef.current && fetchedRoom.productId) {
            const pRes = await getProduct(fetchedRoom.productId);
            if (pRes.code === 1 && pRes.data) {
@@ -246,27 +239,32 @@ export default function ComboRoomPage({ params }: { params: { id: string } }) {
 
   useEffect(() => {
     loadRoom();
-    // Polling 3 s para ver actualizaciones de otros participantes en la vista pick-slot
     const timer = setInterval(loadRoom, 3000);
     return () => clearInterval(timer);
   }, [loadRoom]);
 
-  /* ── Inicializar opciones al elegir ranura ── */
-  useEffect(() => {
-    if (!room || chosenSlot === null) return;
+  const initVariants = () => {
+    if (!room) return;
     const vars: Record<string, any[]> = {};
-    room.groups.forEach((g, gIdx) => {
+    room.groups?.forEach((g, gIdx) => {
       const opts = g.options || g.items || [];
       vars[String(gIdx)] = opts.map((o: any) => ({ ...o, count: 0 }));
     });
     setLocalVariants(vars);
     setLocalExclusions([]);
-  }, [room, chosenSlot]);
+  };
 
-  /* ── Guardar selección ── */
-  const handleSave = async () => {
+  const handleSaveStandard = async () => {
     if (!guestName.trim()) { setSaveError('Escribe tu nombre antes de guardar.'); return; }
-    if (chosenSlot === null) return;
+    await submitClaim({}, []);
+  };
+
+  const handleSaveCustom = async () => {
+    if (!guestName.trim()) { setSaveError('Escribe tu nombre antes de guardar.'); return; }
+    await submitClaim(localVariants, localExclusions);
+  };
+
+  const submitClaim = async (variants: Record<string, any>, exclusions: string[]) => {
     setSaving(true);
     setSaveError(null);
     try {
@@ -274,15 +272,17 @@ export default function ComboRoomPage({ params }: { params: { id: string } }) {
         method: 'PUT',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
-          slotIndex: chosenSlot,
-          guestName: guestName.trim(),
-          selectedVariants: localVariants,
-          exclusions: localExclusions,
+          name: guestName.trim(),
+          unitsCount: qty,
+          selectedVariants: variants,
+          exclusions,
         }),
       });
       const data = await res.json();
       if (data.ok) {
         setRoom(data.room);
+        const addedClaim = data.room.participants.find((p: any) => p.name === guestName.trim() && p.unitsCount === qty);
+        setMyClaim(addedClaim);
         setPhase('done');
       } else {
         setSaveError(data.error || 'No se pudo guardar.');
@@ -321,7 +321,12 @@ export default function ComboRoomPage({ params }: { params: { id: string } }) {
     });
   };
 
-  /* ─── Render ─────────────────────────────────────────────────────────── */
+  const handleCopyPayment = () => {
+    const text = `Pago por mi parte del combo:\nMonto: $${myClaim?.subtotalUsd.toFixed(2)}\nUnidades: ${myClaim?.unitsCount}`;
+    navigator.clipboard.writeText(text);
+    alert('Copiado al portapapeles');
+  };
+
   if (loading) {
     return (
       <div className="min-h-screen flex items-center justify-center bg-slate-50">
@@ -355,190 +360,118 @@ export default function ComboRoomPage({ params }: { params: { id: string } }) {
     );
   }
 
-  /* ── Fase: elección de ranura ── */
-  if (phase === 'pick-slot') {
-    const freeSlots = room.slots.filter(s => !s.guestName || s.slotIndex === 0);
+  const availableUnits = room.totalUnits - room.claimedUnits;
+
+  if (phase === 'pick') {
+    const hasSinGroups = (room.groups || []).some((g: any) => /\bsin\b/i.test(String(g.name || g.title || '')));
     return (
-      <div className="min-h-screen bg-slate-50 flex flex-col">
-        {/* Header */}
-        <div className="bg-white border-b border-slate-100 px-4 py-3 flex items-center gap-3 shadow-sm">
-          <img src="/images/logo-naranja-transparent.png" alt="D'una" className="h-8 w-auto object-contain" />
-          <div className="min-w-0 flex-1">
-            <p className="text-[10px] font-bold text-slate-400 uppercase tracking-wider">Combo Colaborativo</p>
-            <h1 className="text-sm font-black text-slate-900 truncate">{room.productName}</h1>
-          </div>
-        </div>
-
-        <div className="flex-1 px-4 py-5 space-y-5 max-w-md mx-auto w-full">
-          {/* Info del anfitrión */}
-          <div className="bg-orange-50 border border-orange-200 rounded-2xl p-3.5 flex items-start gap-3">
-            <div className="w-8 h-8 bg-[#fe6712] rounded-xl flex items-center justify-center shrink-0">
-              <svg className="w-4 h-4 text-white" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}>
-                <path strokeLinecap="round" strokeLinejoin="round" d="M17 20h5v-2a3 3 0 00-5.356-1.857M17 20H7m10 0v-2c0-.656-.126-1.283-.356-1.857M7 20H2v-2a3 3 0 015.356-1.857M7 20v-2c0-.656.126-1.283.356-1.857m0 0a5.002 5.002 0 019.288 0M15 7a3 3 0 11-6 0 3 3 0 016 0z" />
-              </svg>
-            </div>
-            <div>
-              <p className="text-xs font-black text-slate-800">{room.hostName} te invitó</p>
-              <p className="text-[11px] text-slate-500 font-medium">
-                Tienda: <strong className="text-slate-700">{room.storeName}</strong> · {room.totalSlots} ítems en total
-              </p>
+      <div className="min-h-screen bg-slate-50 flex flex-col items-center pt-8 px-4">
+        <div className="w-full max-w-sm space-y-6">
+          <div className="text-center">
+            <h1 className="text-xl font-black text-slate-900 leading-tight mb-2">{room.productName}</h1>
+            <div className="inline-flex items-center gap-1.5 bg-orange-50 border border-orange-200 px-3 py-1 rounded-full">
+              <span className="w-2 h-2 rounded-full bg-[#fe6712] animate-pulse"></span>
+              <span className="text-xs font-bold text-orange-800">Quedan {availableUnits} de {room.totalUnits} disponibles</span>
             </div>
           </div>
 
-          {/* Nombre del invitado */}
-          <div className="space-y-1.5">
-            <label className="text-xs font-black text-slate-700 uppercase tracking-wider block">Tu nombre</label>
-            <input
-              type="text"
-              value={guestName}
-              onChange={e => setGuestName(e.target.value)}
-              placeholder="Ej. María, Luis, El gordito…"
-              maxLength={30}
-              className="w-full rounded-xl border border-slate-200 bg-white px-3.5 py-2.5 text-sm font-semibold text-slate-800 focus:outline-none focus:border-[#fe6712] focus:ring-2 focus:ring-[#fe6712]/20 placeholder-slate-400 transition"
-            />
-          </div>
+          <div className="bg-white p-5 rounded-3xl shadow-sm border border-slate-100 space-y-5">
+            <div className="space-y-1.5">
+              <label className="text-xs font-black text-slate-700 uppercase tracking-wider block">Tu nombre</label>
+              <input
+                type="text"
+                value={guestName}
+                onChange={e => setGuestName(e.target.value)}
+                placeholder="Ej. María, Luis..."
+                maxLength={30}
+                className="w-full rounded-xl border border-slate-200 bg-slate-50 px-3.5 py-3 text-sm font-bold text-slate-800 focus:bg-white focus:outline-none focus:border-[#fe6712] focus:ring-2 focus:ring-[#fe6712]/20 placeholder-slate-400 transition"
+              />
+            </div>
 
-          {/* Lista de ranuras */}
-          <div className="space-y-2">
-            <p className="text-xs font-black text-slate-700 uppercase tracking-wider">Elige tu ítem libre</p>
-            {room.slots.map((slot, i) => {
-              const isTaken = slot.slotIndex > 0 && !!slot.guestName;
-              return (
+            <div className="space-y-1.5">
+              <label className="text-xs font-black text-slate-700 uppercase tracking-wider block">¿Cuántos van para ti?</label>
+              <div className="flex items-center justify-between bg-slate-50 border border-slate-200 rounded-xl px-4 py-2.5">
                 <button
-                  key={i}
                   type="button"
-                  disabled={isTaken || !guestName.trim()}
-                  onClick={() => { setChosenSlot(i); setPhase('customize'); }}
-                  className={`w-full flex items-center justify-between rounded-xl border px-4 py-3 transition cursor-pointer ${
-                    isTaken
-                      ? 'border-slate-200 bg-slate-50 cursor-not-allowed opacity-60'
-                      : guestName.trim()
-                      ? 'border-[#fe6712]/50 bg-orange-50/30 hover:bg-orange-50 hover:border-[#fe6712]'
-                      : 'border-slate-200 bg-white cursor-not-allowed opacity-50'
-                  }`}
+                  onClick={() => setQty(Math.max(1, qty - 1))}
+                  disabled={qty <= 1}
+                  className="w-8 h-8 rounded-full flex items-center justify-center text-slate-600 hover:bg-slate-200 disabled:opacity-30 transition cursor-pointer"
                 >
-                  <div className="flex items-center gap-2.5 min-w-0">
-                    <span className={`text-xs font-black px-2 py-0.5 rounded-lg ${isTaken ? 'bg-slate-200 text-slate-600' : 'bg-[#fe6712] text-white'}`}>
-                      {slotLabel(i)}
-                    </span>
-                    <span className="text-sm font-bold text-slate-700 truncate">
-                      {isTaken ? slot.guestName : (i === 0 ? `${room.hostName} (anfitrión)` : 'Disponible')}
-                    </span>
-                  </div>
-                  {isTaken ? (
-                    <span className="text-[10px] font-black text-emerald-600 bg-emerald-50 px-2 py-0.5 rounded-full border border-emerald-200 shrink-0">Listo</span>
-                  ) : i === 0 ? (
-                    <span className="text-[10px] font-bold text-slate-400 shrink-0">Anfitrión</span>
-                  ) : (
-                    <svg className="w-4 h-4 text-[#fe6712] shrink-0" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2.5}>
-                      <path strokeLinecap="round" strokeLinejoin="round" d="M9 5l7 7-7 7" />
-                    </svg>
-                  )}
+                  <svg className="w-4 h-4" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2.5}><path strokeLinecap="round" strokeLinejoin="round" d="M20 12H4" /></svg>
                 </button>
-              );
-            })}
+                <span className="text-lg font-black text-slate-800">{qty}</span>
+                <button
+                  type="button"
+                  onClick={() => setQty(Math.min(availableUnits, qty + 1))}
+                  disabled={qty >= availableUnits}
+                  className="w-8 h-8 rounded-full flex items-center justify-center text-[#fe6712] hover:bg-orange-100 disabled:opacity-30 transition cursor-pointer"
+                >
+                  <svg className="w-4 h-4" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2.5}><path strokeLinecap="round" strokeLinejoin="round" d="M12 4v16m8-8H4" /></svg>
+                </button>
+              </div>
+            </div>
+
+            {saveError && <p className="text-xs font-bold text-red-600 text-center">{saveError}</p>}
+
+            <div className="space-y-3 pt-2">
+              <button
+                type="button"
+                disabled={!guestName.trim() || saving || availableUnits < 1}
+                onClick={handleSaveStandard}
+                className="w-full bg-emerald-500 hover:bg-emerald-600 disabled:bg-slate-300 disabled:cursor-not-allowed text-white font-black py-3.5 rounded-xl text-sm flex items-center justify-center gap-2 transition active:scale-[0.98] shadow-md cursor-pointer"
+              >
+                {saving ? 'Guardando...' : '🟢 Salen con todo'}
+              </button>
+              
+              {hasSinGroups && (
+                <button
+                  type="button"
+                  disabled={!guestName.trim() || availableUnits < 1}
+                  onClick={() => { initVariants(); setPhase('customize'); }}
+                  className="w-full bg-white hover:bg-slate-50 border-2 border-slate-200 disabled:opacity-50 text-slate-700 font-black py-3 rounded-xl text-sm flex items-center justify-center gap-2 transition active:scale-[0.98] cursor-pointer"
+                >
+                  ⚙️ Quitar ingredientes
+                </button>
+              )}
+            </div>
           </div>
         </div>
       </div>
     );
   }
 
-  /* ── Fase: personalización ── */
-  if (phase === 'customize' && chosenSlot !== null) {
-    const hasGroups = room.groups.length > 0 && room.groups.some(g => (g.options || g.items || []).length > 0);
-    const hasSinGroups = room.groups.some((g: any) => /\bsin\b/i.test(String(g.name || g.title || '')));
-
-    const isMinimumsMet = room.groups.every((group: any, gIdx: number) => {
-      const isSinGroup = /\bsin\b/i.test(String(group.name || group.title || ''));
-      if (isSinGroup) return true; // Exclusiones son opcionales
-      const min = group.minItems ?? group.min ?? (group.required ? 1 : (group.selectType === 'SINGLE' && group.pricingRole === 'BASE' ? 1 : 0));
-      if (min <= 0) return true;
-      const selection = localVariants[String(gIdx)] || [];
-      const totalCount = selection.reduce((acc: number, curr: any) => acc + (curr.count || 0), 0);
-      return totalCount >= min;
-    });
-
+  if (phase === 'customize') {
+    const hasSinGroups = (room.groups || []).some((g: any) => /\bsin\b/i.test(String(g.name || g.title || '')));
     return (
       <div className="min-h-screen bg-slate-50 flex flex-col">
-        {/* Header */}
         <div className="bg-white border-b border-slate-100 px-4 py-3 flex items-center gap-3 shadow-sm">
-          <button type="button" onClick={() => setPhase('pick-slot')} className="w-8 h-8 rounded-full border border-slate-200 flex items-center justify-center text-slate-500 hover:bg-slate-50 cursor-pointer shrink-0">
+          <button type="button" onClick={() => setPhase('pick')} className="w-8 h-8 rounded-full border border-slate-200 flex items-center justify-center text-slate-500 hover:bg-slate-50 cursor-pointer shrink-0">
             <svg className="w-4 h-4" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}><path strokeLinecap="round" strokeLinejoin="round" d="M15 19l-7-7 7-7" /></svg>
           </button>
           <div className="min-w-0 flex-1">
-            <p className="text-[10px] font-bold text-[#fe6712] uppercase tracking-wider">{slotLabel(chosenSlot)} · {guestName}</p>
+            <p className="text-[10px] font-bold text-[#fe6712] uppercase tracking-wider">{qty} {qty > 1 ? 'Unidades' : 'Unidad'} · {guestName}</p>
             <h1 className="text-sm font-black text-slate-900 truncate">{room.productName}</h1>
           </div>
         </div>
 
         <div className="flex-1 px-4 py-5 space-y-5 overflow-y-auto max-w-md mx-auto w-full pb-32">
-          {!hasGroups && (
-            <div className="bg-sky-50 border border-sky-200 rounded-2xl p-4 text-center">
-              <p className="text-sm font-bold text-sky-700">Este combo no requiere personalización extra.</p>
-              <p className="text-xs text-sky-500 mt-1">Puedes guardar tu ítem directamente.</p>
-            </div>
-          )}
-
-          {hasGroups && room.groups.map((group: any, gIdx: number) => {
-            const opts: any[] = group.options || group.items || [];
-            if (!opts.length) return null;
-            const isSinGroup = /\bsin\b/i.test(String(group.name || group.title || ''));
-            if (isSinGroup) return null;
-
-            const isCheckin = group.selectType === 'CHECKIN' || Boolean(group.checkbox);
-            const isMultiple = group.selectType === 'MULTIPLE' || group.selectType === 'CHECKIN';
-            const isSingle = !isMultiple;
-
-            return (
-              <div key={gIdx} className="space-y-2.5">
-                <div>
-                  <h3 className="text-xs font-black text-slate-900 uppercase tracking-wider">{group.title || group.name}</h3>
-                  <p className="text-[11px] text-slate-500 font-medium">{group.subtitle || (isSingle ? 'Elige una opción' : 'Ajusta cantidades')}</p>
-                </div>
-                <div className="space-y-2">
-                  {opts.map((opt: any) => {
-                    const list = localVariants[String(gIdx)] || [];
-                    const item = list.find((it: any) => (it.code || it.id) === (opt.code || opt.id));
-                    const count = item?.count || 0;
-                    const priceLabel = opt.price > 0 ? `+$${Number(opt.price).toFixed(2)}` : null;
-
-                    return (
-                      <OptionCapsule
-                        key={opt.code || opt.id}
-                        name={opt.name || opt.title || opt.label || 'Opción'}
-                        image={opt.image || opt.img}
-                        priceLabel={priceLabel}
-                        count={count}
-                        mode={isSingle || isCheckin ? 'single' : 'counter'}
-                        onSelect={() => isSingle ? handleSingleSelect(gIdx, opt.code || opt.id) : handleOptionCount(gIdx, opt.code || opt.id, count > 0 ? -1 : 1)}
-                        onIncrement={() => handleOptionCount(gIdx, opt.code || opt.id, 1)}
-                        onDecrement={() => handleOptionCount(gIdx, opt.code || opt.id, -1)}
-                      />
-                    );
-                  })}
-                </div>
-              </div>
-            );
-          })}
-
-          {/* Exclusiones tipo SIN */}
           {hasSinGroups && (
-            <div className="space-y-2">
-              <p className="text-xs font-black text-slate-900 uppercase tracking-wider">Quitar ingredientes (opcional)</p>
+            <div className="space-y-3">
+              <p className="text-xs font-black text-slate-900 uppercase tracking-wider">Quitar ingredientes</p>
               <div className="grid grid-cols-2 gap-2">
-                {room.groups
+                {(room.groups || [])
                   .filter((g: any) => /\bsin\b/i.test(String(g.name || g.title || '')))
                   .flatMap((g: any) => g.options || g.items || [])
                   .map((opt: any) => {
                     const label = opt.name || opt.title || '';
                     const selected = localExclusions.includes(label);
                     return (
-                      <label key={label} className={`flex items-center gap-2 p-2.5 rounded-xl border text-xs font-bold cursor-pointer transition ${selected ? 'bg-red-50 border-red-200 text-red-700' : 'bg-white border-slate-200 text-slate-700 hover:border-orange-300'}`}>
+                      <label key={label} className={`flex items-center gap-2 p-3 rounded-xl border text-xs font-bold cursor-pointer transition shadow-sm ${selected ? 'bg-red-50 border-red-200 text-red-700' : 'bg-white border-slate-200 text-slate-700 hover:border-orange-300'}`}>
                         <input
                           type="checkbox"
                           checked={selected}
                           onChange={() => setLocalExclusions(prev => selected ? prev.filter(e => e !== label) : [...prev, label])}
-                          className="w-3.5 h-3.5 accent-[#fe6712] rounded cursor-pointer"
+                          className="w-4 h-4 accent-[#fe6712] rounded cursor-pointer"
                         />
                         <span className={selected ? 'line-through opacity-70' : ''}>{label}</span>
                       </label>
@@ -549,56 +482,62 @@ export default function ComboRoomPage({ params }: { params: { id: string } }) {
           )}
         </div>
 
-        {/* Footer Sticky */}
         <div className="sticky bottom-0 bg-white border-t border-slate-100 px-4 py-3.5 shadow-md space-y-2 pb-[max(0.875rem,env(safe-area-inset-bottom))]">
           {saveError && <p className="text-xs font-bold text-red-600 text-center">{saveError}</p>}
-          {!isMinimumsMet && <p className="text-xs font-bold text-slate-500 text-center">Completa las opciones requeridas para confirmar.</p>}
           <button
             type="button"
-            onClick={handleSave}
-            disabled={saving || !isMinimumsMet || !guestName.trim()}
+            onClick={handleSaveCustom}
+            disabled={saving}
             className="w-full bg-[#fe6712] hover:bg-[#e0580d] disabled:bg-slate-300 disabled:cursor-not-allowed text-white font-black py-3.5 rounded-2xl text-sm flex items-center justify-center gap-2 transition active:scale-[0.98] cursor-pointer"
           >
-            {saving ? (
-              <><div className="w-4 h-4 border-2 border-white border-t-transparent rounded-full animate-spin" /> Guardando…</>
-            ) : (
-              <>
-                <svg className="w-4 h-4" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}>
-                  <path strokeLinecap="round" strokeLinejoin="round" d="M5 13l4 4L19 7" />
-                </svg>
-                Confirmar mi ítem
-              </>
-            )}
+            {saving ? 'Guardando...' : 'Confirmar selección'}
           </button>
         </div>
       </div>
     );
   }
 
-  /* ── Fase: hecho ── */
-  return (
-    <div className="min-h-screen bg-slate-50 flex flex-col items-center justify-center px-4">
-      <div className="bg-white rounded-3xl p-8 shadow-xl max-w-sm w-full text-center space-y-5">
-        <div className="w-16 h-16 bg-emerald-50 rounded-2xl flex items-center justify-center mx-auto">
-          <svg className="w-8 h-8 text-emerald-500" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}>
-            <path strokeLinecap="round" strokeLinejoin="round" d="M9 12l2 2 4-4m6 2a9 9 0 11-18 0 9 9 0 0118 0z" />
-          </svg>
+  if (phase === 'done' && myClaim) {
+    return (
+      <div className="min-h-screen bg-slate-50 flex flex-col items-center justify-center px-4">
+        <div className="bg-white rounded-3xl p-8 shadow-xl max-w-sm w-full space-y-6">
+          <div className="text-center space-y-3">
+            <div className="w-16 h-16 bg-emerald-50 rounded-2xl flex items-center justify-center mx-auto">
+              <svg className="w-8 h-8 text-emerald-500" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}><path strokeLinecap="round" strokeLinejoin="round" d="M9 12l2 2 4-4m6 2a9 9 0 11-18 0 9 9 0 0118 0z" /></svg>
+            </div>
+            <div>
+              <h2 className="text-xl font-black text-slate-900">¡Listo, {guestName}!</h2>
+              <p className="text-sm text-slate-500 mt-1">El anfitrión ha recibido tu pedido.</p>
+            </div>
+          </div>
+
+          <div className="bg-slate-50 rounded-2xl p-4 space-y-3 border border-slate-200">
+            <div>
+              <p className="text-[10px] font-black text-slate-400 uppercase tracking-wider mb-1">Tu Ticket</p>
+              <p className="text-sm font-black text-slate-800">{myClaim.unitsCount}x {room.productName}</p>
+              {myClaim.exclusions.length > 0 ? (
+                <p className="text-xs text-red-500 font-bold mt-1.5">Sin: {myClaim.exclusions.join(', ')}</p>
+              ) : (
+                <p className="text-xs text-emerald-600 font-bold mt-1.5">Con Todo</p>
+              )}
+            </div>
+            <div className="pt-3 border-t border-slate-200 flex items-center justify-between">
+              <span className="text-xs font-black text-slate-500 uppercase">Total a pagar:</span>
+              <span className="text-lg font-black text-slate-900">${myClaim.subtotalUsd.toFixed(2)}</span>
+            </div>
+          </div>
+          
+          <button
+            onClick={handleCopyPayment}
+            className="w-full bg-slate-900 hover:bg-slate-800 text-white font-black py-3.5 rounded-xl text-sm flex items-center justify-center gap-2 transition active:scale-[0.98] shadow-md cursor-pointer"
+          >
+            <svg className="w-4 h-4" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}><path strokeLinecap="round" strokeLinejoin="round" d="M8 5H6a2 2 0 00-2 2v12a2 2 0 002 2h10a2 2 0 002-2v-1M8 5a2 2 0 002 2h2a2 2 0 002-2M8 5a2 2 0 012-2h2a2 2 0 012 2m0 0h2a2 2 0 012 2v3m2 4H10m0 0l3-3m-3 3l3 3" /></svg>
+            Copiar datos de pago para el Anfitrión
+          </button>
         </div>
-        <div>
-          <h2 className="text-xl font-black text-slate-900">¡Listo, {guestName}!</h2>
-          <p className="text-sm text-slate-500 mt-1">Tu selección quedó guardada. El anfitrión verá tu ítem y completará el pedido.</p>
-        </div>
-        <div className="bg-slate-50 rounded-2xl p-4 text-left space-y-1.5 border border-slate-100">
-          <p className="text-[10px] font-black text-slate-400 uppercase tracking-wider">Tu ítem</p>
-          <p className="text-sm font-black text-slate-800">{slotLabel(chosenSlot!)} — {room.productName}</p>
-          {room.slots[chosenSlot!]?.completedAt && (
-            <p className="text-[11px] text-slate-500">
-              Confirmado: {new Date(room.slots[chosenSlot!].completedAt!).toLocaleTimeString('es-VE', { hour: '2-digit', minute: '2-digit' })}
-            </p>
-          )}
-        </div>
-        <p className="text-xs text-slate-400">Puedes cerrar esta pantalla. El anfitrión recibirá tu pedido en tiempo real.</p>
       </div>
-    </div>
-  );
+    );
+  }
+
+  return null;
 }

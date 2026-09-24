@@ -2,29 +2,32 @@ import { NextRequest, NextResponse } from 'next/server';
 import { db } from '@/lib/firebase';
 import { doc, getDoc, setDoc, updateDoc } from 'firebase/firestore';
 
-interface ComboSlotState {
-  slotIndex: number;
-  guestName: string;
-  selectedVariants: Record<string, any>;
+export interface ParticipantClaim {
+  id: string;
+  name: string;
+  unitsCount: number;
   exclusions: string[];
+  selectedVariants: Record<string, any>;
+  subtotalUsd: number;
+  isHost: boolean;
   completedAt: string | null;
 }
 
-interface ComboRoom {
+export interface ComboRoomData {
   id: string;
   productId: string | number;
   productName: string;
   storeName: string;
   storeCode: string;
-  totalSlots: number;
-  groups: any[];
-  slots: ComboSlotState[];
+  totalUnits: number;
+  unitPriceUsd: number;
+  claimedUnits: number;
+  participants: ParticipantClaim[];
   createdAt: string;
   hostName: string;
 }
 
 function generateRoomId(): string {
-  // Código corto legible: PANA-XXXX
   const randomChars = Math.random().toString(36).slice(2, 6).toUpperCase();
   return `PANA-${randomChars}`;
 }
@@ -42,7 +45,7 @@ export async function GET(
       return NextResponse.json({ ok: false, error: 'Sala no encontrada' }, { status: 404 });
     }
 
-    return NextResponse.json({ ok: true, room: docSnap.data() as ComboRoom });
+    return NextResponse.json({ ok: true, room: docSnap.data() as ComboRoomData });
   } catch (error) {
     return NextResponse.json({ ok: false, error: 'Error al consultar la sala' }, { status: 500 });
   }
@@ -60,51 +63,53 @@ export async function POST(
       productName,
       storeName,
       storeCode,
-      totalSlots,
+      totalUnits,
+      unitPriceUsd,
       hostName,
+      hostUnitsCount,
       hostSelectedVariants,
       hostExclusions,
     } = body;
 
-    if (!productId || !productName || !totalSlots || totalSlots < 1 || totalSlots > 50) {
+    if (!productId || !productName || !totalUnits || totalUnits < 1) {
       return NextResponse.json({ ok: false, error: 'Parámetros inválidos' }, { status: 400 });
     }
 
-    const slots: ComboSlotState[] = Array.from({ length: totalSlots }, (_, i) => ({
-      slotIndex: i,
-      guestName: i === 0 ? (hostName || 'Anfitrión') : '',
-      selectedVariants: i === 0 ? (hostSelectedVariants || {}) : {},
-      exclusions: i === 0 ? (Array.isArray(hostExclusions) ? hostExclusions : []) : [],
-      completedAt: i === 0 ? new Date().toISOString() : null,
-    }));
+    const hostClaim: ParticipantClaim = {
+      id: 'host',
+      name: hostName || 'Anfitrión',
+      unitsCount: hostUnitsCount || 0,
+      exclusions: Array.isArray(hostExclusions) ? hostExclusions : [],
+      selectedVariants: hostSelectedVariants || {},
+      subtotalUsd: (hostUnitsCount || 0) * (unitPriceUsd || 0),
+      isHost: true,
+      completedAt: new Date().toISOString(),
+    };
 
-    // Generar un ID hasta que no exista colisión
     let finalId = params.id === 'new' ? generateRoomId() : (params.id || generateRoomId());
     
-    // Validar si ya existe en Firestore
     const docRef = doc(db, 'comboRooms', finalId);
     const docSnap = await getDoc(docRef);
     if (docSnap.exists() && params.id !== 'new') {
       return NextResponse.json({ ok: false, error: 'Sala ya existe' }, { status: 409 });
     } else if (docSnap.exists()) {
-      // Si fue autogenerado y colisionó (muy raro), generamos otro
       finalId = generateRoomId();
     }
 
-    const room: ComboRoom = {
+    const room: ComboRoomData = {
       id: finalId,
       productId,
       productName,
       storeName: storeName || '',
       storeCode: storeCode || '',
-      totalSlots,
-      groups: [], // Eliminado para hacer el estado ligero
-      slots,
+      totalUnits,
+      unitPriceUsd: unitPriceUsd || 0,
+      claimedUnits: hostClaim.unitsCount,
+      participants: hostClaim.unitsCount > 0 ? [hostClaim] : [],
       createdAt: new Date().toISOString(),
       hostName: hostName || 'Anfitrión',
     };
 
-    // Guardar en Firestore
     await setDoc(doc(db, 'comboRooms', finalId), room);
 
     return NextResponse.json({ ok: true, room }, { status: 201 });
@@ -113,7 +118,7 @@ export async function POST(
   }
 }
 
-/* ─── PUT — asignar ranura ───────────────────────────────────────────────── */
+/* ─── PUT — asignar/unirse a sala ───────────────────────────────────────────────── */
 export async function PUT(
   req: NextRequest,
   { params }: { params: { id: string } }
@@ -126,39 +131,40 @@ export async function PUT(
       return NextResponse.json({ ok: false, error: 'Sala no encontrada' }, { status: 404 });
     }
 
-    const room = docSnap.data() as ComboRoom;
+    const room = docSnap.data() as ComboRoomData;
     const body = await req.json();
-    const { slotIndex, guestName, selectedVariants, exclusions } = body;
+    const { name, unitsCount, selectedVariants, exclusions } = body;
 
-    if (typeof slotIndex !== 'number' || slotIndex < 0 || slotIndex >= room.totalSlots) {
-      return NextResponse.json({ ok: false, error: 'Ranura inválida' }, { status: 400 });
-    }
-
-    if (!guestName || String(guestName).trim().length === 0) {
+    if (!name || String(name).trim().length === 0) {
       return NextResponse.json({ ok: false, error: 'Se requiere un nombre' }, { status: 400 });
     }
-
-    const slot = room.slots[slotIndex];
-    if (slotIndex > 0 && slot.guestName && slot.guestName !== guestName) {
-      return NextResponse.json(
-        { ok: false, error: 'Ranura ya tomada por otro participante' },
-        { status: 409 }
-      );
+    
+    if (typeof unitsCount !== 'number' || unitsCount < 1) {
+      return NextResponse.json({ ok: false, error: 'Cantidad inválida' }, { status: 400 });
     }
 
-    room.slots[slotIndex] = {
-      ...slot,
-      guestName: String(guestName).trim(),
-      selectedVariants: selectedVariants || {},
+    if (room.claimedUnits + unitsCount > room.totalUnits) {
+      return NextResponse.json({ ok: false, error: 'No hay suficientes unidades disponibles' }, { status: 409 });
+    }
+
+    const newClaim: ParticipantClaim = {
+      id: Math.random().toString(36).slice(2, 9),
+      name: String(name).trim(),
+      unitsCount,
       exclusions: Array.isArray(exclusions) ? exclusions : [],
+      selectedVariants: selectedVariants || {},
+      subtotalUsd: unitsCount * room.unitPriceUsd,
+      isHost: false,
       completedAt: new Date().toISOString(),
     };
 
-    // Actualizar en Firestore
-    await updateDoc(docRef, { slots: room.slots });
+    room.participants.push(newClaim);
+    room.claimedUnits += unitsCount;
+
+    await updateDoc(docRef, { participants: room.participants, claimedUnits: room.claimedUnits });
 
     return NextResponse.json({ ok: true, room });
   } catch (error) {
-    return NextResponse.json({ ok: false, error: 'Error al actualizar la ranura' }, { status: 500 });
+    return NextResponse.json({ ok: false, error: 'Error al unirse a la sala' }, { status: 500 });
   }
 }

@@ -192,7 +192,8 @@ export default function MasterProductModal({
 
   // ── Pedido Colaborativo ("Armar Combo con Amigos en Vivo") ─────────────────
   const [comboRoomId, setComboRoomId] = useState<string | null>(null);
-  const [comboRoomSlots, setComboRoomSlots] = useState<any[]>([]);
+  const [comboRoomData, setComboRoomData] = useState<any>(null);
+    const [viewMode, setViewMode] = useState<'options' | 'customize' | 'comboRoom'>('options');
   const [showComboPanel, setShowComboPanel] = useState(false);
   const [comboCreating, setComboCreating] = useState(false);
   const [comboCopied, setComboCopied] = useState(false);
@@ -342,7 +343,7 @@ export default function MasterProductModal({
   );
 
   const [isSlotCustomizationActive, setIsSlotCustomizationActive] = useState<boolean>(false);
-  const isSlotMode = hasSinVariant && (isCombo || (qty > 1 && isSlotCustomizationActive));
+  const isSlotMode = false;
   // Nombre visible de cada unidad: el del producto ("Perro Sencillo #1"), nunca la palabra genérica "Ranura"
   const unitLabel = product?.name || 'Unidad';
 
@@ -411,7 +412,8 @@ export default function MasterProductModal({
       // Limpiar sala colaborativa al cerrar el modal
       if (comboPollingRef.current) clearInterval(comboPollingRef.current);
       setComboRoomId(null);
-      setComboRoomSlots([]);
+      setComboRoomData(null);
+        setViewMode('options');
       setShowComboPanel(false);
       setComboCreating(false);
       setComboCopied(false);
@@ -654,7 +656,7 @@ export default function MasterProductModal({
         }
       });
     } else {
-      const targetSlots = (showComboPanel && comboRoomSlots.length > 0 && comboRoomSlots.every(s => !!s.completedAt)) ? comboRoomSlots : slots; targetSlots.forEach((slot: any) => {
+      const targetSlots = slots; targetSlots.forEach((slot: any) => {
         Object.entries(slot.selectedVariants).forEach(([groupIdx, selection]: [string, any]) => {
           if (!selection) return;
           const isBaseGroup = availableGroups[Number(groupIdx)]?.pricingRole === 'BASE';
@@ -681,7 +683,7 @@ export default function MasterProductModal({
       totalSlotVariantsPrice: slotVariantsExtra,
       totalUpsells: upsellsExtra
     };
-  }, [product, selectedVariants, slots, isSlotMode, upsellSelections, availableGroups, showComboPanel, comboRoomSlots]);
+  }, [product, selectedVariants, slots, isSlotMode, upsellSelections, availableGroups, showComboPanel, comboRoomData]);
 
   const totalCalculated = useMemo(() => {
     if (isSlotMode) {
@@ -715,7 +717,47 @@ export default function MasterProductModal({
     if (!product) return;
     const breakdown: string[] = [];
 
-    const activeSlots = (showComboPanel && comboAllDone) ? comboRoomSlots : slots;
+    if (viewMode === 'comboRoom' && comboRoomData) {
+      let totalCartPrice = 0;
+      breakdown.push(`Pedido entre panas: ${comboRoomData.productName} (${comboRoomData.totalUnits} unidades)`);
+      comboRoomData.participants.forEach((p: any) => {
+        totalCartPrice += p.subtotalUsd;
+        const participantParts: string[] = [];
+        
+        if (p.exclusions && p.exclusions.length > 0) {
+          participantParts.push(`Sin ${p.exclusions.join(', ')}`);
+        } else {
+          participantParts.push('Con Todo');
+        }
+        Object.values(p.selectedVariants || {}).forEach((sel: any) => {
+           if (Array.isArray(sel)) {
+             sel.forEach((item: any) => {
+               if (item.count > 0) participantParts.push(`${item.count}x ${item.name}`);
+             });
+           } else if (sel.name) {
+             participantParts.push(sel.name);
+           }
+        });
+        
+        breakdown.push(`${p.name} (${p.unitsCount}x): ${participantParts.join(', ')}`);
+      });
+      
+      onAddToCart({
+        productCode: String(product.id || product.code),
+        productName: product.name,
+        qty: qty,
+        quantity: qty,
+        totalPrice: totalCartPrice,
+        totalUSD: totalCartPrice,
+        summaryText: breakdown.join(' | '),
+        breakdown: breakdown
+      });
+      if (typeof window !== 'undefined') window.localStorage.removeItem('duna_pedido_amigos_active');
+      onClose();
+      return;
+    }
+
+    const activeSlots = slots;
 
     if (isSlotMode) {
       if (isCombo) {
@@ -725,7 +767,7 @@ export default function MasterProductModal({
       }
 
       activeSlots.forEach((slot, idx) => {
-        const slotTitle = slot.guestName?.trim() || slot.name?.trim() || '';
+        const slotTitle = slot.name?.trim() || '';
         // Encabezado legible: "Perro Sencillo #1 (omar)" (nombre del producto + número de unidad + nombre opcional)
         const slotHeader = `${product.name || 'Unidad'} #${idx + 1}${slotTitle ? ` (${slotTitle})` : ''}`;
         const slotParts: string[] = [];
@@ -857,6 +899,9 @@ export default function MasterProductModal({
     setComboCreating(true);
     try {
       const tempId = "new";
+      const totalUnits = (baseSlotCount > 1 ? baseSlotCount : 1) * qty;
+      const unitPriceUsd = totalCalculated / totalUnits;
+      
       const res = await fetch(`/api/combo/${tempId}`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
@@ -865,40 +910,41 @@ export default function MasterProductModal({
           productName: product.name || 'Producto',
           storeName: store?.name || '',
           storeCode: store?.code || '',
-          totalSlots: qty > 1 ? qty : (baseSlotCount > 1 ? baseSlotCount : qty),
+          totalUnits,
+          unitPriceUsd,
           hostName: 'Anfitrión',
+          hostUnitsCount: Math.min(totalUnits, 1),
           hostSelectedVariants: selectedVariants,
           hostExclusions: selectedExclusions,
         }),
       });
       const data = await res.json();
-          if (data.ok) {
-          const finalRoomId = data.room.id;
-          setComboRoomId(finalRoomId);
-          setComboRoomSlots(data.room.slots || []);
-          setShowComboPanel(true);
-          // Persistir sala activa para la barra flotante global
-          if (typeof window !== 'undefined') {
-            window.localStorage.setItem('duna_pedido_amigos_active', JSON.stringify({
-              roomId: finalRoomId,
-              storeSlug: store?.code || '',
-              storeName: store?.name || '',
-              productName: product?.name || '',
-              isHost: true,
-              createdAt: Date.now(),
-              status: 'ACTIVE',
-            }));
-          }
-          // Polling cada 2 s
-          if (comboPollingRef.current) clearInterval(comboPollingRef.current);
-          comboPollingRef.current = setInterval(async () => {
-            try {
-              const pr = await fetch(`/api/combo/${finalRoomId}`);
-              const pd = await pr.json();
-              if (pd.ok) setComboRoomSlots(pd.room.slots || []);
-            } catch { /* silent */ }
-          }, 2000);
+      if (data.ok) {
+        const finalRoomId = data.room.id;
+        setComboRoomId(finalRoomId);
+        setComboRoomData(data.room);
+        setShowComboPanel(true);
+        setViewMode('comboRoom');
+        if (typeof window !== 'undefined') {
+          window.localStorage.setItem('duna_pedido_amigos_active', JSON.stringify({
+            roomId: finalRoomId,
+            storeSlug: store?.code || '',
+            storeName: store?.name || '',
+            productName: product?.name || '',
+            isHost: true,
+            createdAt: Date.now(),
+            status: 'ACTIVE',
+          }));
         }
+        if (comboPollingRef.current) clearInterval(comboPollingRef.current);
+        comboPollingRef.current = setInterval(async () => {
+          try {
+            const pr = await fetch(`/api/combo/${finalRoomId}`);
+            const pd = await pr.json();
+            if (pd.ok) setComboRoomData(pd.room);
+          } catch { /* silent */ }
+        }, 2000);
+      }
     } catch { /* silent */ } finally {
       setComboCreating(false);
     }
@@ -908,7 +954,7 @@ export default function MasterProductModal({
     ? (typeof window !== 'undefined' ? `${window.location.origin}/combo/${comboRoomId}` : `/combo/${comboRoomId}`)
     : '';
 
-  const comboAllDone = comboRoomSlots.length > 0 && comboRoomSlots.every(s => !!s.completedAt);
+  const comboAllDone = comboRoomData && comboRoomData.claimedUnits >= comboRoomData.totalUnits;
 
   const handleCopyComboLink = () => {
     if (!comboLink) return;
@@ -947,7 +993,108 @@ export default function MasterProductModal({
       )}
 
       {/* Variantes Globales: selección única (SINGLE, ej. Tamaño) o contadores (MULTIPLE, ej. Sabores) */}
-      {!isSlotMode && availableGroups.map((group: any, gIdx: number) => (
+            {viewMode === 'options' && (
+        <div className="space-y-3 pb-3 border-b border-gray-100">
+          <h4 className="text-xs font-black text-slate-900 uppercase tracking-wider">¿Cómo deseas pedir este combo?</h4>
+          
+          <button
+            onClick={() => {
+              availableGroups.forEach((g: any, gIndex: number) => {
+                const min = g.minItems ?? g.min ?? (g.required ? 1 : 0);
+                if (min > 0 && g.options?.length > 0) {
+                  if (g.selectType === 'SINGLE') {
+                    handleGlobalSingleSelect(gIndex, g.options[0].code || g.options[0].id);
+                  } else {
+                    handleGlobalOptionQuantityChange(gIndex, g.options[0].code || g.options[0].id, min);
+                  }
+                }
+              });
+              handleAddToCart();
+            }}
+            className="w-full bg-slate-100 hover:bg-slate-200 border border-slate-200 text-slate-800 font-black py-4 px-4 rounded-xl text-sm transition text-left flex items-center justify-between group cursor-pointer"
+          >
+            <div>
+              <span className="block">🚀 Pedir combo estándar</span>
+              <span className="text-[11px] text-slate-500 font-medium">Sale con todo, rápido y directo.</span>
+            </div>
+            <ArrowRight className="w-4 h-4 text-slate-400 group-hover:text-slate-700" />
+          </button>
+
+          <button
+            onClick={createComboRoom}
+            className="w-full bg-[#FE6712] hover:bg-[#E05509] text-white font-black py-4 px-4 rounded-xl text-sm transition text-left flex items-center justify-between shadow-md cursor-pointer"
+          >
+            <div>
+              <span className="block">👥 Iniciar Pedido entre panas</span>
+              <span className="text-[11px] text-orange-100 font-medium">Arma el combo con tus amigos por WhatsApp.</span>
+            </div>
+            <svg className="w-5 h-5" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}><path strokeLinecap="round" strokeLinejoin="round" d="M17 20h5v-2a3 3 0 00-5.356-1.857M17 20H7m10 0v-2c0-.656-.126-1.283-.356-1.857M7 20H2v-2a3 3 0 015.356-1.857M7 20v-2c0-.656.126-1.283.356-1.857m0 0a5.002 5.002 0 019.288 0M15 7a3 3 0 11-6 0 3 3 0 016 0z" /></svg>
+          </button>
+
+          <button
+            onClick={() => setViewMode('customize')}
+            className="w-full bg-white hover:bg-slate-50 border border-slate-200 text-slate-700 font-black py-4 px-4 rounded-xl text-sm transition text-left flex items-center justify-between group cursor-pointer"
+          >
+            <div>
+              <span className="block">⚙️ Personalizar en esta pantalla</span>
+              <span className="text-[11px] text-slate-500 font-medium">Ajusta ingredientes y sabores a tu gusto.</span>
+            </div>
+            <ArrowRight className="w-4 h-4 text-slate-400 group-hover:text-slate-700" />
+          </button>
+        </div>
+      )}
+
+      {viewMode === 'comboRoom' && comboRoomData && (
+        <div className="pb-4 border-b border-gray-100 space-y-4">
+          <div className="bg-orange-50/50 border border-orange-200 rounded-2xl p-4">
+            <div className="flex items-center justify-between mb-3">
+              <h4 className="text-xs font-black text-slate-900 uppercase tracking-wider">Monitor en Vivo</h4>
+              <div className="flex items-center gap-1">
+                <span className="w-2 h-2 rounded-full bg-[#FE6712] animate-pulse"></span>
+                <span className="text-[10px] font-bold text-orange-700">En curso</span>
+              </div>
+            </div>
+            
+            <div className="space-y-1 mb-4">
+              <div className="flex justify-between text-[11px] font-bold text-slate-700">
+                <span>Progreso del pozo</span>
+                <span>{comboRoomData.claimedUnits} / {comboRoomData.totalUnits} u</span>
+              </div>
+              <div className="h-2 w-full bg-slate-200 rounded-full overflow-hidden">
+                <div className="h-full bg-[#FE6712] transition-all" style={{ width: `${(comboRoomData.claimedUnits / comboRoomData.totalUnits) * 100}%` }}></div>
+              </div>
+            </div>
+
+            <div className="space-y-2">
+              <p className="text-[10px] font-black text-slate-400 uppercase">Participantes</p>
+              {comboRoomData.participants.map((p: any) => (
+                <div key={p.id} className="flex items-center justify-between bg-white border border-slate-200 rounded-xl px-3 py-2 shadow-sm">
+                  <div className="min-w-0">
+                    <p className="text-xs font-bold text-slate-800 truncate">{p.name} {p.isHost && '(Anfitrión)'}</p>
+                    <p className="text-[10px] text-slate-500 font-medium">{p.unitsCount}x unidades · {p.exclusions.length > 0 ? `Sin ${p.exclusions.join(', ')}` : 'Con Todo'}</p>
+                  </div>
+                  <div className="text-right shrink-0 ml-2">
+                    <p className="text-xs font-black text-slate-900">${p.subtotalUsd.toFixed(2)}</p>
+                  </div>
+                </div>
+              ))}
+            </div>
+            
+            <div className="mt-4 pt-3 border-t border-orange-200/60">
+              <p className="text-xs text-slate-600 font-medium text-center mb-2">Envía el link a tus panas para que se sumen</p>
+              <button
+                onClick={handleCopyComboLink}
+                className="w-full bg-white hover:bg-orange-100 border border-orange-300 text-orange-700 font-black py-2.5 px-4 rounded-xl text-xs transition cursor-pointer flex items-center justify-center gap-2"
+              >
+                <svg className="w-4 h-4" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}><path strokeLinecap="round" strokeLinejoin="round" d="M8 16H6a2 2 0 01-2-2V6a2 2 0 012-2h8a2 2 0 012 2v2m-6 12h8a2 2 0 002-2v-8a2 2 0 00-2-2h-8a2 2 0 00-2 2v8a2 2 0 002 2z" /></svg>
+                {comboCopied ? '¡Link copiado!' : 'Copiar Link'}
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {(!isCombo || viewMode === 'customize') && availableGroups.map((group: any, gIdx: number) => (
         <div key={gIdx} className="pb-3 border-b border-gray-100 space-y-2">
           <div>
             <h4 className="text-xs font-black text-slate-900 uppercase tracking-wider">{group.title}</h4>
@@ -1696,7 +1843,7 @@ export default function MasterProductModal({
         <div className="sticky bottom-0 bg-white border-t border-slate-100 z-30 shrink-0 shadow-md pb-[max(0.75rem,env(safe-area-inset-bottom))]">
 
           {/* ── Panel Colaborativo (visible cuando la sala está activa) ───── */}
-          {hasVariants && showComboPanel && comboRoomId && (
+          {(false) && (
             <div className="border-b border-slate-100 px-4 py-3 space-y-3 bg-orange-50/40">
               {/* Cabecera del panel */}
               <div className="flex items-center justify-between">
@@ -1713,13 +1860,13 @@ export default function MasterProductModal({
                 </div>
                 {/* Indicador de estado */}
                 <span className={`text-[10px] font-black px-2 py-0.5 rounded-full border ${comboAllDone ? 'bg-emerald-50 text-emerald-700 border-emerald-200' : 'bg-amber-50 text-amber-700 border-amber-200'}`}>
-                  {comboRoomSlots.filter(s => !!s.completedAt).length}/{comboRoomSlots.length} listos
+                  {([]).filter(s => !!(s as any).completedAt).length}/{([]).length} listos
                 </span>
               </div>
 
               {/* Lista de ranuras */}
               <div className="grid grid-cols-2 gap-1.5">
-                {comboRoomSlots.map((slot: any, i: number) => (
+                {([]).map((slot: any, i: number) => (
                   <div key={i} className={`flex items-center gap-1.5 rounded-lg border px-2 py-1.5 ${slot.completedAt ? 'border-emerald-200 bg-emerald-50' : 'border-slate-200 bg-white'}`}>
                     <span className={`text-[10px] font-black px-1 py-0.5 rounded ${slot.completedAt ? 'bg-emerald-500 text-white' : 'bg-slate-200 text-slate-500'}`}>{i + 1}</span>
                     <span className={`text-[11px] font-bold truncate ${slot.completedAt ? 'text-emerald-700' : 'text-slate-400'}`}>
@@ -1783,7 +1930,7 @@ export default function MasterProductModal({
 
               <div className="flex flex-col gap-2 flex-1 items-end">
                 {/* Botón "Armar con Amigos" — solo en productos con variantes, paso 1, sin upsells */}
-                {hasVariants && step === 1 && !showComboPanel && (
+                {(false) && (
                   <button
                     type="button"
                     onClick={createComboRoom}
@@ -1827,20 +1974,20 @@ export default function MasterProductModal({
                     )}
                     <button
                       onClick={handleAddToCart}
-                      disabled={!isMinimumsMet || (showComboPanel && !comboAllDone)}
+                      disabled={!isMinimumsMet || (viewMode === 'comboRoom' && !comboAllDone)}
                       className={`flex flex-1 items-center justify-center gap-2 rounded-xl px-4 py-2.5 text-xs sm:text-sm font-bold shadow-md transition-all active:scale-[0.98] ${
-                        isMinimumsMet && !(showComboPanel && !comboAllDone)
+                        isMinimumsMet && !(viewMode === 'comboRoom' && !comboAllDone)
                           ? 'bg-[#fe6712] hover:bg-[#e05509] text-white cursor-pointer'
                           : 'bg-slate-300 text-slate-500 cursor-not-allowed shadow-none'
                       }`}
                     >
-                      <svg className={`w-4 h-4 ${isMinimumsMet && !(showComboPanel && !comboAllDone) ? 'text-white' : 'text-slate-400'}`} fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}>
+                      <svg className={`w-4 h-4 ${isMinimumsMet && !(viewMode === 'comboRoom' && !comboAllDone) ? 'text-white' : 'text-slate-400'}`} fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}>
                         <path strokeLinecap="round" strokeLinejoin="round" d="M3 3h2l.4 2M7 13h10l4-8H5.4M7 13L5.4 5M7 13l-2.293 2.293c-.63.63-.184 1.707.707 1.707H17m0 0a2 2 0 100 4 2 2 0 000-4zm-8 2a2 2 0 11-4 0 2 2 0 014 0z" />
                       </svg>
                       <span>
-                        {showComboPanel && !comboAllDone
+                        {viewMode === 'comboRoom' && !comboAllDone
                           ? 'Esperando amigos…'
-                          : (showComboPanel && comboAllDone)
+                          : (viewMode === 'comboRoom' && comboAllDone)
                           ? `Agregar combo al carrito ($${totalCalculated.toFixed(2)})`
                           : isMinimumsMet
                           ? `Comprar • $${totalCalculated.toFixed(2)}`
