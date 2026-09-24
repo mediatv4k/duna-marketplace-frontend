@@ -71,32 +71,32 @@ interface OptionCapsuleProps {
   onDecrement?: () => void;
 }
 
-// Cápsula táctil de opción. Solo renderiza; la lógica de selección vive en los handlers que recibe.
 function OptionCapsule({ name, image, priceLabel, bsLabel, count, mode, onSelect, onIncrement, onDecrement }: OptionCapsuleProps) {
   const isActive = count > 0;
-  const shell = `w-full rounded-xl border py-1.5 px-2.5 transition-all duration-150 ${
+  const shell = `w-full rounded-xl border py-2 px-3 transition-all duration-150 ${
     isActive
-      ? 'border-[#fe6712] bg-white ring-1 ring-[#fe6712]/30 shadow-sm'
+      ? 'border-[#fe6712] bg-orange-50/20 ring-1 ring-[#fe6712]/30 shadow-xs'
       : 'border-slate-200 bg-white hover:border-slate-300'
   }`;
 
-  const label = (
-    <>
+  const leftInfo = (
+    <div className="flex items-center gap-2.5 min-w-0 flex-1">
       {image && (
-        <img src={image} alt={name} className="w-9 h-9 rounded-xl object-cover border border-slate-200 shrink-0" />
+        <img src={image} alt={name} className="w-8 h-8 sm:w-9 sm:h-9 rounded-lg object-contain bg-slate-50 border border-slate-100 shrink-0 p-0.5" />
       )}
       <div className="min-w-0 flex-1">
         <span className="block text-xs font-bold text-slate-800 leading-tight line-clamp-2">{name}</span>
-        {priceLabel ? (
-          <span className="mt-1 inline-flex items-baseline gap-1.5 text-sm font-black text-[#fe6712]">
-            {priceLabel}
-            {bsLabel && <span className="text-xs font-bold text-slate-500">· {bsLabel}</span>}
-          </span>
-        ) : (
-          <span className="mt-1 block text-[10px] font-black text-emerald-600">Incluido</span>
-        )}
       </div>
-    </>
+    </div>
+  );
+
+  const priceInfo = priceLabel ? (
+    <div className="text-right shrink-0">
+      <span className="block text-xs font-black text-[#fe6712]">{priceLabel}</span>
+      {bsLabel && <span className="block text-[9px] font-bold text-slate-400">{bsLabel}</span>}
+    </div>
+  ) : (
+    <span className="text-[9px] font-black text-emerald-600 shrink-0">Incluido</span>
   );
 
   if (mode === 'single') {
@@ -105,48 +105,54 @@ function OptionCapsule({ name, image, priceLabel, bsLabel, count, mode, onSelect
         type="button"
         onClick={onSelect}
         aria-pressed={isActive}
-        className={`${shell} flex items-center gap-2.5 text-left cursor-pointer active:scale-[0.98]`}
+        className={`${shell} flex items-center justify-between gap-2.5 text-left cursor-pointer active:scale-[0.99]`}
       >
-        {label}
-        <span
-          className={`flex h-5 w-5 shrink-0 items-center justify-center rounded-full border transition ${
-            isActive ? 'border-[#fe6712] bg-[#fe6712] text-white' : 'border-slate-300 bg-white text-transparent'
-          }`}
-        >
-          <Check className="h-3 w-3 stroke-[3]" />
-        </span>
+        {leftInfo}
+        <div className="flex items-center gap-2.5 shrink-0">
+          {priceInfo}
+          <span
+            className={`flex h-4.5 w-4.5 shrink-0 items-center justify-center rounded-full border transition ${
+              isActive ? 'border-[#fe6712] bg-[#fe6712] text-white' : 'border-slate-300 bg-white text-transparent'
+            }`}
+          >
+            <Check className="h-2.5 w-2.5 stroke-[3]" />
+          </span>
+        </div>
       </button>
     );
   }
 
   return (
-    <div className={`${shell} flex items-center gap-2`}>
+    <div className={`${shell} flex items-center justify-between gap-2.5`}>
       <button
         type="button"
         onClick={onIncrement}
-        className="flex min-w-0 flex-1 items-center gap-2.5 text-left cursor-pointer active:scale-[0.98]"
+        className="flex min-w-0 flex-1 items-center text-left cursor-pointer active:scale-[0.99]"
       >
-        {label}
+        {leftInfo}
       </button>
-      <div className="flex shrink-0 items-center gap-1.5 rounded-full border border-slate-200 bg-white p-1">
-        <button
-          type="button"
-          onClick={onDecrement}
-          disabled={count <= 0}
-          aria-label={`Quitar ${name}`}
-          className="flex h-6 w-6 items-center justify-center rounded-full text-slate-600 transition hover:bg-slate-100 cursor-pointer disabled:cursor-not-allowed disabled:opacity-30 disabled:hover:bg-transparent"
-        >
-          <Minus className="h-3.5 w-3.5 stroke-[2.5]" />
-        </button>
-        <span className={`w-5 text-center text-xs font-black ${isActive ? 'text-[#fe6712]' : 'text-slate-400'}`}>{count}</span>
-        <button
-          type="button"
-          onClick={onIncrement}
-          aria-label={`Agregar ${name}`}
-          className="flex h-6 w-6 items-center justify-center rounded-full bg-[#fe6712] text-white transition hover:bg-[#e0580d] cursor-pointer"
-        >
-          <Plus className="h-3.5 w-3.5 stroke-[2.5]" />
-        </button>
+      <div className="flex items-center gap-2.5 shrink-0">
+        {priceInfo}
+        <div className="flex shrink-0 items-center gap-1 rounded-full border border-slate-200 bg-slate-50 p-0.5">
+          <button
+            type="button"
+            onClick={onDecrement}
+            disabled={count <= 0}
+            aria-label={`Quitar ${name}`}
+            className="flex h-5 w-5 items-center justify-center rounded-full text-slate-600 transition hover:bg-slate-200 cursor-pointer disabled:cursor-not-allowed disabled:opacity-30 disabled:hover:bg-transparent"
+          >
+            <Minus className="h-3 w-3 stroke-[2.5]" />
+          </button>
+          <span className={`w-4 text-center text-xs font-black ${isActive ? 'text-[#fe6712]' : 'text-slate-400'}`}>{count}</span>
+          <button
+            type="button"
+            onClick={onIncrement}
+            aria-label={`Agregar ${name}`}
+            className="flex h-5 w-5 items-center justify-center rounded-full bg-[#fe6712] text-white transition hover:bg-[#e0580d] cursor-pointer"
+          >
+            <Plus className="h-3 w-3 stroke-[2.5]" />
+          </button>
+        </div>
       </div>
     </div>
   );
@@ -215,6 +221,13 @@ export default function MasterProductModal({
     return [];
   }, [product]);
 
+  const hasVariants = Boolean(
+    (availableGroups && availableGroups.length > 0) ||
+    (product?.variants && product.variants.length > 0) ||
+    (product?.options && product.options.length > 0) ||
+    (product?.customizations && product.customizations.length > 0)
+  );
+
   // Cantidad base de ranuras si es combo
   const baseSlotCount = useMemo(() => {
     if (!product) return 1;
@@ -261,10 +274,9 @@ export default function MasterProductModal({
     const initialVars: Record<string | number, any> = {};
     availableGroups.forEach((g: any, gIndex: number) => {
       if (g.options && g.options.length > 0) {
-        // Inicializamos con soporte de cantidades o selección por defecto
-        initialVars[gIndex] = g.options.map((opt: any, oIdx: number) => ({
+        initialVars[gIndex] = g.options.map((opt: any) => ({
           ...opt,
-          count: oIdx === 0 && !isCheckinGroup(g) ? 1 : 0
+          count: 0
         }));
       }
     });
@@ -290,9 +302,9 @@ export default function MasterProductModal({
       if (availableGroups.length > 0) {
         availableGroups.forEach((group: any, idx: number) => {
           if (group.options?.length > 0) {
-            initialVars[idx] = group.options.map((opt: any, oIdx: number) => ({
+            initialVars[idx] = group.options.map((opt: any) => ({
               ...opt,
-              count: oIdx === 0 && !isCheckinGroup(group) ? 1 : 0
+              count: 0
             }));
           }
         });
@@ -585,11 +597,12 @@ export default function MasterProductModal({
     return ((unitPrice + totalVariantsPrice) * qty) + totalUpsells;
   }, [isSlotMode, unitPrice, qty, totalSlotVariantsPrice, totalVariantsPrice, totalUpsells]);
 
-  // Valida que cada grupo con 'min' (ej. SABORES-6 → min:6) tenga esa cantidad de unidades seleccionadas
+  // Valida que cada grupo con 'min' (ej. SABORES-6 → min:6) o requerido tenga esa cantidad de unidades seleccionadas
   const isMinimumsMet = useMemo(() => {
     if (isSlotMode) return true;
+    if (!availableGroups || availableGroups.length === 0) return true;
     return availableGroups.every((group: any, gIdx: number) => {
-      const min = group.minItems || group.min || 0;
+      const min = group.minItems ?? group.min ?? (group.required ? 1 : (group.selectType === 'SINGLE' && group.pricingRole === 'BASE' ? 1 : 0));
       if (min <= 0) return true;
       const selection = selectedVariants[gIdx];
       const totalCount = Array.isArray(selection)
@@ -648,7 +661,7 @@ export default function MasterProductModal({
         }
 
         // Una sola entrada por ranura: encabezado y cada modificador en su propia línea (viñeta)
-        breakdown.push([`👤 ${slotHeader}:`, ...slotParts.map((part) => `• ${part}`)].join('\n'));
+        breakdown.push([`${slotHeader}:`, ...slotParts.map((part) => `• ${part}`)].join('\n'));
       });
     } else {
       Object.keys(selectedVariants).forEach(key => {
@@ -741,14 +754,350 @@ export default function MasterProductModal({
 
   if (!isOpen || !product) return null;
 
+  const renderVariantsAndSlots = () => (
+    <>
+      {/* Banner de personalización por unidad: arriba (debajo de la cantidad), visible sin scroll.
+          Solo si el producto trae un grupo "SIN" (hasSinVariant); en el resto ni se ofrece la opción. */}
+      {hasSinVariant && qty > 1 && !isCombo && !isSlotMode && (
+        <div className="py-2 border-b border-gray-100 flex justify-between items-center gap-3">
+          <div>
+            <span className="text-xs font-black text-slate-900 block">¿Personalizar cada unidad por separado?</span>
+            <span className="text-[10px] text-slate-500 font-medium">Configura ingredientes individuales para las {qty} unidades</span>
+          </div>
+          <button
+            type="button"
+            onClick={() => setIsSlotCustomizationActive(true)}
+            className="bg-[#fe6712] hover:bg-[#e0580d] text-white text-[11px] font-black px-3.5 py-2 rounded-xl transition shadow-xs cursor-pointer flex items-center gap-1.5 shrink-0"
+          >
+            <Layers className="w-3.5 h-3.5" />
+            <span>Personalizar unidades</span>
+          </button>
+        </div>
+      )}
+
+      {/* Variantes Globales: selección única (SINGLE, ej. Tamaño) o contadores (MULTIPLE, ej. Sabores) */}
+      {!isSlotMode && availableGroups.map((group: any, gIdx: number) => (
+        <div key={gIdx} className="pb-3 border-b border-gray-100 space-y-2">
+          <div>
+            <h4 className="text-xs font-black text-slate-900 uppercase tracking-wider">{group.title}</h4>
+            <p className="text-[10px] text-slate-500 font-bold">{group.subtitle || (group.selectType === 'SINGLE' ? 'Elige una opción' : 'Ajusta las cantidades por sabor u opción')}</p>
+          </div>
+
+          <div className="flex flex-col gap-2.5 w-full">
+            {group.options.map((opt: any) => {
+              const currentSelectionList = selectedVariants[gIdx];
+              const matchedItem = Array.isArray(currentSelectionList)
+                ? currentSelectionList.find((i: any) => i.code === opt.code || i.id === opt.code)
+                : null;
+              const currentCount = matchedItem ? (matchedItem.count || 0) : 0;
+
+              if (isCheckinGroup(group)) {
+                const { priceLabel, bsLabel } = getOptionPriceLabels(opt.price, false, bcvRate);
+                return (
+                  <OptionCapsule
+                    key={opt.code}
+                    mode="single"
+                    name={opt.name}
+                    image={opt.image}
+                    priceLabel={priceLabel}
+                    bsLabel={bsLabel}
+                    count={matchedItem ? (matchedItem.count || 0) : 0}
+                    onSelect={() => handleGlobalCheckboxToggle(gIdx, opt.code)}
+                  />
+                );
+              }
+
+              if (group.selectType === 'SINGLE') {
+                const { priceLabel, bsLabel } = getOptionPriceLabels(opt.price, group.pricingRole === 'BASE', bcvRate);
+                return (
+                  <OptionCapsule
+                    key={opt.code}
+                    mode="single"
+                    name={opt.name}
+                    image={opt.image}
+                    priceLabel={priceLabel}
+                    bsLabel={bsLabel}
+                    count={currentCount}
+                    onSelect={() => handleGlobalSingleSelect(gIdx, opt.code)}
+                  />
+                );
+              }
+
+              const { priceLabel, bsLabel } = getOptionPriceLabels(opt.price, false, bcvRate);
+              return (
+                <OptionCapsule
+                  key={opt.code}
+                  mode="counter"
+                  name={opt.name}
+                  image={opt.image}
+                  priceLabel={priceLabel}
+                  bsLabel={bsLabel}
+                  count={currentCount}
+                  onIncrement={() => handleGlobalOptionQuantityChange(gIdx, opt.code, 1)}
+                  onDecrement={() => handleGlobalOptionQuantityChange(gIdx, opt.code, -1)}
+                />
+              );
+            })}
+          </div>
+        </div>
+      ))}
+
+      {/* SELECTOR DE COMBOS POR RANURAS / MODO RANURAS */}
+      {isSlotMode ? (
+        <div className="pb-3 border-b border-gray-100 space-y-3">
+          <div className="flex flex-col sm:flex-row justify-between items-start sm:items-center gap-2">
+            <div>
+              <div className="flex items-center gap-2">
+                <span className="w-6 h-6 rounded-lg bg-[#fe6712] text-white flex items-center justify-center">
+                  <Layers className="w-3.5 h-3.5" />
+                </span>
+                <h4 className="text-xs font-black text-slate-900 uppercase tracking-wider">
+                  {isCombo ? 'Configuración del Combo por Unidades' : 'Personalización Individual por Unidad'}
+                </h4>
+              </div>
+              <p className="text-[10px] text-slate-500 font-bold mt-0.5 ml-8">
+                Configura las {slots.length} unidades con sus respectivas cantidades de sabores.
+              </p>
+            </div>
+
+            {!isCombo && (
+              <button
+                type="button"
+                onClick={() => setIsSlotCustomizationActive(false)}
+                className="text-[10px] font-bold text-slate-500 hover:text-slate-800 underline transition cursor-pointer"
+              >
+                Aplicar lo mismo a todas
+              </button>
+            )}
+          </div>
+
+          {/* Pestañas de Ranura */}
+          <div className="flex gap-2 overflow-x-auto no-scrollbar pb-1 pt-1 border-t border-gray-100">
+            {slots.map((slot, idx) => {
+              const isActive = activeSlotIndex === idx;
+              const hasExcl = slot.exclusions && slot.exclusions.length > 0;
+              return (
+                <button
+                  key={slot.id}
+                  type="button"
+                  onClick={() => setActiveSlotIndex(idx)}
+                  className={`flex items-center gap-2 px-3 py-2 rounded-xl text-xs font-black transition cursor-pointer whitespace-nowrap shadow-xs ${
+                    isActive
+                      ? 'bg-slate-900 text-white shadow-md'
+                      : 'bg-white text-slate-700 border border-slate-200 hover:bg-slate-50'
+                  }`}
+                >
+                  <span className={`w-5 h-5 rounded-full text-[10px] font-black flex items-center justify-center ${
+                    isActive ? 'bg-[#fe6712] text-white' : 'bg-slate-100 text-slate-600'
+                  }`}>
+                    {idx + 1}
+                  </span>
+                  <span className="truncate max-w-[120px]">{slot.name || `${unitLabel} #${idx + 1}`}</span>
+                  {hasExcl && (
+                    <span className={`text-[9px] px-1.5 py-0.2 rounded-full font-bold ${
+                      isActive ? 'bg-orange-500 text-white' : 'bg-orange-100 text-[#fe6712]'
+                    }`}>
+                      -{slot.exclusions.length}
+                    </span>
+                  )}
+                </button>
+              );
+            })}
+          </div>
+
+          {/* Tarjeta de Configuración de la Ranura Activa con Contadores de Cantidad */}
+          {slots[activeSlotIndex] && (
+            <div className="space-y-3">
+              <div className="flex flex-col sm:flex-row justify-between items-start sm:items-center gap-2 pb-3 border-b border-slate-100">
+                <div className="flex-1 w-full sm:w-auto">
+                  <label className="text-[9px] font-black text-slate-400 uppercase tracking-wider block mb-1">
+                    {unitLabel} #{activeSlotIndex + 1} — Nombre / Persona (Opcional)
+                  </label>
+                  <input
+                    type="text"
+                    value={slots[activeSlotIndex].name || ''}
+                    onChange={(e) => handleSlotNameChange(e.target.value)}
+                    placeholder="Ej. Juan, María... (Opcional)"
+                    className="w-full rounded-xl border border-slate-200 bg-slate-50 px-3 py-1.5 text-xs font-bold text-slate-800 focus:border-[#fe6712] focus:outline-none transition"
+                  />
+                </div>
+
+                {slots.length > 1 && (
+                  <button
+                    type="button"
+                    onClick={copyCurrentSlotToAll}
+                    className="text-[10px] font-black text-[#fe6712] hover:bg-orange-50 px-2.5 py-1.5 rounded-xl border border-orange-200 transition cursor-pointer flex items-center gap-1.5 shrink-0 self-end sm:self-auto"
+                    title="Aplica variantes y exclusiones de esta unidad a todas"
+                  >
+                    {copiedFeedback ? <Check className="w-3.5 h-3.5" /> : <Copy className="w-3.5 h-3.5" />}
+                    <span>{copiedFeedback ? '¡Copiado a todas!' : 'Copiar a todas'}</span>
+                  </button>
+                )}
+              </div>
+
+              {/* Grupos y Opciones con Contadores de Cantidad en la Ranura */}
+              {availableGroups.length > 0 && availableGroups.map((group: any, gIdx: number) => {
+                const currentSlotVars = slots[activeSlotIndex].selectedVariants[gIdx];
+                return (
+                  <div key={gIdx} className="space-y-2">
+                    <div className="flex justify-between items-baseline">
+                      <span className="text-[10px] font-black text-slate-900 uppercase tracking-wider">{group.title}</span>
+                      <span className="text-[9px] font-bold text-slate-400">{group.subtitle || 'Ajusta las cantidades'}</span>
+                    </div>
+                    <div className="flex flex-col gap-2.5 w-full">
+                      {group.options.map((opt: any) => {
+                        const matched = Array.isArray(currentSlotVars)
+                          ? currentSlotVars.find((i: any) => i.code === opt.code || i.id === opt.code)
+                          : null;
+                        const countVal = matched ? (matched.count || 0) : 0;
+
+                        const { priceLabel, bsLabel } = getOptionPriceLabels(opt.price, false, bcvRate);
+                        if (isCheckinGroup(group)) {
+                          return (
+                            <OptionCapsule
+                              key={opt.code}
+                              mode="single"
+                              name={opt.name}
+                              image={opt.image}
+                              priceLabel={priceLabel}
+                              bsLabel={bsLabel}
+                              count={countVal}
+                              onSelect={() => handleSlotCheckboxToggle(activeSlotIndex, gIdx, opt.code)}
+                            />
+                          );
+                        }
+                        return (
+                          <OptionCapsule
+                            key={opt.code}
+                            mode="counter"
+                            name={opt.name}
+                            image={opt.image}
+                            priceLabel={priceLabel}
+                            bsLabel={bsLabel}
+                            count={countVal}
+                            onIncrement={() => handleSlotOptionQuantityChange(gIdx, opt.code, 1)}
+                            onDecrement={() => handleSlotOptionQuantityChange(gIdx, opt.code, -1)}
+                          />
+                        );
+                      })}
+                    </div>
+                  </div>
+                );
+              })}
+
+              {/* Exclusiones de la Ranura Activa */}
+              {nicheEngine === 'FOOD_FAST' && product.exclusions && product.exclusions.length > 0 && (
+                <div className="space-y-2 pt-2 border-t border-slate-100">
+                  <div className="flex justify-between items-center">
+                    <span className="text-[10px] font-black text-[#fe6712] uppercase tracking-wider flex items-center gap-1">
+                      <Sparkles className="w-3.5 h-3.5" /> Exclusiones para esta unidad:
+                    </span>
+                    {slots[activeSlotIndex].exclusions?.length > 0 && (
+                      <button
+                        type="button"
+                        onClick={resetCurrentSlotToConTodo}
+                        className="text-[9px] font-black text-slate-500 hover:text-slate-800 underline cursor-pointer"
+                      >
+                        Con Todo
+                      </button>
+                    )}
+                  </div>
+                  <div className="grid grid-cols-2 sm:grid-cols-3 gap-2">
+                    {product.exclusions.map((exc: string) => {
+                      const isChecked = slots[activeSlotIndex].exclusions?.includes(exc);
+                      return (
+                        <label
+                          key={exc}
+                          className={`flex items-center gap-2 p-2 rounded-xl border text-[11px] font-bold cursor-pointer transition shadow-2xs ${
+                            isChecked
+                              ? 'bg-red-50/50 border-red-200 text-red-700'
+                              : 'bg-slate-50 border-slate-200 text-slate-700 hover:border-orange-300'
+                          }`}
+                        >
+                          <input
+                            type="checkbox"
+                            checked={isChecked}
+                            onChange={() => toggleSlotExclusion(exc)}
+                            className="w-3.5 h-3.5 accent-[#fe6712] rounded cursor-pointer"
+                          />
+                          <span className={`truncate ${isChecked ? 'line-through opacity-80' : ''}`}>{exc}</span>
+                        </label>
+                      );
+                    })}
+                  </div>
+                </div>
+              )}
+
+              {/* Navegación entre ranuras */}
+              <div className="flex items-center justify-between pt-3 border-t border-slate-100 text-xs">
+                <button
+                  type="button"
+                  onClick={() => setActiveSlotIndex(prev => Math.max(0, prev - 1))}
+                  disabled={activeSlotIndex === 0}
+                  className="flex items-center gap-1 px-3 py-1.5 rounded-xl border border-slate-200 text-slate-600 font-bold hover:bg-slate-50 disabled:opacity-40 disabled:cursor-not-allowed transition cursor-pointer"
+                >
+                  <ChevronLeft className="w-3.5 h-3.5" />
+                  <span>Anterior</span>
+                </button>
+
+                <span className="text-[10px] font-black text-slate-400 uppercase tracking-wider">
+                  {unitLabel} #{activeSlotIndex + 1} de {slots.length}
+                </span>
+
+                {activeSlotIndex < slots.length - 1 ? (
+                  <button
+                    type="button"
+                    onClick={() => setActiveSlotIndex(prev => Math.min(slots.length - 1, prev + 1))}
+                    className="flex items-center gap-1 px-3 py-1.5 rounded-xl bg-slate-900 text-white font-bold hover:bg-slate-800 transition cursor-pointer"
+                  >
+                    <span>Siguiente</span>
+                    <ChevronRight className="w-3.5 h-3.5" />
+                  </button>
+                ) : (
+                  <span className="text-[10px] font-black text-emerald-600 bg-emerald-50 px-2 py-1 rounded-lg border border-emerald-200 flex items-center gap-1">
+                    <CheckCircle2 className="w-3 h-3" /> Listas para pedir
+                  </span>
+                )}
+              </div>
+            </div>
+          )}
+        </div>
+      ) : (
+        /* Modo Estándar */
+        <div className="space-y-4">
+          {nicheEngine === 'FOOD_FAST' && product.exclusions && product.exclusions.length > 0 && (
+            <div className="pb-3 border-b border-gray-100 space-y-2">
+              <label className="text-xs font-black text-slate-900 uppercase tracking-wider flex items-center gap-1.5">
+                <Sparkles className="w-4 h-4 text-[#fe6712]" /> Firma D&apos;una (Exclusiones):
+              </label>
+              <div className="grid grid-cols-2 gap-2">
+                {product.exclusions.map((exc: string) => (
+                  <label key={exc} className="flex items-center gap-2 bg-slate-50 p-2.5 rounded-xl border border-slate-200 text-xs font-bold text-slate-700 cursor-pointer shadow-xs hover:border-[#fe6712] transition">
+                    <input
+                      type="checkbox"
+                      checked={selectedExclusions.includes(exc)}
+                      onChange={() => toggleExclusion(exc)}
+                      className="w-4 h-4 accent-[#fe6712] rounded cursor-pointer"
+                    />
+                    <span className="truncate">{exc}</span>
+                  </label>
+                ))}
+              </div>
+            </div>
+          )}
+        </div>
+      )}
+    </>
+  );
+
   return (
     <div className="fixed inset-0 z-[100] flex items-end sm:items-center justify-center p-0 sm:p-4 transition-all duration-300">
       <div className="absolute inset-0 bg-black/60 backdrop-blur-sm" onClick={onClose}></div>
 
-      <div className="bg-white w-full max-w-2xl rounded-t-[2.5rem] sm:rounded-3xl max-h-[92vh] flex flex-col overflow-hidden shadow-2xl relative z-10 animate-in slide-in-from-bottom sm:slide-in-from-bottom-0 sm:zoom-in-95 duration-200">
+      <div className={`bg-white w-full ${hasVariants ? 'max-w-3xl' : 'max-w-2xl'} rounded-t-[2.5rem] sm:rounded-3xl max-h-[92vh] flex flex-col overflow-hidden shadow-2xl relative z-10 animate-in slide-in-from-bottom sm:slide-in-from-bottom-0 sm:zoom-in-95 duration-200`}>
 
         {/* Controles flotantes */}
-        <div className="absolute top-3 right-3 flex items-center gap-2 z-20">
+        <div className="absolute top-3 right-3 flex items-center gap-2 z-40">
           {store?.code && (
             <ShareButton
               title={product.name}
@@ -765,167 +1114,338 @@ export default function MasterProductModal({
 
         <div className="flex-1 flex flex-col overflow-hidden">
           {step === 1 && (
-            <div className="flex flex-col h-full overflow-hidden">
-              {/* Cabecera Fija — nunca scrollea; imagen reducida en móvil para caber en pantalla */}
-              <div className="shrink-0 p-3 sm:p-4 grid grid-cols-1 sm:grid-cols-2 gap-3 items-start bg-white z-20 shadow-sm border-b border-slate-100">
-                {/* Columna Izquierda: Imagen, Precio y Cantidad */}
-                <div className="flex flex-col gap-3">
-                  <div className="relative flex items-center justify-center h-36 sm:h-48 w-full rounded-xl border border-slate-200/80 bg-white overflow-hidden p-0">
-                    <img src={product.image || product.img} alt={product.name} className="w-full h-full object-contain" onError={(e:any)=>{e.target.src='https://images.unsplash.com/photo-1542838132-92c53300491e?w=500&auto=format&fit=crop&q=60'}} />
-                  </div>
-                  <div className="mt-2 flex items-center justify-center gap-1.5 rounded-lg bg-sky-50/70 border border-sky-200/60 px-2.5 py-1 text-sky-800">
-                    <svg className="w-3.5 h-3.5 text-sky-600 shrink-0" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={1.75}>
-                      <path strokeLinecap="round" strokeLinejoin="round" d="M12 8v4l3 3m6-3a9 9 0 11-18 0 9 9 0 0118 0z" />
-                    </svg>
-                    <span className="text-[10px] font-semibold tracking-tight">Entrega estimada: 30 a 45 min en tu dirección</span>
-                  </div>
-                  
-                  <div className="bg-slate-50 rounded-xl p-3 border border-slate-100 flex flex-col gap-3">
-                    <div className="flex justify-between items-baseline">
-                      <div>
-                        <span className="text-[10px] font-black text-slate-400 uppercase tracking-wider block">{isSlotMode ? 'Precio Configurado' : 'Precio Base'}</span>
-                        <div className="flex items-baseline gap-2">
-                          <span className="text-xl font-black text-slate-900">
-                            ${(isSlotMode ? (unitPrice * qty + totalSlotVariantsPrice) : ((unitPrice + totalVariantsPrice) * qty)).toFixed(2)}
-                          </span>
-                          {bcvRate ? <span className="text-xs font-bold text-slate-500">
-                            ~ Bs. {((isSlotMode ? (unitPrice * qty + totalSlotVariantsPrice) : ((unitPrice + totalVariantsPrice) * qty)) * bcvRate).toFixed(2)}
-                          </span> : null}
+            hasVariants ? (
+              /* LAYOUT SIMÉTRICO 50/50 BILATERAL PARA PRODUCTOS CON VARIANTES */
+              <div className="flex-1 overflow-hidden min-h-0">
+                <div className="grid grid-cols-1 md:grid-cols-2 gap-6 p-4 sm:p-5 md:p-6 items-start h-full overflow-y-auto md:overflow-hidden">
+                  {/* Columna Izquierda (Mitad 50% - Anclada / Sin Scroll) */}
+                  <div className="w-full flex flex-col justify-between h-full overflow-hidden bg-slate-50/70 rounded-2xl p-4 border border-slate-200/80 gap-3">
+                    {/* Imagen del producto */}
+                    <div className="relative flex items-center justify-center w-full rounded-2xl border border-slate-200/80 bg-white overflow-hidden p-2 h-36 sm:h-40 md:h-44 shrink-0 shadow-xs">
+                      <img
+                        src={product.image || product.img}
+                        alt={product.name}
+                        className="w-full h-full object-contain"
+                        onError={(e:any)=>{e.target.src='https://images.unsplash.com/photo-1542838132-92c53300491e?w=500&auto=format&fit=crop&q=60'}}
+                      />
+                    </div>
+
+                    {/* Cinta de entrega estimada */}
+                    <div className="flex items-center justify-center gap-1.5 rounded-xl bg-sky-50/80 border border-sky-200/60 px-2.5 py-1.5 text-sky-800 shrink-0">
+                      <svg className="w-3.5 h-3.5 text-sky-600 shrink-0" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={1.75}>
+                        <path strokeLinecap="round" strokeLinejoin="round" d="M12 8v4l3 3m6-3a9 9 0 11-18 0 9 9 0 0118 0z" />
+                      </svg>
+                      <span className="text-[10px] font-semibold tracking-tight">Entrega estimada: 30 a 45 min en tu dirección</span>
+                    </div>
+
+                    {/* Bloque de Precio Base + Selector de cantidad */}
+                    <div className="bg-white rounded-2xl p-3 sm:p-3.5 border border-slate-200/80 shadow-xs flex flex-col gap-2.5 shrink-0">
+                      <div className="flex justify-between items-baseline">
+                        <div>
+                          <span className="text-[10px] font-black text-slate-400 uppercase tracking-wider block">{isSlotMode ? 'Precio Configurado' : 'Precio Base'}</span>
+                          <div className="flex items-baseline gap-2">
+                            <span className="text-xl font-black text-slate-900">
+                              ${(isSlotMode ? (unitPrice * qty + totalSlotVariantsPrice) : ((unitPrice + totalVariantsPrice) * qty)).toFixed(2)}
+                            </span>
+                            {bcvRate && (
+                              <span className="text-xs font-bold text-slate-500">
+                                ~ Bs. {((isSlotMode ? (unitPrice * qty + totalSlotVariantsPrice) : ((unitPrice + totalVariantsPrice) * qty)) * bcvRate).toFixed(2)}
+                              </span>
+                            )}
+                          </div>
+                        </div>
+                        <span className="inline-flex items-center gap-1 rounded-full bg-emerald-50 px-2 py-0.5 text-[10px] font-bold text-emerald-700 border border-emerald-200">
+                          <span className="h-1.5 w-1.5 rounded-full bg-emerald-500 animate-pulse"></span>
+                          Despacho Inmediato
+                        </span>
+                      </div>
+
+                      <div className="flex items-center justify-between pt-1.5 border-t border-slate-100">
+                        <span className="text-xs font-bold text-slate-700">Cantidad:</span>
+                        <div className="flex items-center gap-3 bg-slate-50 px-2.5 py-1 rounded-xl border border-slate-200 shadow-2xs">
+                          <button onClick={() => setQty(Math.max(1, qty - 1))} className="w-6 h-6 flex items-center justify-center text-[#fe6712] hover:bg-orange-50 rounded-md transition cursor-pointer">
+                            <Minus className="w-4 h-4 stroke-[3]" />
+                          </button>
+                          <span className="font-black text-sm w-4 text-center text-slate-900">{qty}</span>
+                          <button onClick={() => setQty(qty + 1)} className="w-6 h-6 flex items-center justify-center text-[#fe6712] hover:bg-orange-50 rounded-md transition cursor-pointer">
+                            <Plus className="w-4 h-4 stroke-[3]" />
+                          </button>
                         </div>
                       </div>
-                      <span className="inline-flex items-center gap-1 rounded-full bg-emerald-50 px-2 py-0.5 text-[10px] font-bold text-emerald-700 border border-emerald-200">
-                        <span className="h-1.5 w-1.5 rounded-full bg-emerald-500 animate-pulse"></span>
-                        Despacho Inmediato
-                      </span>
                     </div>
-                    
-                    <div className="flex items-center justify-between pt-2 border-t border-slate-200/60">
-                      <span className="text-xs font-bold text-slate-700">Cantidad:</span>
-                      <div className="flex items-center gap-3 bg-white px-2 py-1 rounded-lg border border-slate-200 shadow-sm">
-                        <button onClick={() => setQty(Math.max(1, qty - 1))} className="w-6 h-6 flex items-center justify-center text-[#fe6712] hover:bg-orange-50 rounded-md transition cursor-pointer">
-                          <Minus className="w-4 h-4 stroke-[3]" />
-                        </button>
-                        <span className="font-black text-sm w-4 text-center text-slate-900">{qty}</span>
-                        <button onClick={() => setQty(qty + 1)} className="w-6 h-6 flex items-center justify-center text-[#fe6712] hover:bg-orange-50 rounded-md transition cursor-pointer">
-                          <Plus className="w-4 h-4 stroke-[3]" />
-                        </button>
+
+                    {/* Tarjeta de Atributos del Producto / Sello de calidad */}
+                    <div className="rounded-2xl border border-slate-200/80 bg-white p-3 shadow-2xs">
+                      <div className="flex items-center justify-between border-b border-slate-100 pb-1.5 mb-2">
+                        <span className="text-[10px] font-bold tracking-wider uppercase text-slate-800">
+                          Atributos del Producto
+                        </span>
+                        <span className="inline-flex items-center rounded-md bg-slate-100 px-2 py-0.5 text-[9px] font-bold uppercase text-slate-600 border border-slate-200">
+                          Original
+                        </span>
+                      </div>
+                      <div className="grid grid-cols-2 gap-2 text-left mb-2">
+                        <div>
+                          <span className="block text-[9px] font-bold uppercase tracking-wider text-slate-400">Marca</span>
+                          <p className="text-xs font-bold text-slate-800 truncate">{product.brand || product.marca || 'Verificada'}</p>
+                        </div>
+                        <div>
+                          <span className="block text-[9px] font-bold uppercase tracking-wider text-slate-400">Presentación</span>
+                          <p className="text-xs font-bold text-slate-800 truncate">{product.presentation || product.presentacion || 'Unidad Estandarizada'}</p>
+                        </div>
+                      </div>
+                      <div className="flex items-center gap-1.5 border-t border-slate-100 pt-1.5 text-emerald-700 text-[9px] font-bold uppercase tracking-wider">
+                        <svg className="w-3 h-3 text-emerald-600 shrink-0" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}>
+                          <path strokeLinecap="round" strokeLinejoin="round" d="M9 12l2 2 4-4m5.618-4.016A11.955 11.955 0 0112 2.944a11.955 11.955 0 01-8.618 3.04A12.02 12.02 0 003 9c0 5.591 3.824 10.29 9 11.622 5.176-1.332 9-6.03 9-11.622 0-1.042-.133-2.052-.382-3.016z" />
+                        </svg>
+                        <span>Garantía de Sellado de Origen</span>
                       </div>
                     </div>
+                  </div>
+
+                  {/* Columna Derecha (Mitad 50% - Vitrina de Opciones con Scroll) */}
+                  <div className="w-full flex flex-col flex-1 overflow-hidden min-h-0 bg-white h-full">
+                    {/* Cabecera */}
+                    <div className="pb-3 border-b border-slate-100 shrink-0">
+                      <div className="flex flex-wrap items-center gap-1.5 mb-1.5 pr-14 text-[10px] font-black uppercase tracking-wider text-slate-500">
+                        <span className="text-slate-900 bg-slate-100 px-2 py-0.5 rounded">{product.code}</span>
+                        <span>|</span>
+                        <span className="text-[#fe6712] bg-[#fff5ed] px-2 py-0.5 rounded">{(product.category || product.cat || 'PRODUCTO').toUpperCase()}</span>
+                      </div>
+                      <h3 className="text-lg md:text-xl font-black text-slate-900 leading-tight pr-14 mb-1">{product.name}</h3>
+                      {cleanDescription && <p className="text-xs text-slate-600 leading-relaxed mb-2">{cleanDescription}</p>}
+                      {descriptionTags && Object.keys(descriptionTags).length > 0 && <ProductTagBadges tags={descriptionTags} className="mb-2" />}
+                    </div>
+
+                    {/* Vitrina de Sabores / Modificadores con Scroll Completo e Independiente */}
+                    <div className="w-full flex-1 max-h-[460px] md:max-h-[500px] overflow-y-auto pr-2 pt-3 space-y-3.5 scrollbar-thin scrollbar-thumb-slate-300 hover:scrollbar-thumb-slate-400">
+                      {renderVariantsAndSlots()}
+                    </div>
+                  </div>
+                </div>
+              </div>
+            ) : (
+              /* LAYOUT ESTÁNDAR PARA PRODUCTOS SIMPLES / MEDICAMENTOS */
+              <div className="flex flex-col h-full overflow-hidden">
+                {/* Cabecera Fija */}
+                <div className="shrink-0 p-3 sm:p-4 grid grid-cols-1 sm:grid-cols-2 gap-3 items-start bg-white z-20 shadow-sm border-b border-slate-100">
+                  {/* Columna Izquierda: Imagen, Precio y Cantidad */}
+                  <div className="flex flex-col gap-2.5">
+                    <div className="relative flex items-center justify-center w-full rounded-xl border border-slate-200/80 bg-white overflow-hidden p-0 h-36 sm:h-48">
+                      <img src={product.image || product.img} alt={product.name} className="w-full h-full object-contain" onError={(e:any)=>{e.target.src='https://images.unsplash.com/photo-1542838132-92c53300491e?w=500&auto=format&fit=crop&q=60'}} />
+                    </div>
+                    <div className="flex items-center justify-center gap-1.5 rounded-lg bg-sky-50/70 border border-sky-200/60 px-2.5 py-1 text-sky-800">
+                      <svg className="w-3.5 h-3.5 text-sky-600 shrink-0" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={1.75}>
+                        <path strokeLinecap="round" strokeLinejoin="round" d="M12 8v4l3 3m6-3a9 9 0 11-18 0 9 9 0 0118 0z" />
+                      </svg>
+                      <span className="text-[10px] font-semibold tracking-tight">Entrega estimada: 30 a 45 min en tu dirección</span>
+                    </div>
+                    
+                    <div className="bg-slate-50 rounded-xl border border-slate-100 flex flex-col p-3 gap-3">
+                      <div className="flex justify-between items-baseline">
+                        <div>
+                          <span className="text-[10px] font-black text-slate-400 uppercase tracking-wider block">Precio Base</span>
+                          <div className="flex items-baseline gap-2">
+                            <span className="text-xl font-black text-slate-900">
+                              ${(unitPrice * qty).toFixed(2)}
+                            </span>
+                            {bcvRate ? <span className="text-xs font-bold text-slate-500">
+                              ~ Bs. {((unitPrice * qty) * bcvRate).toFixed(2)}
+                            </span> : null}
+                          </div>
+                        </div>
+                        <span className="inline-flex items-center gap-1 rounded-full bg-emerald-50 px-2 py-0.5 text-[10px] font-bold text-emerald-700 border border-emerald-200">
+                          <span className="h-1.5 w-1.5 rounded-full bg-emerald-500 animate-pulse"></span>
+                          Despacho Inmediato
+                        </span>
+                      </div>
+                      
+                      <div className="flex items-center justify-between pt-1.5 border-t border-slate-200/60">
+                        <span className="text-xs font-bold text-slate-700">Cantidad:</span>
+                        <div className="flex items-center gap-3 bg-white px-2 py-1 rounded-lg border border-slate-200 shadow-sm">
+                          <button onClick={() => setQty(Math.max(1, qty - 1))} className="w-6 h-6 flex items-center justify-center text-[#fe6712] hover:bg-orange-50 rounded-md transition cursor-pointer">
+                            <Minus className="w-4 h-4 stroke-[3]" />
+                          </button>
+                          <span className="font-black text-sm w-4 text-center text-slate-900">{qty}</span>
+                          <button onClick={() => setQty(qty + 1)} className="w-6 h-6 flex items-center justify-center text-[#fe6712] hover:bg-orange-50 rounded-md transition cursor-pointer">
+                            <Plus className="w-4 h-4 stroke-[3]" />
+                          </button>
+                        </div>
+                      </div>
+                      {(() => {
+                        const isPharmaLocal = Boolean(
+                          String(nicheEngine || '').toUpperCase().includes('PHARMA') ||
+                          (typeof product?.metadata === 'object' && product?.metadata?.farmacia?.principioActivo) ||
+                          (typeof product?.metadata === 'string' && product?.metadata?.includes('farmacia')) ||
+                          String(product?.category || product?.cat || '').toLowerCase().includes('farmacia') ||
+                          String(product?.internalCategory || '').toLowerCase().includes('farmacia')
+                        );
+                        return (
+                          <div className="mt-0.5 flex items-center justify-center gap-1 text-[9px] font-medium text-slate-600">
+                            <svg className="w-3 h-3 text-slate-600 shrink-0" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={1.75}>
+                              <path strokeLinecap="round" strokeLinejoin="round" d="M9 12l2 2 4-4m5.618-4.016A11.955 11.955 0 0112 2.944a11.955 11.955 0 01-8.618 3.04A12.02 12.02 0 003 9c0 5.591 3.824 10.29 9 11.622 5.176-1.332 9-6.03 9-11.622 0-1.042-.133-2.052-.382-3.016z" />
+                            </svg>
+                            <span>{isPharmaLocal ? 'Medicamento 100% Original • Trazabilidad Garantizada' : 'Producto 100% Original • Calidad Garantizada'}</span>
+                          </div>
+                        );
+                      })()}
+                    </div>
+                  </div>
+
+                  {/* Columna Derecha: Título, Descripción y Ficha Clínica */}
+                  <div className="flex flex-col">
                     {(() => {
-                      const isPharmaLocal = Boolean(
-                        String(nicheEngine || '').toUpperCase().includes('PHARMA') ||
-                        (typeof product?.metadata === 'object' && product?.metadata?.farmacia?.principioActivo) ||
-                        (typeof product?.metadata === 'string' && product?.metadata?.includes('farmacia')) ||
-                        String(product?.category || product?.cat || '').toLowerCase().includes('farmacia') ||
-                        String(product?.internalCategory || '').toLowerCase().includes('farmacia')
-                      );
+                      let parsedFarmacia = null;
+                      if (typeof product?.metadata === 'object') {
+                        parsedFarmacia = product?.metadata?.farmacia;
+                      } else if (typeof product?.metadata === 'string') {
+                        try { parsedFarmacia = JSON.parse(product.metadata)?.farmacia; } catch(e){}
+                      }
+                      const subCategoryName = 
+                        parsedFarmacia?.subCategory ||
+                        product?.internalCategory || 
+                        product?.internal_category || 
+                        product?.subCategory || 
+                        product?.category?.subCategoryName ||
+                        null;
+                      const catName = String(product?.category || product?.cat || '').toUpperCase();
+                      const finalCat = (catName === 'GENERAL' || catName === '') ? 'PRODUCTO' : catName;
+                      const subCatStr = String(subCategoryName || '').toUpperCase();
+                      const finalSubCat = (subCatStr && subCatStr !== 'GENERAL') ? subCatStr : null;
                       return (
-                        <div className="mt-1 flex items-center justify-center gap-1 text-[9px] font-medium text-slate-600">
-                          <svg className="w-3 h-3 text-slate-600 shrink-0" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={1.75}>
-                            <path strokeLinecap="round" strokeLinejoin="round" d="M9 12l2 2 4-4m5.618-4.016A11.955 11.955 0 0112 2.944a11.955 11.955 0 01-8.618 3.04A12.02 12.02 0 003 9c0 5.591 3.824 10.29 9 11.622 5.176-1.332 9-6.03 9-11.622 0-1.042-.133-2.052-.382-3.016z" />
-                          </svg>
-                          <span>{isPharmaLocal ? 'Medicamento 100% Original • Trazabilidad Garantizada' : 'Producto 100% Original • Calidad Garantizada'}</span>
+                        <div className="flex flex-wrap items-center gap-1.5 mb-1.5 pr-12 text-[10px] font-black uppercase tracking-wider text-slate-500">
+                          <span className="text-slate-900 bg-slate-100 px-2 py-0.5 rounded">{product.code}</span>
+                          <span>|</span>
+                          <span className="text-[#fe6712] bg-[#fff5ed] px-2 py-0.5 rounded">{finalCat}</span>
+                          {finalSubCat && (
+                            <>
+                              <span>|</span>
+                              <span className="text-blue-700 bg-blue-50 px-2 py-0.5 rounded border border-blue-200">{finalSubCat}</span>
+                            </>
+                          )}
                         </div>
                       );
                     })()}
-                  </div>
-                </div>
+                    <h3 className="text-lg font-black text-slate-900 leading-tight pr-8 mb-2">{product.name}</h3>
+                    <p className="text-xs text-slate-600 leading-relaxed text-justify mb-2">{cleanDescription || 'Configura las opciones para este artículo.'}</p>
+                    {descriptionTags && Object.keys(descriptionTags).length > 0 && <ProductTagBadges tags={descriptionTags} className="mb-2" />}
 
-                {/* Columna Derecha: Título, Descripción y Ficha Clínica */}
-                <div className="flex flex-col">
-                  {(() => {
-                    let parsedFarmacia = null;
-                    if (typeof product?.metadata === 'object') {
-                      parsedFarmacia = product?.metadata?.farmacia;
-                    } else if (typeof product?.metadata === 'string') {
-                      try { parsedFarmacia = JSON.parse(product.metadata)?.farmacia; } catch(e){}
-                    }
-                    const subCategoryName = 
-                      parsedFarmacia?.subCategory ||
-                      product?.internalCategory || 
-                      product?.internal_category || 
-                      product?.subCategory || 
-                      product?.category?.subCategoryName ||
-                      null;
-                    const catName = String(product?.category || product?.cat || '').toUpperCase();
-                    const finalCat = (catName === 'GENERAL' || catName === '') ? 'PRODUCTO' : catName;
-                    const subCatStr = String(subCategoryName || '').toUpperCase();
-                    const finalSubCat = (subCatStr && subCatStr !== 'GENERAL') ? subCatStr : null;
-                    return (
-                      <div className="flex flex-wrap items-center gap-1.5 mb-1.5 pr-12 text-[10px] font-black uppercase tracking-wider text-slate-500">
-                        <span className="text-slate-900 bg-slate-100 px-2 py-0.5 rounded">{product.code}</span>
-                        <span>|</span>
-                        <span className="text-[#fe6712] bg-[#fff5ed] px-2 py-0.5 rounded">{finalCat}</span>
-                        {finalSubCat && (
-                          <>
-                            <span>|</span>
-                            <span className="text-blue-700 bg-blue-50 px-2 py-0.5 rounded border border-blue-200">{finalSubCat}</span>
-                          </>
-                        )}
-                      </div>
-                    );
-                  })()}
-                  <h3 className="text-lg font-black text-slate-900 leading-tight pr-8 mb-2">{product.name}</h3>
-                  <p className="text-xs text-slate-600 leading-relaxed text-justify mb-2">{cleanDescription || 'Configura las opciones para este artículo.'}</p>
-                  {descriptionTags && Object.keys(descriptionTags).length > 0 && <ProductTagBadges tags={descriptionTags} className="mb-2" />}
+                    {/* Bloque Clínico Farmacia / Atributos */}
+                    {(() => {
+                      let farmaciaData = null;
+                      try {
+                        const rawMeta = product?.metadata;
+                        const parsedMeta = typeof rawMeta === 'string' ? JSON.parse(rawMeta) : rawMeta;
+                        farmaciaData = parsedMeta?.farmacia || null;
+                      } catch (e) {
+                        farmaciaData = null;
+                      }
 
-                  {/* Bloque Clínico Farmacia */}
-                  {(() => {
-                    let farmaciaData = null;
-                    try {
-                      const rawMeta = product?.metadata;
-                      const parsedMeta = typeof rawMeta === 'string' ? JSON.parse(rawMeta) : rawMeta;
-                      farmaciaData = parsedMeta?.farmacia || null;
-                    } catch (e) {
-                      farmaciaData = null;
-                    }
+                      const categoryStr = String(product?.categoria || product?.category || product?.cat || '').toUpperCase();
+                      const isPharmacyCategory = categoryStr.includes('FARMACIA') || categoryStr.includes('MEDICAMENTO') || categoryStr.includes('SALUD') || categoryStr.includes('ANTIALERGICO');
 
-                    const categoryStr = String(product?.categoria || product?.category || product?.cat || '').toUpperCase();
-                    const isPharmacyCategory = categoryStr.includes('FARMACIA') || categoryStr.includes('MEDICAMENTO') || categoryStr.includes('SALUD') || categoryStr.includes('ANTIALERGICO');
+                      let clinicalData = farmaciaData;
+                      if (!clinicalData && isPharmacyCategory) {
+                         const parsedMeta = (typeof product?.metadata === 'string' ? JSON.parse(product?.metadata || '{}') : product?.metadata) || {};
+                         clinicalData = {
+                           principioActivo: parsedMeta.principioActivo || product?.principioActivo,
+                           concentracion: parsedMeta.concentracion || product?.concentracion,
+                           presentacion: parsedMeta.presentacion || product?.presentacion,
+                           laboratorio: parsedMeta.laboratorio || product?.laboratorio,
+                           registroSanitario: parsedMeta.registroSanitario || product?.registroSanitario,
+                           condicionVenta: parsedMeta.condicionVenta || product?.condicionVenta,
+                           cadenaFrio: parsedMeta.cadenaFrio || product?.cadenaFrio || parsedMeta.requiereFrio || product?.requiereFrio
+                         };
+                      }
 
-                    let clinicalData = farmaciaData;
-                    if (!clinicalData && isPharmacyCategory) {
-                       const parsedMeta = (typeof product?.metadata === 'string' ? JSON.parse(product?.metadata || '{}') : product?.metadata) || {};
-                       clinicalData = {
-                         principioActivo: parsedMeta.principioActivo || product?.principioActivo,
-                         concentracion: parsedMeta.concentracion || product?.concentracion,
-                         presentacion: parsedMeta.presentacion || product?.presentacion,
-                         laboratorio: parsedMeta.laboratorio || product?.laboratorio,
-                         registroSanitario: parsedMeta.registroSanitario || product?.registroSanitario,
-                         condicionVenta: parsedMeta.condicionVenta || product?.condicionVenta,
-                         cadenaFrio: parsedMeta.cadenaFrio || product?.cadenaFrio || parsedMeta.requiereFrio || product?.requiereFrio
-                       };
-                    }
+                      if (clinicalData && typeof clinicalData === 'object') {
+                        const hasAnyValue = Object.values(clinicalData).some(v => v !== undefined && v !== null && v !== '');
+                        if (!hasAnyValue) clinicalData = null;
+                      }
 
-                    if (clinicalData && typeof clinicalData === 'object') {
-                      const hasAnyValue = Object.values(clinicalData).some(v => v !== undefined && v !== null && v !== '');
-                      if (!hasAnyValue) clinicalData = null;
-                    }
+                      if (!clinicalData && !isPharmacyCategory) {
+                        return (
+                          <div className="mt-2.5 rounded-xl border border-slate-200/90 bg-slate-50/50 p-3 shadow-xs">
+                            <div className="flex items-center justify-between border-b border-slate-200/70 pb-1.5 mb-2">
+                              <div className="flex items-center gap-1.5 min-w-0">
+                                <svg className="w-3.5 h-3.5 text-slate-700 shrink-0" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}>
+                                  <path strokeLinecap="round" strokeLinejoin="round" d="M5 8h14M5 8a2 2 0 110-4h14a2 2 0 110 4M5 8v10a2 2 0 002 2h10a2 2 0 002-2V8m-9 4h4" />
+                                </svg>
+                                <span className="text-[10px] font-bold tracking-wider uppercase text-slate-800 whitespace-nowrap">
+                                  Atributos del Producto
+                                </span>
+                              </div>
+                              <span className="inline-flex items-center rounded-md bg-slate-100 px-2 py-0.5 text-[9px] font-bold uppercase tracking-wide text-slate-600 border border-slate-200 whitespace-nowrap shrink-0">
+                                Original
+                              </span>
+                            </div>
+                            
+                            <div className="grid grid-cols-2 gap-3 mb-2.5">
+                              <div>
+                                <span className="block text-[9px] font-bold uppercase tracking-wider text-slate-400">
+                                  Marca
+                                </span>
+                                <p className="text-xs font-bold text-slate-800 mt-0.5">
+                                  {product.brand || product.marca || 'Verificada'}
+                                </p>
+                              </div>
+                              <div>
+                                <span className="block text-[9px] font-bold uppercase tracking-wider text-slate-400">
+                                  Presentación
+                                </span>
+                                <p className="text-xs font-bold text-slate-800 mt-0.5">
+                                  {product.presentation || product.presentacion || 'Unidad Estandarizada'}
+                                </p>
+                              </div>
+                            </div>
+                            
+                            <div className="flex items-center gap-1.5 border-t border-slate-200/60 pt-2">
+                              <svg className="w-3 h-3 text-emerald-600" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}>
+                                <path strokeLinecap="round" strokeLinejoin="round" d="M9 12l2 2 4-4m5.618-4.016A11.955 11.955 0 0112 2.944a11.955 11.955 0 01-8.618 3.04A12.02 12.02 0 003 9c0 5.591 3.824 10.29 9 11.622 5.176-1.332 9-6.03 9-11.622 0-1.042-.133-2.052-.382-3.016z" />
+                              </svg>
+                              <span className="text-[9px] font-bold uppercase tracking-wider text-emerald-700">
+                                Garantía de Sellado de Origen
+                              </span>
+                            </div>
+                          </div>
+                        );
+                      }
+                      
+                      const displayData = clinicalData || {};
 
-                    if (!clinicalData && !isPharmacyCategory) {
                       return (
                         <div className="mt-2.5 rounded-xl border border-slate-200/90 bg-slate-50/50 p-3 shadow-xs">
+                          {/* FICHA TÉCNICA CLÍNICA - VADEMÉCUM EJECUTIVO */}
                           <div className="flex items-center justify-between border-b border-slate-200/70 pb-1.5 mb-2">
                             <div className="flex items-center gap-1.5 min-w-0">
                               <svg className="w-3.5 h-3.5 text-slate-700 shrink-0" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}>
-                                <path strokeLinecap="round" strokeLinejoin="round" d="M5 8h14M5 8a2 2 0 110-4h14a2 2 0 110 4M5 8v10a2 2 0 002 2h10a2 2 0 002-2V8m-9 4h4" />
+                                <path strokeLinecap="round" strokeLinejoin="round" d="M12 4v16m8-8H4" />
                               </svg>
                               <span className="text-[10px] font-bold tracking-wider uppercase text-slate-800 whitespace-nowrap">
-                                Atributos del Producto
+                                Especificación Farmacológica
                               </span>
                             </div>
-                            <span className="inline-flex items-center rounded-md bg-slate-100 px-2 py-0.5 text-[9px] font-bold uppercase tracking-wide text-slate-600 border border-slate-200 whitespace-nowrap shrink-0">
-                              Original
+                            <span className="inline-flex items-center rounded-md bg-emerald-50 px-2 py-0.5 text-[9px] font-bold uppercase tracking-wide text-emerald-700 border border-emerald-200/80 whitespace-nowrap shrink-0">
+                              {displayData?.condicionVenta || 'Venta Libre'}
                             </span>
                           </div>
-                          
-                          <div className="grid grid-cols-2 gap-3 mb-2.5">
+
+                          <div className="mb-2.5">
+                            <span className="text-[10px] font-bold uppercase tracking-wider text-slate-600 block mb-0.5">
+                              Principio Activo & Concentración
+                            </span>
+                            <p className="text-sm font-bold text-slate-900">
+                              {displayData?.principioActivo || product.name} {displayData?.concentracion && <span className="font-semibold text-slate-700">{displayData.concentracion}</span>}
+                            </p>
+                          </div>
+
+                          <div className="grid grid-cols-2 gap-3 border-t border-slate-200/60 pt-2 mb-2.5">
                             <div>
                               <span className="block text-[9px] font-bold uppercase tracking-wider text-slate-400">
-                                Marca
+                                Laboratorio
                               </span>
                               <p className="text-xs font-bold text-slate-800 mt-0.5">
-                                {product.brand || product.marca || 'Verificada'}
+                                {displayData?.laboratorio || 'Siegfried'}
                               </p>
                             </div>
                             <div>
@@ -933,431 +1453,35 @@ export default function MasterProductModal({
                                 Presentación
                               </span>
                               <p className="text-xs font-bold text-slate-800 mt-0.5">
-                                {product.presentation || product.presentacion || 'Unidad Estandarizada'}
+                                {displayData?.presentacion || 'Caja x 10 Tabletas'}
                               </p>
                             </div>
                           </div>
-                          
-                          <div className="flex items-center gap-1.5 border-t border-slate-200/60 pt-2">
-                            <svg className="w-3 h-3 text-emerald-600" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}>
-                              <path strokeLinecap="round" strokeLinejoin="round" d="M9 12l2 2 4-4m5.618-4.016A11.955 11.955 0 0112 2.944a11.955 11.955 0 01-8.618 3.04A12.02 12.02 0 003 9c0 5.591 3.824 10.29 9 11.622 5.176-1.332 9-6.03 9-11.622 0-1.042-.133-2.052-.382-3.016z" />
-                            </svg>
-                            <span className="text-[9px] font-bold uppercase tracking-wider text-emerald-700">
-                              Garantía de Sellado de Origen
+
+                          <div className="flex items-center justify-between border-t border-slate-200/60 pt-2">
+                            <span className="text-[9px] font-bold uppercase tracking-wider text-slate-400">
+                              Registro Sanitario Oficial
+                            </span>
+                            <span className="font-mono text-[11px] font-bold text-slate-800 bg-white border border-slate-200 px-2 py-0.5 rounded shadow-2xs">
+                              {displayData?.registroSanitario || 'RS0214-10215'}
                             </span>
                           </div>
-                        </div>
-                      );
-                    }
-                    
-                    const displayData = clinicalData || {};
 
-                    return (
-                      <div className="mt-2.5 rounded-xl border border-slate-200/90 bg-slate-50/50 p-3 shadow-xs">
-                        {/* FICHA TÉCNICA CLÍNICA - VADEMÉCUM EJECUTIVO */}
-                        {/* Header Ficha */}
-                        <div className="flex items-center justify-between border-b border-slate-200/70 pb-1.5 mb-2">
-                          <div className="flex items-center gap-1.5 min-w-0">
-                            <svg className="w-3.5 h-3.5 text-slate-700 shrink-0" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}>
-                              <path strokeLinecap="round" strokeLinejoin="round" d="M12 4v16m8-8H4" />
-                            </svg>
-                            <span className="text-[10px] font-bold tracking-wider uppercase text-slate-800 whitespace-nowrap">
-                              Especificación Farmacológica
-                            </span>
-                          </div>
-                          <span className="inline-flex items-center rounded-md bg-emerald-50 px-2 py-0.5 text-[9px] font-bold uppercase tracking-wide text-emerald-700 border border-emerald-200/80 whitespace-nowrap shrink-0">
-                            {displayData?.condicionVenta || 'Venta Libre'}
-                          </span>
-                        </div>
-
-                        {/* Principio Activo y Concentración unificados */}
-                        <div className="mb-2.5">
-                          <span className="text-[10px] font-bold uppercase tracking-wider text-slate-600 block mb-0.5">
-                            Principio Activo & Concentración
-                          </span>
-                          <p className="text-sm font-bold text-slate-900">
-                            {displayData?.principioActivo || product.name} {displayData?.concentracion && <span className="font-semibold text-slate-700">{displayData.concentracion}</span>}
+                          <p className="mt-2 text-[9px] text-slate-400 leading-tight">
+                            Consulte siempre a su médico o farmacéutico antes de administrar este producto.
                           </p>
                         </div>
-
-                        {/* Laboratorio y Presentación con contraste real */}
-                        <div className="grid grid-cols-2 gap-3 border-t border-slate-200/60 pt-2 mb-2.5">
-                          <div>
-                            <span className="block text-[9px] font-bold uppercase tracking-wider text-slate-400">
-                              Laboratorio
-                            </span>
-                            <p className="text-xs font-bold text-slate-800 mt-0.5">
-                              {displayData?.laboratorio || 'Siegfried'}
-                            </p>
-                          </div>
-                          <div>
-                            <span className="block text-[9px] font-bold uppercase tracking-wider text-slate-400">
-                              Presentación
-                            </span>
-                            <p className="text-xs font-bold text-slate-800 mt-0.5">
-                              {displayData?.presentacion || 'Caja x 10 Tabletas'}
-                            </p>
-                          </div>
-                        </div>
-
-                        {/* Registro Sanitario */}
-                        <div className="flex items-center justify-between border-t border-slate-200/60 pt-2">
-                          <span className="text-[9px] font-bold uppercase tracking-wider text-slate-400">
-                            Registro Sanitario Oficial
-                          </span>
-                          <span className="font-mono text-[11px] font-bold text-slate-800 bg-white border border-slate-200 px-2 py-0.5 rounded shadow-2xs">
-                            {displayData?.registroSanitario || 'RS0214-10215'}
-                          </span>
-                        </div>
-
-                        <p className="mt-2 text-[9px] text-slate-400 leading-tight">
-                          Consulte siempre a su médico o farmacéutico antes de administrar este producto.
-                        </p>
-                      </div>
-                    );
-                  })()}
+                      );
+                    })()}
+                  </div>
+                </div>
+                
+                {/* Opciones con Scroll */}
+                <div className="flex-1 overflow-y-auto p-3 sm:p-4 space-y-4 scrollbar-thin scrollbar-thumb-slate-300 scrollbar-track-transparent">
+                  {renderVariantsAndSlots()}
                 </div>
               </div>
-              
-              {/* Opciones con Scroll */}
-              <div className="flex-1 overflow-y-auto p-3 sm:p-4 space-y-4">
-
-              {/* Banner de personalización por unidad: arriba (debajo de la cantidad), visible sin scroll.
-                  Solo si el producto trae un grupo "SIN" (hasSinVariant); en el resto ni se ofrece la opción. */}
-                {hasSinVariant && qty > 1 && !isCombo && !isSlotMode && (
-                  <div className="py-2 border-b border-gray-100 flex justify-between items-center gap-3">
-                    <div>
-                      <span className="text-xs font-black text-slate-900 block">¿Personalizar cada unidad por separado?</span>
-                      <span className="text-[10px] text-slate-500 font-medium">Configura ingredientes individuales para las {qty} unidades</span>
-                    </div>
-                    <button
-                      type="button"
-                      onClick={() => setIsSlotCustomizationActive(true)}
-                      className="bg-[#fe6712] hover:bg-[#e0580d] text-white text-[11px] font-black px-3.5 py-2 rounded-xl transition shadow-xs cursor-pointer flex items-center gap-1.5 shrink-0"
-                    >
-                      <Layers className="w-3.5 h-3.5" />
-                      <span>Personalizar unidades</span>
-                    </button>
-                  </div>
-                )}
-
-              {/* Variantes Globales: selección única (SINGLE, ej. Tamaño) o contadores (MULTIPLE, ej. Sabores) */}
-              {!isSlotMode && availableGroups.map((group: any, gIdx: number) => (
-                <div key={gIdx} className="pb-3 border-b border-gray-100 space-y-2">
-                  <div>
-                    <h4 className="text-xs font-black text-slate-900 uppercase tracking-wider">{group.title}</h4>
-                    <p className="text-[10px] text-slate-500 font-bold">{group.subtitle || (group.selectType === 'SINGLE' ? 'Elige una opción' : 'Ajusta las cantidades por sabor u opción')}</p>
-                  </div>
-
-                  <div className="grid grid-cols-1 sm:grid-cols-2 gap-2">
-                    {group.options.map((opt: any) => {
-                      const currentSelectionList = selectedVariants[gIdx];
-                      const matchedItem = Array.isArray(currentSelectionList)
-                        ? currentSelectionList.find((i: any) => i.code === opt.code || i.id === opt.code)
-                        : null;
-                      const currentCount = matchedItem ? (matchedItem.count || 0) : (opt.code === group.options[0]?.code ? 1 : 0);
-
-                      if (isCheckinGroup(group)) {
-                        const { priceLabel, bsLabel } = getOptionPriceLabels(opt.price, false, bcvRate);
-                        return (
-                          <OptionCapsule
-                            key={opt.code}
-                            mode="single"
-                            name={opt.name}
-                            image={opt.image}
-                            priceLabel={priceLabel}
-                            bsLabel={bsLabel}
-                            count={matchedItem ? (matchedItem.count || 0) : 0}
-                            onSelect={() => handleGlobalCheckboxToggle(gIdx, opt.code)}
-                          />
-                        );
-                      }
-
-                      if (group.selectType === 'SINGLE') {
-                        const { priceLabel, bsLabel } = getOptionPriceLabels(opt.price, group.pricingRole === 'BASE', bcvRate);
-                        return (
-                          <OptionCapsule
-                            key={opt.code}
-                            mode="single"
-                            name={opt.name}
-                            image={opt.image}
-                            priceLabel={priceLabel}
-                            bsLabel={bsLabel}
-                            count={currentCount}
-                            onSelect={() => handleGlobalSingleSelect(gIdx, opt.code)}
-                          />
-                        );
-                      }
-
-                      const { priceLabel, bsLabel } = getOptionPriceLabels(opt.price, false, bcvRate);
-                      return (
-                        <OptionCapsule
-                          key={opt.code}
-                          mode="counter"
-                          name={opt.name}
-                          image={opt.image}
-                          priceLabel={priceLabel}
-                          bsLabel={bsLabel}
-                          count={currentCount}
-                          onIncrement={() => handleGlobalOptionQuantityChange(gIdx, opt.code, 1)}
-                          onDecrement={() => handleGlobalOptionQuantityChange(gIdx, opt.code, -1)}
-                        />
-                      );
-                    })}
-                  </div>
-                </div>
-              ))}
-
-              {/* SELECTOR DE COMBOS POR RANURAS / MODO RANURAS */}
-              {isSlotMode ? (
-                <div className="pb-3 border-b border-gray-100 space-y-3">
-                  <div className="flex flex-col sm:flex-row justify-between items-start sm:items-center gap-2">
-                    <div>
-                      <div className="flex items-center gap-2">
-                        <span className="w-6 h-6 rounded-lg bg-[#fe6712] text-white flex items-center justify-center">
-                          <Layers className="w-3.5 h-3.5" />
-                        </span>
-                        <h4 className="text-xs font-black text-slate-900 uppercase tracking-wider">
-                          {isCombo ? 'Configuración del Combo por Unidades' : 'Personalización Individual por Unidad'}
-                        </h4>
-                      </div>
-                      <p className="text-[10px] text-slate-500 font-bold mt-0.5 ml-8">
-                        Configura las {slots.length} unidades con sus respectivas cantidades de sabores.
-                      </p>
-                    </div>
-
-                    {!isCombo && (
-                      <button
-                        type="button"
-                        onClick={() => setIsSlotCustomizationActive(false)}
-                        className="text-[10px] font-bold text-slate-500 hover:text-slate-800 underline transition cursor-pointer"
-                      >
-                        Aplicar lo mismo a todas
-                      </button>
-                    )}
-                  </div>
-
-                  {/* Pestañas de Ranura */}
-                  <div className="flex gap-2 overflow-x-auto no-scrollbar pb-1 pt-1 border-t border-gray-100">
-                    {slots.map((slot, idx) => {
-                      const isActive = activeSlotIndex === idx;
-                      const hasExcl = slot.exclusions && slot.exclusions.length > 0;
-                      return (
-                        <button
-                          key={slot.id}
-                          type="button"
-                          onClick={() => setActiveSlotIndex(idx)}
-                          className={`flex items-center gap-2 px-3 py-2 rounded-xl text-xs font-black transition cursor-pointer whitespace-nowrap shadow-xs ${
-                            isActive
-                              ? 'bg-slate-900 text-white shadow-md'
-                              : 'bg-white text-slate-700 border border-slate-200 hover:bg-slate-50'
-                          }`}
-                        >
-                          <span className={`w-5 h-5 rounded-full text-[10px] font-black flex items-center justify-center ${
-                            isActive ? 'bg-[#fe6712] text-white' : 'bg-slate-100 text-slate-600'
-                          }`}>
-                            {idx + 1}
-                          </span>
-                          <span className="truncate max-w-[120px]">{slot.name || `${unitLabel} #${idx + 1}`}</span>
-                          {hasExcl && (
-                            <span className={`text-[9px] px-1.5 py-0.2 rounded-full font-bold ${
-                              isActive ? 'bg-orange-500 text-white' : 'bg-orange-100 text-[#fe6712]'
-                            }`}>
-                              -{slot.exclusions.length}
-                            </span>
-                          )}
-                        </button>
-                      );
-                    })}
-                  </div>
-
-                  {/* Tarjeta de Configuración de la Ranura Activa con Contadores de Cantidad */}
-                  {slots[activeSlotIndex] && (
-                    <div className="space-y-3">
-                      <div className="flex flex-col sm:flex-row justify-between items-start sm:items-center gap-2 pb-3 border-b border-slate-100">
-                        <div className="flex-1 w-full sm:w-auto">
-                          <label className="text-[9px] font-black text-slate-400 uppercase tracking-wider block mb-1">
-                            {unitLabel} #{activeSlotIndex + 1} — Nombre / Persona (Opcional)
-                          </label>
-                          <input
-                            type="text"
-                            value={slots[activeSlotIndex].name || ''}
-                            onChange={(e) => handleSlotNameChange(e.target.value)}
-                            placeholder="Ej. Juan, María... (Opcional)"
-                            className="w-full rounded-xl border border-slate-200 bg-slate-50 px-3 py-1.5 text-xs font-bold text-slate-800 focus:border-[#fe6712] focus:outline-none transition"
-                          />
-                        </div>
-
-                        {slots.length > 1 && (
-                          <button
-                            type="button"
-                            onClick={copyCurrentSlotToAll}
-                            className="text-[10px] font-black text-[#fe6712] hover:bg-orange-50 px-2.5 py-1.5 rounded-xl border border-orange-200 transition cursor-pointer flex items-center gap-1.5 shrink-0 self-end sm:self-auto"
-                            title="Aplica variantes y exclusiones de esta unidad a todas"
-                          >
-                            {copiedFeedback ? <Check className="w-3.5 h-3.5" /> : <Copy className="w-3.5 h-3.5" />}
-                            <span>{copiedFeedback ? '¡Copiado a todas!' : 'Copiar a todas'}</span>
-                          </button>
-                        )}
-                      </div>
-
-                      {/* Grupos y Opciones con Contadores de Cantidad en la Ranura */}
-                      {availableGroups.length > 0 && availableGroups.map((group: any, gIdx: number) => {
-                        const currentSlotVars = slots[activeSlotIndex].selectedVariants[gIdx];
-                        return (
-                          <div key={gIdx} className="space-y-2">
-                            <div className="flex justify-between items-baseline">
-                              <span className="text-[10px] font-black text-slate-900 uppercase tracking-wider">{group.title}</span>
-                              <span className="text-[9px] font-bold text-slate-400">{group.subtitle || 'Ajusta las cantidades'}</span>
-                            </div>
-                            <div className="grid grid-cols-1 sm:grid-cols-2 gap-2">
-                              {group.options.map((opt: any) => {
-                                const matched = Array.isArray(currentSlotVars)
-                                  ? currentSlotVars.find((i: any) => i.code === opt.code || i.id === opt.code)
-                                  : null;
-                                const countVal = matched ? (matched.count || 0) : 0;
-
-                                const { priceLabel, bsLabel } = getOptionPriceLabels(opt.price, false, bcvRate);
-                                if (isCheckinGroup(group)) {
-                                  return (
-                                    <OptionCapsule
-                                      key={opt.code}
-                                      mode="single"
-                                      name={opt.name}
-                                      image={opt.image}
-                                      priceLabel={priceLabel}
-                                      bsLabel={bsLabel}
-                                      count={countVal}
-                                      onSelect={() => handleSlotCheckboxToggle(activeSlotIndex, gIdx, opt.code)}
-                                    />
-                                  );
-                                }
-                                return (
-                                  <OptionCapsule
-                                    key={opt.code}
-                                    mode="counter"
-                                    name={opt.name}
-                                    image={opt.image}
-                                    priceLabel={priceLabel}
-                                    bsLabel={bsLabel}
-                                    count={countVal}
-                                    onIncrement={() => handleSlotOptionQuantityChange(gIdx, opt.code, 1)}
-                                    onDecrement={() => handleSlotOptionQuantityChange(gIdx, opt.code, -1)}
-                                  />
-                                );
-                              })}
-                            </div>
-                          </div>
-                        );
-                      })}
-
-                      {/* Exclusiones de la Ranura Activa */}
-                      {/* Firma D'una (exclusiones): solo comida rápida (nicheEngine FOOD_FAST) — no aplica a heladerías, bodegones, etc. */}
-                      {nicheEngine === 'FOOD_FAST' && product.exclusions && product.exclusions.length > 0 && (
-                        <div className="space-y-2 pt-2 border-t border-slate-100">
-                          <div className="flex justify-between items-center">
-                            <span className="text-[10px] font-black text-[#fe6712] uppercase tracking-wider flex items-center gap-1">
-                              <Sparkles className="w-3.5 h-3.5" /> Exclusiones para esta unidad:
-                            </span>
-                            {slots[activeSlotIndex].exclusions?.length > 0 && (
-                              <button
-                                type="button"
-                                onClick={resetCurrentSlotToConTodo}
-                                className="text-[9px] font-black text-slate-500 hover:text-slate-800 underline cursor-pointer"
-                              >
-                                Con Todo
-                              </button>
-                            )}
-                          </div>
-                          <div className="grid grid-cols-2 sm:grid-cols-3 gap-2">
-                            {product.exclusions.map((exc: string) => {
-                              const isChecked = slots[activeSlotIndex].exclusions?.includes(exc);
-                              return (
-                                <label
-                                  key={exc}
-                                  className={`flex items-center gap-2 p-2 rounded-xl border text-[11px] font-bold cursor-pointer transition shadow-2xs ${
-                                    isChecked
-                                      ? 'bg-red-50/50 border-red-200 text-red-700'
-                                      : 'bg-slate-50 border-slate-200 text-slate-700 hover:border-orange-300'
-                                  }`}
-                                >
-                                  <input
-                                    type="checkbox"
-                                    checked={isChecked}
-                                    onChange={() => toggleSlotExclusion(exc)}
-                                    className="w-3.5 h-3.5 accent-[#fe6712] rounded cursor-pointer"
-                                  />
-                                  <span className={`truncate ${isChecked ? 'line-through opacity-80' : ''}`}>{exc}</span>
-                                </label>
-                              );
-                            })}
-                          </div>
-                        </div>
-                      )}
-
-                      {/* Navegación entre ranuras */}
-                      <div className="flex items-center justify-between pt-3 border-t border-slate-100 text-xs">
-                        <button
-                          type="button"
-                          onClick={() => setActiveSlotIndex(prev => Math.max(0, prev - 1))}
-                          disabled={activeSlotIndex === 0}
-                          className="flex items-center gap-1 px-3 py-1.5 rounded-xl border border-slate-200 text-slate-600 font-bold hover:bg-slate-50 disabled:opacity-40 disabled:cursor-not-allowed transition cursor-pointer"
-                        >
-                          <ChevronLeft className="w-3.5 h-3.5" />
-                          <span>Anterior</span>
-                        </button>
-
-                        <span className="text-[10px] font-black text-slate-400 uppercase tracking-wider">
-                          {unitLabel} #{activeSlotIndex + 1} de {slots.length}
-                        </span>
-
-                        {activeSlotIndex < slots.length - 1 ? (
-                          <button
-                            type="button"
-                            onClick={() => setActiveSlotIndex(prev => Math.min(slots.length - 1, prev + 1))}
-                            className="flex items-center gap-1 px-3 py-1.5 rounded-xl bg-slate-900 text-white font-bold hover:bg-slate-800 transition cursor-pointer"
-                          >
-                            <span>Siguiente</span>
-                            <ChevronRight className="w-3.5 h-3.5" />
-                          </button>
-                        ) : (
-                          <span className="text-[10px] font-black text-emerald-600 bg-emerald-50 px-2 py-1 rounded-lg border border-emerald-200 flex items-center gap-1">
-                            <CheckCircle2 className="w-3 h-3" /> Listas para pedir
-                          </span>
-                        )}
-                      </div>
-                    </div>
-                  )}
-                </div>
-              ) : (
-                /* Modo Estándar */
-                <div className="space-y-4">
-
-                  {/* Firma D'una (exclusiones): solo comida rápida (nicheEngine FOOD_FAST) — no aplica a heladerías, bodegones, etc. */}
-                  {nicheEngine === 'FOOD_FAST' && product.exclusions && product.exclusions.length > 0 && (
-                    <div className="pb-3 border-b border-gray-100 space-y-2">
-                      <label className="text-xs font-black text-slate-900 uppercase tracking-wider flex items-center gap-1.5">
-                        <Sparkles className="w-4 h-4 text-[#fe6712]" /> Firma D&apos;una (Exclusiones):
-                      </label>
-                      <div className="grid grid-cols-2 gap-2">
-                        {product.exclusions.map((exc: string) => (
-                          <label key={exc} className="flex items-center gap-2 bg-slate-50 p-2.5 rounded-xl border border-slate-200 text-xs font-bold text-slate-700 cursor-pointer shadow-xs hover:border-[#fe6712] transition">
-                            <input
-                              type="checkbox"
-                              checked={selectedExclusions.includes(exc)}
-                              onChange={() => toggleExclusion(exc)}
-                              className="w-4 h-4 accent-[#fe6712] rounded cursor-pointer"
-                            />
-                            <span className="truncate">{exc}</span>
-                          </label>
-                        ))}
-                      </div>
-                    </div>
-                  )}
-                </div>
-              )}
-              </div>
-            </div>
+            )
           )}
 
           {step === 2 && currentUpsells.length > 0 && (
@@ -1398,7 +1522,7 @@ export default function MasterProductModal({
           )}
         </div>
 
-        <div className="p-3 sm:p-4 border-t border-slate-100 bg-white shrink-0 pb-[max(1rem,env(safe-area-inset-bottom))]">
+        <div className="sticky bottom-0 bg-white border-t border-slate-100 z-30 p-4 sm:p-5 md:px-6 md:py-4 shrink-0 shadow-md pb-[max(0.75rem,env(safe-area-inset-bottom))]">
           <div className="flex items-center justify-between gap-3">
             <div className="shrink-0">
               <span className="text-[10px] font-black text-slate-400 uppercase block mb-0.5">Total a Pagar</span>
@@ -1418,7 +1542,7 @@ export default function MasterProductModal({
                     : 'bg-slate-200 text-slate-400 cursor-not-allowed shadow-none'
                 }`}
               >
-                <span>Continuar</span> <ArrowRight className="w-4 h-4" />
+                <span>{isMinimumsMet ? 'Continuar' : 'Selecciona tus opciones'}</span> <ArrowRight className="w-4 h-4" />
               </button>
             ) : (
               <div className="flex gap-2 flex-1 justify-end">
@@ -1442,7 +1566,7 @@ export default function MasterProductModal({
                   <svg className={`w-4 h-4 ${isMinimumsMet ? 'text-white' : 'text-slate-400'}`} fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}>
                     <path strokeLinecap="round" strokeLinejoin="round" d="M3 3h2l.4 2M7 13h10l4-8H5.4M7 13L5.4 5M7 13l-2.293 2.293c-.63.63-.184 1.707.707 1.707H17m0 0a2 2 0 100 4 2 2 0 000-4zm-8 2a2 2 0 11-4 0 2 2 0 014 0z" />
                   </svg>
-                  <span>Comprar Ahora • ${totalCalculated.toFixed(2)}</span>
+                  <span>{isMinimumsMet ? `Comprar Ahora • $${totalCalculated.toFixed(2)}` : 'Selecciona tus opciones'}</span>
                 </button>
               </div>
             )}

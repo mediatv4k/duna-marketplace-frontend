@@ -2,7 +2,7 @@
 
 import React, { useMemo, useState } from 'react';
 import {
-  X, Trash2, Gift, Shirt, Cpu, IceCream, ShoppingBasket, Wine, Pill, Search, ArrowRight,
+  X, Trash2, Gift, Shirt, Cpu, IceCream, ShoppingBasket, Wine, Search, ArrowRight,
 } from 'lucide-react';
 import MasterProductModal from './MasterProductModal';
 import { getModalEngine, getNicheConfig, type StoreNiche } from '@/lib/nicheConfig';
@@ -115,18 +115,6 @@ export interface MerchantTemplateEngineProps {
   productInitialQty?: number; // cantidad inicial del modal de producto (asistente)
 }
 
-// Emoji decorativo para las categorías tipo "mood" del fast-food (solo estética)
-function moodEmoji(category: string): string {
-  const c = category.toLowerCase();
-  if (/hamburg/.test(c)) return '🍔';
-  if (/perro|hot ?dog/.test(c)) return '🌭';
-  if (/pizza/.test(c)) return '🍕';
-  if (/bebida|refresco|jugo|batido/.test(c)) return '🥤';
-  if (/postre|helado|dulce/.test(c)) return '🍰';
-  if (/combo|promo/.test(c)) return '🎁';
-  if (/pollo|alita/.test(c)) return '🍗';
-  return '🔥';
-}
 
 function deriveFilters(products: any[] | undefined): string[] {
   const seen = new Set<string>();
@@ -190,7 +178,7 @@ export default function MerchantTemplateEngine({
   const progress = gamificationOn && threshold ? Math.min(100, (subtotalUSD / threshold) * 100) : 0;
   const missing = gamificationOn && threshold ? Math.max(0, threshold - subtotalUSD) : 0;
 
-  const filterChip = (value: string, label: string, emoji?: string) => (
+  const filterChip = (value: string, label: string) => (
     <button
       key={value}
       type="button"
@@ -199,14 +187,14 @@ export default function MerchantTemplateEngine({
         activeFilter === value ? 'bg-[#fe6712] text-white shadow-md shadow-orange-500/20' : 'bg-slate-100 text-slate-600 hover:bg-slate-200'
       }`}
     >
-      {emoji ? `${emoji} ` : ''}{label}
+      {label}
     </button>
   );
 
-  const chipsRow = (withEmoji: boolean) => filterList.length > 0 && (
+  const chipsRow = () => filterList.length > 0 && (
     <div className={`flex items-center gap-2 overflow-x-auto no-scrollbar pb-1 ${desktopSidebarLayout ? 'lg:hidden' : ''}`}>
-      {filterChip('ALL', 'Todos', withEmoji ? '✨' : undefined)}
-      {filterList.map((cat) => filterChip(cat, cat, withEmoji ? moodEmoji(cat) : undefined))}
+      {filterChip('ALL', 'Todos')}
+      {filterList.map((cat) => filterChip(cat, cat))}
     </div>
   );
 
@@ -217,7 +205,7 @@ export default function MerchantTemplateEngine({
         return (
           <div className="space-y-1.5">
             <p className={`text-[10px] font-black uppercase tracking-wider text-slate-400 ${desktopSidebarLayout ? 'lg:hidden' : ''}`}>¿Qué se te antoja hoy?</p>
-            {chipsRow(true)}
+            {chipsRow()}
           </div>
         );
       case 'boutique':
@@ -235,7 +223,7 @@ export default function MerchantTemplateEngine({
                 <span className="flex items-center gap-1 text-[10px] font-black text-fuchsia-700">Probar ahora <ArrowRight className="w-3 h-3" /></span>
               </button>
             )}
-            {chipsRow(false)}
+            {chipsRow()}
           </div>
         );
       case 'tech':
@@ -253,7 +241,7 @@ export default function MerchantTemplateEngine({
                 <Cpu className="w-4 h-4" /> {specsMode ? 'Fichas técnicas activadas' : 'Ver fichas técnicas'}
               </button>
             )}
-            {chipsRow(false)}
+            {chipsRow()}
           </div>
         );
       case 'ice-cream':
@@ -262,7 +250,7 @@ export default function MerchantTemplateEngine({
             <p className={`flex items-center gap-1.5 text-[10px] font-black uppercase tracking-wider text-slate-400 ${desktopSidebarLayout ? 'lg:hidden' : ''}`}>
               <IceCream className="w-3.5 h-3.5" /> Elige tu formato
             </p>
-            {chipsRow(false)}
+            {chipsRow()}
           </div>
         );
       case 'minimarket':
@@ -271,7 +259,7 @@ export default function MerchantTemplateEngine({
             <p className={`flex items-center gap-1.5 text-[10px] font-black uppercase tracking-wider text-slate-400 ${desktopSidebarLayout ? 'lg:hidden' : ''}`}>
               <ShoppingBasket className="w-3.5 h-3.5" /> Pasillos
             </p>
-            {chipsRow(false)}
+            {chipsRow()}
           </div>
         );
       case 'bodegon':
@@ -280,7 +268,7 @@ export default function MerchantTemplateEngine({
             <div className="flex items-center gap-2 rounded-2xl border border-rose-200 bg-rose-50/70 px-4 py-2.5 text-[11px] font-bold text-rose-800">
               <Wine className="w-4 h-4 shrink-0" /> Venta de bebidas alcohólicas solo a mayores de 18 años.
             </div>
-            {chipsRow(false)}
+            {chipsRow()}
           </div>
         );
       case 'farma':
@@ -297,10 +285,7 @@ export default function MerchantTemplateEngine({
                 />
               </div>
             )}
-            <p className="flex items-center gap-1.5 text-[10px] font-bold text-slate-500">
-              <Pill className="w-3.5 h-3.5" /> Consulta siempre a tu médico o farmacéutico antes de usar un medicamento.
-            </p>
-            {chipsRow(false)}
+            {chipsRow()}
           </div>
         );
       default:

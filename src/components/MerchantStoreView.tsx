@@ -598,7 +598,7 @@ export default function MerchantStoreView({
 
           {/* El buscador ahora vive pegado al banner (ver `searchNode`, justo debajo de `heroNode`); ya no se repite aquí. */}
 
-          <div className="mt-8" id="catalog-grid">
+          <div className={selectedCategory === 'ALL' ? 'mt-8' : 'mt-4'} id="catalog-grid">
             <div className="flex items-center justify-between mb-4">
               {sidebarLayout ? (
                 <div className="flex items-center gap-2">
