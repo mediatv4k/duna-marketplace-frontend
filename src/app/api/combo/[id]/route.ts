@@ -22,6 +22,7 @@ export interface ComboRoomData {
   totalUnits: number;
   unitPriceUsd: number;
   claimedUnits: number;
+  paymentMode: 'split' | 'host_pays';
   participants: ParticipantClaim[];
   createdAt: string;
   hostName: string;
@@ -69,7 +70,8 @@ export async function POST(
       hostUnitsCount,
       hostSelectedVariants,
       hostExclusions,
-    } = body;
+        paymentMode = 'split',
+      } = body;
 
     if (!productId || !productName || !totalUnits || totalUnits < 1) {
       return NextResponse.json({ ok: false, error: 'Parámetros inválidos' }, { status: 400 });
@@ -105,6 +107,7 @@ export async function POST(
       totalUnits,
       unitPriceUsd: unitPriceUsd || 0,
       claimedUnits: hostClaim.unitsCount,
+        paymentMode,
       participants: hostClaim.unitsCount > 0 ? [hostClaim] : [],
       createdAt: new Date().toISOString(),
       hostName: hostName || 'Anfitrión',
