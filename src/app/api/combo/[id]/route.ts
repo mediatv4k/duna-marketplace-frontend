@@ -62,6 +62,8 @@ export async function POST(
       storeCode,
       totalSlots,
       hostName,
+      hostSelectedVariants,
+      hostExclusions,
     } = body;
 
     if (!productId || !productName || !totalSlots || totalSlots < 1 || totalSlots > 50) {
@@ -71,9 +73,9 @@ export async function POST(
     const slots: ComboSlotState[] = Array.from({ length: totalSlots }, (_, i) => ({
       slotIndex: i,
       guestName: i === 0 ? (hostName || 'Anfitrión') : '',
-      selectedVariants: {},
-      exclusions: [],
-      completedAt: null,
+      selectedVariants: i === 0 ? (hostSelectedVariants || {}) : {},
+      exclusions: i === 0 ? (Array.isArray(hostExclusions) ? hostExclusions : []) : [],
+      completedAt: i === 0 ? new Date().toISOString() : null,
     }));
 
     // Generar un ID hasta que no exista colisión

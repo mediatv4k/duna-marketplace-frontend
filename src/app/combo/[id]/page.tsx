@@ -448,6 +448,16 @@ export default function ComboRoomPage({ params }: { params: { id: string } }) {
     const hasGroups = room.groups.length > 0 && room.groups.some(g => (g.options || g.items || []).length > 0);
     const hasSinGroups = room.groups.some((g: any) => /\bsin\b/i.test(String(g.name || g.title || '')));
 
+    const isMinimumsMet = room.groups.every((group: any, gIdx: number) => {
+      const isSinGroup = /\bsin\b/i.test(String(group.name || group.title || ''));
+      if (isSinGroup) return true; // Exclusiones son opcionales
+      const min = group.minItems ?? group.min ?? (group.required ? 1 : (group.selectType === 'SINGLE' && group.pricingRole === 'BASE' ? 1 : 0));
+      if (min <= 0) return true;
+      const selection = localVariants[String(gIdx)] || [];
+      const totalCount = selection.reduce((acc: number, curr: any) => acc + (curr.count || 0), 0);
+      return totalCount >= min;
+    });
+
     return (
       <div className="min-h-screen bg-slate-50 flex flex-col">
         {/* Header */}
@@ -472,6 +482,9 @@ export default function ComboRoomPage({ params }: { params: { id: string } }) {
           {hasGroups && room.groups.map((group: any, gIdx: number) => {
             const opts: any[] = group.options || group.items || [];
             if (!opts.length) return null;
+            const isSinGroup = /\bsin\b/i.test(String(group.name || group.title || ''));
+            if (isSinGroup) return null;
+
             const isCheckin = group.selectType === 'CHECKIN' || Boolean(group.checkbox);
             const isMultiple = group.selectType === 'MULTIPLE' || group.selectType === 'CHECKIN';
             const isSingle = !isMultiple;
@@ -539,11 +552,12 @@ export default function ComboRoomPage({ params }: { params: { id: string } }) {
         {/* Footer Sticky */}
         <div className="sticky bottom-0 bg-white border-t border-slate-100 px-4 py-3.5 shadow-md space-y-2 pb-[max(0.875rem,env(safe-area-inset-bottom))]">
           {saveError && <p className="text-xs font-bold text-red-600 text-center">{saveError}</p>}
+          {!isMinimumsMet && <p className="text-xs font-bold text-slate-500 text-center">Completa las opciones requeridas para confirmar.</p>}
           <button
             type="button"
             onClick={handleSave}
-            disabled={saving}
-            className="w-full bg-[#fe6712] hover:bg-[#e0580d] disabled:bg-slate-300 text-white font-black py-3.5 rounded-2xl text-sm flex items-center justify-center gap-2 transition active:scale-[0.98] cursor-pointer"
+            disabled={saving || !isMinimumsMet || !guestName.trim()}
+            className="w-full bg-[#fe6712] hover:bg-[#e0580d] disabled:bg-slate-300 disabled:cursor-not-allowed text-white font-black py-3.5 rounded-2xl text-sm flex items-center justify-center gap-2 transition active:scale-[0.98] cursor-pointer"
           >
             {saving ? (
               <><div className="w-4 h-4 border-2 border-white border-t-transparent rounded-full animate-spin" /> Guardando…</>

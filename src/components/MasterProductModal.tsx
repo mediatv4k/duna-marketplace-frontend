@@ -654,7 +654,7 @@ export default function MasterProductModal({
         }
       });
     } else {
-      slots.forEach(slot => {
+      const targetSlots = (showComboPanel && comboRoomSlots.length > 0 && comboRoomSlots.every(s => !!s.completedAt)) ? comboRoomSlots : slots; targetSlots.forEach((slot: any) => {
         Object.entries(slot.selectedVariants).forEach(([groupIdx, selection]: [string, any]) => {
           if (!selection) return;
           const isBaseGroup = availableGroups[Number(groupIdx)]?.pricingRole === 'BASE';
@@ -681,7 +681,7 @@ export default function MasterProductModal({
       totalSlotVariantsPrice: slotVariantsExtra,
       totalUpsells: upsellsExtra
     };
-  }, [product, selectedVariants, slots, isSlotMode, upsellSelections, availableGroups]);
+  }, [product, selectedVariants, slots, isSlotMode, upsellSelections, availableGroups, showComboPanel, comboRoomSlots]);
 
   const totalCalculated = useMemo(() => {
     if (isSlotMode) {
@@ -715,15 +715,17 @@ export default function MasterProductModal({
     if (!product) return;
     const breakdown: string[] = [];
 
+    const activeSlots = (showComboPanel && comboAllDone) ? comboRoomSlots : slots;
+
     if (isSlotMode) {
       if (isCombo) {
-        breakdown.push(`Combo: ${product.name} (${slots.length} unidades)`);
+        breakdown.push(`Combo: ${product.name} (${activeSlots.length} unidades)`);
       } else {
-        breakdown.push(`Personalización por unidad (${slots.length} unidades)`);
+        breakdown.push(`Personalización por unidad (${activeSlots.length} unidades)`);
       }
 
-      slots.forEach((slot, idx) => {
-        const slotTitle = slot.name?.trim() || '';
+      activeSlots.forEach((slot, idx) => {
+        const slotTitle = slot.guestName?.trim() || slot.name?.trim() || '';
         // Encabezado legible: "Perro Sencillo #1 (omar)" (nombre del producto + número de unidad + nombre opcional)
         const slotHeader = `${product.name || 'Unidad'} #${idx + 1}${slotTitle ? ` (${slotTitle})` : ''}`;
         const slotParts: string[] = [];
@@ -864,8 +866,9 @@ export default function MasterProductModal({
           storeName: store?.name || '',
           storeCode: store?.code || '',
           totalSlots: qty > 1 ? qty : (baseSlotCount > 1 ? baseSlotCount : qty),
-          groups: availableGroups,
           hostName: 'Anfitrión',
+          hostSelectedVariants: selectedVariants,
+          hostExclusions: selectedExclusions,
         }),
       });
       const data = await res.json();
@@ -1827,7 +1830,7 @@ export default function MasterProductModal({
                       disabled={!isMinimumsMet || (showComboPanel && !comboAllDone)}
                       className={`flex flex-1 items-center justify-center gap-2 rounded-xl px-4 py-2.5 text-xs sm:text-sm font-bold shadow-md transition-all active:scale-[0.98] ${
                         isMinimumsMet && !(showComboPanel && !comboAllDone)
-                          ? 'bg-orange-500 hover:bg-orange-600 text-white cursor-pointer'
+                          ? 'bg-[#fe6712] hover:bg-[#e05509] text-white cursor-pointer'
                           : 'bg-slate-300 text-slate-500 cursor-not-allowed shadow-none'
                       }`}
                     >
@@ -1837,6 +1840,8 @@ export default function MasterProductModal({
                       <span>
                         {showComboPanel && !comboAllDone
                           ? 'Esperando amigos…'
+                          : (showComboPanel && comboAllDone)
+                          ? `Agregar combo al carrito ($${totalCalculated.toFixed(2)})`
                           : isMinimumsMet
                           ? `Comprar • $${totalCalculated.toFixed(2)}`
                           : 'Selecciona opciones'}
