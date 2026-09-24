@@ -36,7 +36,7 @@ export interface ComboRoom {
   hostName: string;
 }
 
-/* ─── Store en memoria (Fallback Rápido) ─────────────────────────────────── */
+/* ─── Store en memoria ───────────────────────────────────────────────────── */
 const comboRooms: Map<string, ComboRoom> = (globalThis as any).comboRooms ??= new Map<string, ComboRoom>();
 const ROOM_TTL_MS = 4 * 60 * 60 * 1000; // 4 h
 
@@ -49,27 +49,10 @@ function pruneExpiredRooms() {
   }
 }
 
-// Codifica la sala a Base64URL para persistencia stateless en Vercel
-function encodeRoomToBase64(room: ComboRoom): string {
-  try {
-    return Buffer.from(JSON.stringify(room)).toString('base64url');
-  } catch {
-    return room.id;
-  }
-}
-
-// Decodifica la sala desde Base64URL
-function decodeRoomFromBase64(base64Str: string): ComboRoom | null {
-  try {
-    const decoded = Buffer.from(base64Str, 'base64url').toString('utf-8');
-    const room = JSON.parse(decoded) as ComboRoom;
-    if (room && room.productName && room.totalSlots) {
-      return room;
-    }
-    return null;
-  } catch {
-    return null;
-  }
+function generateRoomId(): string {
+  // Código corto legible: PANA-XXXX
+  const randomChars = Math.random().toString(36).slice(2, 6).toUpperCase();
+  return `PANA-${randomChars}`;
 }
 
 /* ─── GET ────────────────────────────────────────────────────────────────── */
@@ -77,17 +60,8 @@ export async function GET(
   _req: NextRequest,
   { params }: { params: { id: string } }
 ) {
-  let room = comboRooms.get(params.id);
+  const room = comboRooms.get(params.id);
   
-  // 🛡️ Estrategia Stateless (Vercel): Si no está en memoria, intentamos decodificar el ID
-  if (!room) {
-    room = decodeRoomFromBase64(params.id) || undefined;
-    if (room) {
-      // Restaurar en memoria de esta instancia
-      comboRooms.set(params.id, room);
-    }
-  }
-
   if (!room) {
     return NextResponse.json({ ok: false, error: 'Sala no encontrada' }, { status: 404 });
   }
@@ -109,7 +83,6 @@ export async function POST(
       storeName,
       storeCode,
       totalSlots,
-      groups,
       hostName,
     } = body;
 
@@ -125,24 +98,26 @@ export async function POST(
       completedAt: null,
     }));
 
+    const finalId = params.id === 'new' ? generateRoomId() : (params.id || generateRoomId());
+
+    if (comboRooms.has(finalId)) {
+      return NextResponse.json({ ok: false, error: 'Sala ya existe' }, { status: 409 });
+    }
+
     const room: ComboRoom = {
-      id: '', // Se asignará el base64
+      id: finalId,
       productId,
       productName,
       storeName: storeName || '',
       storeCode: storeCode || '',
       totalSlots,
-      groups: Array.isArray(groups) ? groups : [],
+      groups: [], // Eliminado para hacer el estado ligero
       slots,
       createdAt: new Date().toISOString(),
       hostName: hostName || 'Anfitrión',
     };
 
-    // 🛡️ Asignar el estado completo codificado como ID de la sala
-    const statelessId = encodeRoomToBase64(room);
-    room.id = statelessId;
-
-    comboRooms.set(statelessId, room);
+    comboRooms.set(finalId, room);
     return NextResponse.json({ ok: true, room }, { status: 201 });
   } catch {
     return NextResponse.json({ ok: false, error: 'Error al crear la sala' }, { status: 500 });
@@ -155,11 +130,6 @@ export async function PUT(
   { params }: { params: { id: string } }
 ) {
   let room = comboRooms.get(params.id);
-
-  // 🛡️ Estrategia Stateless (Vercel): Recuperar desde el ID si la memoria se borró
-  if (!room) {
-    room = decodeRoomFromBase64(params.id) || undefined;
-  }
 
   if (!room) {
     return NextResponse.json({ ok: false, error: 'Sala no encontrada' }, { status: 404 });
@@ -192,9 +162,6 @@ export async function PUT(
       exclusions: Array.isArray(exclusions) ? exclusions : [],
       completedAt: new Date().toISOString(),
     };
-
-    // Actualizamos la memoria de este contenedor
-    comboRooms.set(params.id, room);
 
     return NextResponse.json({ ok: true, room });
   } catch {

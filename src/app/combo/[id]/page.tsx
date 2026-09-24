@@ -1,7 +1,7 @@
 'use client';
 
-import React, { useState, useEffect, useCallback } from 'react';
-
+import React, { useState, useEffect, useCallback, useRef } from 'react';
+import { getProduct } from '@/services/marketplaceService';
 /* ─── Tipos espejo del backend ───────────────────────────────────────────── */
 interface ComboSlotState {
   slotIndex: number;
@@ -153,13 +153,89 @@ export default function ComboRoomPage({ params }: { params: { id: string } }) {
     }
   };
 
+  // Helper to normalize product groups (like MasterProductModal)
+  const normalizeGroups = (product: any) => {
+    if (!product) return [];
+    let rawList: any[] = [];
+    if (Array.isArray(product.groups) && product.groups.length > 0) rawList = product.groups;
+    else if (Array.isArray(product.slotGroups) && product.slotGroups.length > 0) rawList = product.slotGroups;
+    else if (Array.isArray(product.variants) && product.variants.length > 0) rawList = product.variants;
+    else if (Array.isArray(product.sabores) && product.sabores.length > 0) rawList = product.sabores;
+    else if (Array.isArray(product.pack_items) && product.pack_items.length > 0) rawList = product.pack_items;
+    else if (Array.isArray(product.options) && product.options.length > 0) rawList = product.options;
+    else if (Array.isArray(product.customizations) && product.customizations.length > 0) rawList = product.customizations;
+    else if (product.metadata) {
+      const meta = typeof product.metadata === 'string' ? (() => { try { return JSON.parse(product.metadata); } catch { return {}; } })() : product.metadata;
+      if (Array.isArray(meta?.variants) && meta.variants.length > 0) rawList = meta.variants;
+      else if (Array.isArray(meta?.groups) && meta.groups.length > 0) rawList = meta.groups;
+      else if (Array.isArray(meta?.slotGroups) && meta.slotGroups.length > 0) rawList = meta.slotGroups;
+    }
+
+    if (!Array.isArray(rawList) || rawList.length === 0) return [];
+
+    const isArrayOfGroups = rawList.some((item: any) =>
+      item && typeof item === 'object' && (Array.isArray(item.options) || Array.isArray(item.items) || Array.isArray(item.values) || Array.isArray(item.variants))
+    );
+
+    if (isArrayOfGroups) {
+      return rawList.map((g: any, gIdx: number) => {
+        const rawOptions = g.options || g.items || g.values || g.variants || [];
+        const normalizedOptions = Array.isArray(rawOptions) ? rawOptions.filter((opt: any) => opt?.status !== 'INACTIVE').map((opt: any, oIdx: number) => ({
+          ...opt,
+          name: opt.name || opt.title || opt.label || (typeof opt === 'string' ? opt : `Opción ${oIdx + 1}`),
+          code: opt.code || opt.id || opt.value || `opt-${gIdx}-${oIdx}`,
+          price: Number(opt.price || opt.unitPrice || 0),
+          count: 0
+        })) : [];
+        const isCheckbox = g.selectType === 'CHECKIN' || Boolean(g.checkbox);
+        const isMultiple = g.selectType === 'MULTIPLE' || isCheckbox || Number(g.max || g.maxItems || 0) > 1;
+        return {
+          ...g,
+          name: g.name || g.title || g.label || 'Opciones',
+          selectType: isCheckbox ? 'CHECKIN' : (isMultiple ? 'MULTIPLE' : (g.selectType || 'SINGLE')),
+          pricingRole: g.pricingRole || 'ADDON',
+          options: normalizedOptions
+        };
+      });
+    }
+
+    const normalizedOptions = rawList.filter((opt: any) => opt?.status !== 'INACTIVE').map((opt: any, oIdx: number) => ({
+      ...opt,
+      name: opt.name || opt.title || opt.label || (typeof opt === 'string' ? opt : `Opción ${oIdx + 1}`),
+      code: opt.code || opt.id || opt.value || `opt-${oIdx}`,
+      price: Number(opt.price || opt.unitPrice || 0),
+      count: 0
+    }));
+
+    return [{
+      name: 'Opciones Adicionales',
+      title: 'Opciones Adicionales',
+      selectType: 'MULTIPLE',
+      pricingRole: 'ADDON',
+      options: normalizedOptions
+    }];
+  };
+
+  const productCacheRef = useRef<any>(null);
+
   /* ── Cargar sala ── */
   const loadRoom = useCallback(async () => {
     try {
       const res = await fetch(`/api/combo/${roomId}`);
       if (!res.ok) { setError('Sala no encontrada o expirada.'); return; }
       const data = await res.json();
-      if (data.ok) setRoom(data.room);
+      if (data.ok) {
+        const fetchedRoom = data.room;
+        // Hidratación por referencia: Buscar producto para inyectar options
+        if (!productCacheRef.current && fetchedRoom.productId) {
+           const pRes = await getProduct(fetchedRoom.productId);
+           if (pRes.code === 1 && pRes.data) {
+             productCacheRef.current = normalizeGroups(pRes.data);
+           }
+        }
+        fetchedRoom.groups = productCacheRef.current || [];
+        setRoom(fetchedRoom);
+      }
       else setError(data.error || 'Error al cargar la sala.');
     } catch {
       setError('Error de conexión.');
