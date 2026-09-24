@@ -189,6 +189,14 @@ export default function MasterProductModal({
   const [selectedExclusions, setSelectedExclusions] = useState<string[]>([]);
   const [upsellSelections, setUpsellSelections] = useState<Record<string, any>>({});
 
+  // ── Pedido Colaborativo ("Armar Combo con Amigos en Vivo") ─────────────────
+  const [comboRoomId, setComboRoomId] = useState<string | null>(null);
+  const [comboRoomSlots, setComboRoomSlots] = useState<any[]>([]);
+  const [showComboPanel, setShowComboPanel] = useState(false);
+  const [comboCreating, setComboCreating] = useState(false);
+  const [comboCopied, setComboCopied] = useState(false);
+  const comboPollingRef = React.useRef<ReturnType<typeof setInterval> | null>(null);
+
   // Detección si el producto es un Combo
   // Metadatos ocultos en la descripción (ver src/lib/productTags.ts): sin etiquetas `[CLAVE: Valor]`, `tags` queda
   // vacío y `cleanDescription` es la descripción real, sin tocar (los productos sin corchetes no se ven afectados)
@@ -206,27 +214,102 @@ export default function MasterProductModal({
     return false;
   }, [product]);
 
-  // Grupos disponibles para variantes en ranura. Estricta y únicamente datos reales del backend (`product.groups`/
-  // `product.slotGroups`, normalizados en MerchantStoreView desde `metadata.variants` real): antes, sin esos datos,
-  // se inventaba un grupo demo ("Tocineta Crocante", "Queso Amarillo Extra") para cualquier combo o tienda FOOD_FAST/
-  // FOOD_SWEET — datos ficticios llegando a clientes reales, contra la regla de oro "Datos 100% reales" de AGENTS.md.
-  // Un producto sin variantes reales simplemente no muestra esta sección (los `.length > 0` que la consumen ya lo cubren).
+  // Grupos disponibles para variantes en ranura. Normalización universal de datos reales del backend
+  // Soporta product.groups, product.slotGroups, product.variants, product.pack_items, product.sabores, product.options, product.customizations y sus equivalentes en metadata.
   const availableGroups = useMemo(() => {
-    if (product?.groups && Array.isArray(product.groups) && product.groups.length > 0) {
-      return product.groups;
+    if (!product) return [];
+
+    let rawList: any[] = [];
+    if (Array.isArray(product.groups) && product.groups.length > 0) {
+      rawList = product.groups;
+    } else if (Array.isArray(product.slotGroups) && product.slotGroups.length > 0) {
+      rawList = product.slotGroups;
+    } else if (Array.isArray(product.variants) && product.variants.length > 0) {
+      rawList = product.variants;
+    } else if (Array.isArray(product.sabores) && product.sabores.length > 0) {
+      rawList = product.sabores;
+    } else if (Array.isArray(product.pack_items) && product.pack_items.length > 0) {
+      rawList = product.pack_items;
+    } else if (Array.isArray(product.options) && product.options.length > 0) {
+      rawList = product.options;
+    } else if (Array.isArray(product.customizations) && product.customizations.length > 0) {
+      rawList = product.customizations;
+    } else if (product.metadata) {
+      const meta = typeof product.metadata === 'string' ? (() => { try { return JSON.parse(product.metadata); } catch { return {}; } })() : product.metadata;
+      if (Array.isArray(meta?.variants) && meta.variants.length > 0) rawList = meta.variants;
+      else if (Array.isArray(meta?.groups) && meta.groups.length > 0) rawList = meta.groups;
+      else if (Array.isArray(meta?.slotGroups) && meta.slotGroups.length > 0) rawList = meta.slotGroups;
+      else if (Array.isArray(meta?.sabores) && meta.sabores.length > 0) rawList = meta.sabores;
+      else if (Array.isArray(meta?.pack_items) && meta.pack_items.length > 0) rawList = meta.pack_items;
+      else if (Array.isArray(meta?.options) && meta.options.length > 0) rawList = meta.options;
+      else if (Array.isArray(meta?.customizations) && meta.customizations.length > 0) rawList = meta.customizations;
     }
-    if (product?.slotGroups && Array.isArray(product.slotGroups) && product.slotGroups.length > 0) {
-      return product.slotGroups;
+
+    if (!Array.isArray(rawList) || rawList.length === 0) return [];
+
+    const isArrayOfGroups = rawList.some((item: any) =>
+      item && typeof item === 'object' && (Array.isArray(item.options) || Array.isArray(item.items) || Array.isArray(item.values) || Array.isArray(item.variants) || Array.isArray(item.choices))
+    );
+
+    if (isArrayOfGroups) {
+      return rawList.map((g: any, gIdx: number) => {
+        const rawOptions = g.options || g.items || g.values || g.variants || g.choices || [];
+        const normalizedOptions = Array.isArray(rawOptions) ? rawOptions.filter((opt: any) => opt?.status !== 'INACTIVE').map((opt: any, oIdx: number) => ({
+          ...opt,
+          name: opt.name || opt.title || opt.label || (typeof opt === 'string' ? opt : `Opción ${oIdx + 1}`),
+          title: opt.title || opt.name || opt.label || (typeof opt === 'string' ? opt : `Opción ${oIdx + 1}`),
+          code: opt.code || opt.id || opt.value || `opt-${gIdx}-${oIdx}`,
+          id: opt.id || opt.code || opt.value || `opt-${gIdx}-${oIdx}`,
+          price: Number(opt.price || opt.unitPrice || 0),
+          image: opt.image || opt.img || opt.imageUrl || undefined,
+          count: 0
+        })) : [];
+
+        const isCheckbox = g.selectType === 'CHECKIN' || Boolean(g.checkbox);
+        const isMultiple = g.selectType === 'MULTIPLE' || isCheckbox || Number(g.max || g.maxItems || 0) > 1;
+
+        return {
+          ...g,
+          name: g.name || g.title || g.label || 'Opciones',
+          title: g.title || g.name || g.label || 'Opciones',
+          selectType: isCheckbox ? 'CHECKIN' : (isMultiple ? 'MULTIPLE' : (g.selectType || 'SINGLE')),
+          pricingRole: g.pricingRole || 'ADDON',
+          options: normalizedOptions,
+          items: normalizedOptions
+        };
+      });
     }
-    return [];
+
+    // Array plano de opciones / sabores
+    const normalizedOptions = rawList.filter((opt: any) => opt?.status !== 'INACTIVE').map((opt: any, oIdx: number) => ({
+      ...opt,
+      name: opt.name || opt.title || opt.label || (typeof opt === 'string' ? opt : `Sabor ${oIdx + 1}`),
+      title: opt.title || opt.name || opt.label || (typeof opt === 'string' ? opt : `Sabor ${oIdx + 1}`),
+      code: opt.code || opt.id || opt.value || `flavor-${oIdx}`,
+      id: opt.id || opt.code || opt.value || `flavor-${oIdx}`,
+      price: Number(opt.price || opt.unitPrice || 0),
+      image: opt.image || opt.img || opt.imageUrl || undefined,
+      count: 0
+    }));
+
+    return [{
+      name: 'Sabores Disponibles',
+      title: 'Sabores Disponibles',
+      subtitle: 'Elige las cantidades para cada sabor u opción',
+      selectType: 'MULTIPLE',
+      pricingRole: 'ADDON',
+      options: normalizedOptions,
+      items: normalizedOptions
+    }];
   }, [product]);
 
-  const hasVariants = Boolean(
-    (availableGroups && availableGroups.length > 0) ||
-    (product?.variants && product.variants.length > 0) ||
-    (product?.options && product.options.length > 0) ||
-    (product?.customizations && product.customizations.length > 0)
-  );
+  const hasVariants = useMemo(() => {
+    return Boolean(
+      availableGroups &&
+      availableGroups.length > 0 &&
+      availableGroups.some((g: any) => Array.isArray(g.options) && g.options.length > 0)
+    );
+  }, [availableGroups]);
 
   // Cantidad base de ranuras si es combo
   const baseSlotCount = useMemo(() => {
@@ -322,7 +405,16 @@ export default function MasterProductModal({
 
   useEffect(() => {
     if (isOpen) document.body.style.overflow = 'hidden';
-    else document.body.style.overflow = 'unset';
+    else {
+      document.body.style.overflow = 'unset';
+      // Limpiar sala colaborativa al cerrar el modal
+      if (comboPollingRef.current) clearInterval(comboPollingRef.current);
+      setComboRoomId(null);
+      setComboRoomSlots([]);
+      setShowComboPanel(false);
+      setComboCreating(false);
+      setComboCopied(false);
+    }
     return () => { document.body.style.overflow = 'unset'; };
   }, [isOpen]);
 
@@ -752,7 +844,65 @@ export default function MasterProductModal({
   // renderizan nada — sin espacios en blanco ni pasos rotos.
   const currentUpsells: { code: string; name: string; price: number; icon?: string }[] = [];
 
+  // ── Helpers del Pedido Colaborativo ────────────────────────────────────────
+  const createComboRoom = async () => {
+    if (!product) return;
+    setComboCreating(true);
+    try {
+      const newId = Math.random().toString(36).slice(2, 10).toUpperCase();
+      const res = await fetch(`/api/combo/${newId}`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          productId: product.id || product.code || newId,
+          productName: product.name || 'Producto',
+          storeName: store?.name || '',
+          storeCode: store?.code || '',
+          totalSlots: qty > 1 ? qty : (baseSlotCount > 1 ? baseSlotCount : qty),
+          groups: availableGroups,
+          hostName: 'Anfitrión',
+        }),
+      });
+      const data = await res.json();
+      if (data.ok) {
+        setComboRoomId(newId);
+        setComboRoomSlots(data.room.slots || []);
+        setShowComboPanel(true);
+        // Polling cada 2 s
+        if (comboPollingRef.current) clearInterval(comboPollingRef.current);
+        comboPollingRef.current = setInterval(async () => {
+          try {
+            const pr = await fetch(`/api/combo/${newId}`);
+            const pd = await pr.json();
+            if (pd.ok) setComboRoomSlots(pd.room.slots || []);
+          } catch { /* silent */ }
+        }, 2000);
+      }
+    } catch { /* silent */ } finally {
+      setComboCreating(false);
+    }
+  };
+
+  const comboLink = comboRoomId
+    ? (typeof window !== 'undefined' ? `${window.location.origin}/combo/${comboRoomId}` : `/combo/${comboRoomId}`)
+    : '';
+
+  const comboAllDone = comboRoomSlots.length > 0 && comboRoomSlots.every(s => !!s.completedAt);
+
+  const handleCopyComboLink = () => {
+    if (!comboLink) return;
+    navigator.clipboard.writeText(comboLink).then(() => {
+      setComboCopied(true);
+      setTimeout(() => setComboCopied(false), 2000);
+    });
+  };
+
+  const whatsappComboUrl = comboLink
+    ? `https://wa.me/?text=${encodeURIComponent(`¡Arma tu pedido conmigo! Elige tu opción aquí: ${comboLink}`)}`
+    : '';
+
   if (!isOpen || !product) return null;
+
 
   const renderVariantsAndSlots = () => (
     <>
@@ -1091,10 +1241,10 @@ export default function MasterProductModal({
   );
 
   return (
-    <div className="fixed inset-0 z-[100] flex items-end sm:items-center justify-center p-0 sm:p-4 transition-all duration-300">
+    <div className="fixed inset-0 z-[100] flex items-stretch md:items-center justify-center p-0 md:p-4 transition-all duration-300">
       <div className="absolute inset-0 bg-black/60 backdrop-blur-sm" onClick={onClose}></div>
 
-      <div className={`bg-white w-full ${hasVariants ? 'max-w-3xl' : 'max-w-2xl'} rounded-t-[2.5rem] sm:rounded-3xl max-h-[92vh] flex flex-col overflow-hidden shadow-2xl relative z-10 animate-in slide-in-from-bottom sm:slide-in-from-bottom-0 sm:zoom-in-95 duration-200`}>
+      <div className={`bg-white w-full ${hasVariants ? 'md:max-w-3xl' : 'md:max-w-2xl'} rounded-none md:rounded-3xl h-full md:h-auto max-h-full md:max-h-[92vh] flex flex-col overflow-hidden shadow-2xl relative z-10 animate-in slide-in-from-bottom md:slide-in-from-bottom-0 md:zoom-in-95 duration-200`}>
 
         {/* Controles flotantes */}
         <div className="absolute top-3 right-3 flex items-center gap-2 z-40">
@@ -1112,14 +1262,14 @@ export default function MasterProductModal({
           </button>
         </div>
 
-        <div className="flex-1 flex flex-col overflow-hidden">
+        <div className="flex-1 flex flex-col overflow-y-auto md:overflow-hidden min-h-0">
           {step === 1 && (
             hasVariants ? (
               /* LAYOUT SIMÉTRICO 50/50 BILATERAL PARA PRODUCTOS CON VARIANTES */
-              <div className="flex-1 overflow-hidden min-h-0">
-                <div className="grid grid-cols-1 md:grid-cols-2 gap-6 p-4 sm:p-5 md:p-6 items-start h-full overflow-y-auto md:overflow-hidden">
+              <div className="flex-1 overflow-y-auto md:overflow-hidden min-h-0">
+                <div className="grid grid-cols-1 md:grid-cols-2 gap-4 md:gap-6 p-4 md:p-6 items-start md:h-full">
                   {/* Columna Izquierda (Mitad 50% - Anclada / Sin Scroll) */}
-                  <div className="w-full flex flex-col justify-between h-full overflow-hidden bg-slate-50/70 rounded-2xl p-4 border border-slate-200/80 gap-3">
+                  <div className="w-full flex flex-col justify-between md:h-full overflow-hidden bg-slate-50/70 rounded-2xl p-4 border border-slate-200/80 gap-3">
                     {/* Imagen del producto */}
                     <div className="relative flex items-center justify-center w-full rounded-2xl border border-slate-200/80 bg-white overflow-hidden p-2 h-36 sm:h-40 md:h-44 shrink-0 shadow-xs">
                       <img
@@ -1204,7 +1354,7 @@ export default function MasterProductModal({
                   </div>
 
                   {/* Columna Derecha (Mitad 50% - Vitrina de Opciones con Scroll) */}
-                  <div className="w-full flex flex-col flex-1 overflow-hidden min-h-0 bg-white h-full">
+                  <div className="w-full flex flex-col flex-1 overflow-hidden min-h-0 bg-white md:h-full">
                     {/* Cabecera */}
                     <div className="pb-3 border-b border-slate-100 shrink-0">
                       <div className="flex flex-wrap items-center gap-1.5 mb-1.5 pr-14 text-[10px] font-black uppercase tracking-wider text-slate-500">
@@ -1226,7 +1376,7 @@ export default function MasterProductModal({
               </div>
             ) : (
               /* LAYOUT ESTÁNDAR PARA PRODUCTOS SIMPLES / MEDICAMENTOS */
-              <div className="flex flex-col h-full overflow-hidden">
+              <div className="flex flex-col h-full overflow-y-auto md:overflow-hidden">
                 {/* Cabecera Fija */}
                 <div className="shrink-0 p-3 sm:p-4 grid grid-cols-1 sm:grid-cols-2 gap-3 items-start bg-white z-20 shadow-sm border-b border-slate-100">
                   {/* Columna Izquierda: Imagen, Precio y Cantidad */}
@@ -1522,54 +1672,162 @@ export default function MasterProductModal({
           )}
         </div>
 
-        <div className="sticky bottom-0 bg-white border-t border-slate-100 z-30 p-4 sm:p-5 md:px-6 md:py-4 shrink-0 shadow-md pb-[max(0.75rem,env(safe-area-inset-bottom))]">
-          <div className="flex items-center justify-between gap-3">
-            <div className="shrink-0">
-              <span className="text-[10px] font-black text-slate-400 uppercase block mb-0.5">Total a Pagar</span>
-              <div className="flex flex-col sm:flex-row sm:items-baseline sm:gap-1.5">
-                <span className="text-xl font-black text-slate-900 leading-none">${totalCalculated.toFixed(2)}</span>
-                {bcvRate ? <span className="text-xs font-bold text-slate-500">/ Bs. {(totalCalculated * bcvRate).toFixed(2)}</span> : null}
-              </div>
-            </div>
+        <div className="sticky bottom-0 bg-white border-t border-slate-100 z-30 shrink-0 shadow-md pb-[max(0.75rem,env(safe-area-inset-bottom))]">
 
-            {step === 1 && currentUpsells.length > 0 ? (
-              <button
-                onClick={handleNextStep}
-                disabled={!isMinimumsMet}
-                className={`flex-[2] max-w-[200px] font-black py-3.5 px-4 rounded-2xl transition shadow-md text-xs flex items-center justify-center gap-2 active:scale-95 ${
-                  isMinimumsMet
-                    ? 'bg-[#fe6712] hover:bg-[#e0580d] text-white cursor-pointer'
-                    : 'bg-slate-200 text-slate-400 cursor-not-allowed shadow-none'
-                }`}
-              >
-                <span>{isMinimumsMet ? 'Continuar' : 'Selecciona tus opciones'}</span> <ArrowRight className="w-4 h-4" />
-              </button>
-            ) : (
-              <div className="flex gap-2 flex-1 justify-end">
-                {step === 2 && (
-                  <button
-                    onClick={handleAddToCart}
-                    className="bg-slate-100 hover:bg-slate-200 text-slate-700 font-black py-3.5 px-4 rounded-2xl text-[11px] transition cursor-pointer active:scale-95"
-                  >
-                    Omitir
-                  </button>
-                )}
-                <button
-                  onClick={handleAddToCart}
-                  disabled={!isMinimumsMet}
-                  className={`flex items-center justify-center gap-2 rounded-xl px-6 py-2.5 text-xs sm:text-sm font-bold shadow-md transition-all active:scale-[0.98] ${
-                    isMinimumsMet
-                      ? 'bg-orange-500 hover:bg-orange-600 text-white cursor-pointer'
-                      : 'bg-slate-300 text-slate-500 cursor-not-allowed shadow-none'
-                  }`}
+          {/* ── Panel Colaborativo (visible cuando la sala está activa) ───── */}
+          {hasVariants && showComboPanel && comboRoomId && (
+            <div className="border-b border-slate-100 px-4 py-3 space-y-3 bg-orange-50/40">
+              {/* Cabecera del panel */}
+              <div className="flex items-center justify-between">
+                <div className="flex items-center gap-2">
+                  <div className="w-6 h-6 rounded-lg bg-[#fe6712] flex items-center justify-center shrink-0">
+                    <svg className="w-3.5 h-3.5 text-white" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}>
+                      <path strokeLinecap="round" strokeLinejoin="round" d="M17 20h5v-2a3 3 0 00-5.356-1.857M17 20H7m10 0v-2c0-.656-.126-1.283-.356-1.857M7 20H2v-2a3 3 0 015.356-1.857M7 20v-2c0-.656.126-1.283.356-1.857m0 0a5.002 5.002 0 019.288 0M15 7a3 3 0 11-6 0 3 3 0 016 0z" />
+                    </svg>
+                  </div>
+                  <div>
+                    <p className="text-xs font-black text-slate-900 leading-none">Combo en Vivo</p>
+                    <p className="text-[10px] text-slate-500 font-medium">Sala #{comboRoomId}</p>
+                  </div>
+                </div>
+                {/* Indicador de estado */}
+                <span className={`text-[10px] font-black px-2 py-0.5 rounded-full border ${comboAllDone ? 'bg-emerald-50 text-emerald-700 border-emerald-200' : 'bg-amber-50 text-amber-700 border-amber-200'}`}>
+                  {comboRoomSlots.filter(s => !!s.completedAt).length}/{comboRoomSlots.length} listos
+                </span>
+              </div>
+
+              {/* Lista de ranuras */}
+              <div className="grid grid-cols-2 gap-1.5">
+                {comboRoomSlots.map((slot: any, i: number) => (
+                  <div key={i} className={`flex items-center gap-1.5 rounded-lg border px-2 py-1.5 ${slot.completedAt ? 'border-emerald-200 bg-emerald-50' : 'border-slate-200 bg-white'}`}>
+                    <span className={`text-[10px] font-black px-1 py-0.5 rounded ${slot.completedAt ? 'bg-emerald-500 text-white' : 'bg-slate-200 text-slate-500'}`}>{i + 1}</span>
+                    <span className={`text-[11px] font-bold truncate ${slot.completedAt ? 'text-emerald-700' : 'text-slate-400'}`}>
+                      {slot.guestName || 'Libre'}
+                    </span>
+                    {slot.completedAt && (
+                      <svg className="w-3 h-3 text-emerald-500 shrink-0 ml-auto" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={3}>
+                        <path strokeLinecap="round" strokeLinejoin="round" d="M5 13l4 4L19 7" />
+                      </svg>
+                    )}
+                  </div>
+                ))}
+              </div>
+
+              {/* Botones de compartir */}
+              <div className="flex gap-2">
+                {/* WhatsApp */}
+                <a
+                  href={whatsappComboUrl}
+                  target="_blank"
+                  rel="noopener noreferrer"
+                  className="flex-1 flex items-center justify-center gap-1.5 bg-[#25D366] hover:bg-[#20BD5C] text-white font-black text-[11px] rounded-xl py-2 transition active:scale-95 cursor-pointer"
                 >
-                  <svg className={`w-4 h-4 ${isMinimumsMet ? 'text-white' : 'text-slate-400'}`} fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}>
-                    <path strokeLinecap="round" strokeLinejoin="round" d="M3 3h2l.4 2M7 13h10l4-8H5.4M7 13L5.4 5M7 13l-2.293 2.293c-.63.63-.184 1.707.707 1.707H17m0 0a2 2 0 100 4 2 2 0 000-4zm-8 2a2 2 0 11-4 0 2 2 0 014 0z" />
+                  <svg className="w-3.5 h-3.5" viewBox="0 0 24 24" fill="currentColor">
+                    <path d="M17.472 14.382c-.297-.149-1.758-.867-2.03-.967-.273-.099-.471-.148-.67.15-.197.297-.767.966-.94 1.164-.173.199-.347.223-.644.075-.297-.15-1.255-.463-2.39-1.475-.883-.788-1.48-1.761-1.653-2.059-.173-.297-.018-.458.13-.606.134-.133.298-.347.446-.52.149-.174.198-.298.298-.497.099-.198.05-.371-.025-.52-.075-.149-.669-1.612-.916-2.207-.242-.579-.487-.5-.669-.51-.173-.008-.371-.01-.57-.01-.198 0-.52.074-.792.372-.272.297-1.04 1.016-1.04 2.479 0 1.462 1.065 2.875 1.213 3.074.149.198 2.096 3.2 5.077 4.487.709.306 1.262.489 1.694.625.712.227 1.36.195 1.871.118.571-.085 1.758-.719 2.006-1.413.248-.694.248-1.289.173-1.413-.074-.124-.272-.198-.57-.347m-5.421 7.403h-.004a9.87 9.87 0 01-5.031-1.378l-.361-.214-3.741.982.998-3.648-.235-.374a9.86 9.86 0 01-1.51-5.26c.001-5.45 4.436-9.884 9.888-9.884 2.64 0 5.122 1.03 6.988 2.898a9.825 9.825 0 012.893 6.994c-.003 5.45-4.437 9.884-9.885 9.884m8.413-18.297A11.815 11.815 0 0012.05 0C5.495 0 .16 5.335.157 11.892c0 2.096.547 4.142 1.588 5.945L.057 24l6.305-1.654a11.882 11.882 0 005.683 1.448h.005c6.554 0 11.89-5.335 11.893-11.893a11.821 11.821 0 00-3.48-8.413z"/>
                   </svg>
-                  <span>{isMinimumsMet ? `Comprar Ahora • $${totalCalculated.toFixed(2)}` : 'Selecciona tus opciones'}</span>
+                  Compartir por WhatsApp
+                </a>
+
+                {/* Copiar enlace */}
+                <button
+                  type="button"
+                  onClick={handleCopyComboLink}
+                  className={`flex items-center justify-center gap-1.5 rounded-xl py-2 px-3 font-black text-[11px] border transition active:scale-95 cursor-pointer ${comboCopied ? 'bg-emerald-50 border-emerald-200 text-emerald-700' : 'bg-white border-slate-200 text-slate-700 hover:bg-slate-50'}`}
+                >
+                  {comboCopied ? (
+                    <svg className="w-3.5 h-3.5" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={3}>
+                      <path strokeLinecap="round" strokeLinejoin="round" d="M5 13l4 4L19 7" />
+                    </svg>
+                  ) : (
+                    <svg className="w-3.5 h-3.5" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}>
+                      <path strokeLinecap="round" strokeLinejoin="round" d="M8 5H6a2 2 0 00-2 2v12a2 2 0 002 2h10a2 2 0 002-2v-1M8 5a2 2 0 002 2h2a2 2 0 002-2M8 5a2 2 0 012-2h2a2 2 0 012 2m0 0h2a2 2 0 012 2v3" />
+                    </svg>
+                  )}
+                  {comboCopied ? 'Copiado' : 'Copiar'}
                 </button>
               </div>
-            )}
+            </div>
+          )}
+
+          {/* ── Barra de precio + botones de acción ─────────────────────── */}
+          <div className="p-4 sm:p-5 md:px-6 md:py-4">
+            <div className="flex items-center justify-between gap-3">
+              <div className="shrink-0">
+                <span className="text-[10px] font-black text-slate-400 uppercase block mb-0.5">Total a Pagar</span>
+                <div className="flex flex-col sm:flex-row sm:items-baseline sm:gap-1.5">
+                  <span className="text-xl font-black text-slate-900 leading-none">${totalCalculated.toFixed(2)}</span>
+                  {bcvRate ? <span className="text-xs font-bold text-slate-500">/ Bs. {(totalCalculated * bcvRate).toFixed(2)}</span> : null}
+                </div>
+              </div>
+
+              <div className="flex flex-col gap-2 flex-1 items-end">
+                {/* Botón "Armar con Amigos" — solo en productos con variantes, paso 1, sin upsells */}
+                {hasVariants && step === 1 && !showComboPanel && (
+                  <button
+                    type="button"
+                    onClick={createComboRoom}
+                    disabled={comboCreating}
+                    className="w-full max-w-[240px] flex items-center justify-center gap-1.5 rounded-xl py-2 px-4 text-[11px] font-black border border-[#fe6712]/50 text-[#fe6712] bg-orange-50 hover:bg-orange-100 transition active:scale-95 cursor-pointer disabled:opacity-50 disabled:cursor-not-allowed"
+                  >
+                    {comboCreating ? (
+                      <><div className="w-3 h-3 border-2 border-[#fe6712] border-t-transparent rounded-full animate-spin" /> Creando sala…</>
+                    ) : (
+                      <>
+                        <svg className="w-3.5 h-3.5" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}>
+                          <path strokeLinecap="round" strokeLinejoin="round" d="M17 20h5v-2a3 3 0 00-5.356-1.857M17 20H7m10 0v-2c0-.656-.126-1.283-.356-1.857M7 20H2v-2a3 3 0 015.356-1.857M7 20v-2c0-.656.126-1.283.356-1.857m0 0a5.002 5.002 0 019.288 0M15 7a3 3 0 11-6 0 3 3 0 016 0z" />
+                        </svg>
+                        Armar con Amigos en Vivo
+                      </>
+                    )}
+                  </button>
+                )}
+
+                {step === 1 && currentUpsells.length > 0 ? (
+                  <button
+                    onClick={handleNextStep}
+                    disabled={!isMinimumsMet}
+                    className={`flex-[2] max-w-[200px] font-black py-3.5 px-4 rounded-2xl transition shadow-md text-xs flex items-center justify-center gap-2 active:scale-95 ${
+                      isMinimumsMet
+                        ? 'bg-[#fe6712] hover:bg-[#e0580d] text-white cursor-pointer'
+                        : 'bg-slate-200 text-slate-400 cursor-not-allowed shadow-none'
+                    }`}
+                  >
+                    <span>{isMinimumsMet ? 'Continuar' : 'Selecciona tus opciones'}</span> <ArrowRight className="w-4 h-4" />
+                  </button>
+                ) : (
+                  <div className="flex gap-2 justify-end w-full max-w-[240px]">
+                    {step === 2 && (
+                      <button
+                        onClick={handleAddToCart}
+                        className="bg-slate-100 hover:bg-slate-200 text-slate-700 font-black py-3.5 px-4 rounded-2xl text-[11px] transition cursor-pointer active:scale-95"
+                      >
+                        Omitir
+                      </button>
+                    )}
+                    <button
+                      onClick={handleAddToCart}
+                      disabled={!isMinimumsMet || (showComboPanel && !comboAllDone)}
+                      className={`flex flex-1 items-center justify-center gap-2 rounded-xl px-4 py-2.5 text-xs sm:text-sm font-bold shadow-md transition-all active:scale-[0.98] ${
+                        isMinimumsMet && !(showComboPanel && !comboAllDone)
+                          ? 'bg-orange-500 hover:bg-orange-600 text-white cursor-pointer'
+                          : 'bg-slate-300 text-slate-500 cursor-not-allowed shadow-none'
+                      }`}
+                    >
+                      <svg className={`w-4 h-4 ${isMinimumsMet && !(showComboPanel && !comboAllDone) ? 'text-white' : 'text-slate-400'}`} fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}>
+                        <path strokeLinecap="round" strokeLinejoin="round" d="M3 3h2l.4 2M7 13h10l4-8H5.4M7 13L5.4 5M7 13l-2.293 2.293c-.63.63-.184 1.707.707 1.707H17m0 0a2 2 0 100 4 2 2 0 000-4zm-8 2a2 2 0 11-4 0 2 2 0 014 0z" />
+                      </svg>
+                      <span>
+                        {showComboPanel && !comboAllDone
+                          ? 'Esperando amigos…'
+                          : isMinimumsMet
+                          ? `Comprar • $${totalCalculated.toFixed(2)}`
+                          : 'Selecciona opciones'}
+                      </span>
+                    </button>
+                  </div>
+                )}
+              </div>
+            </div>
           </div>
         </div>
 

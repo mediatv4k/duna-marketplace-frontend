@@ -298,41 +298,87 @@ export default function MerchantStoreView({
       const res = await getProduct(product.id);
       if (res && res.code === 1 && res.data) {
         const raw = res.data;
-        const rawVariants = raw.metadata?.variants || raw.variants || raw.groups || raw.metadata?.groups || [];
+        const rawVariants =
+          raw.metadata?.variants ||
+          raw.variants ||
+          raw.groups ||
+          raw.metadata?.groups ||
+          raw.sabores ||
+          raw.metadata?.sabores ||
+          raw.pack_items ||
+          raw.metadata?.pack_items ||
+          raw.options ||
+          raw.metadata?.options ||
+          raw.customizations ||
+          raw.metadata?.customizations ||
+          [];
         
-        const normalizedGroups = Array.isArray(rawVariants) ? rawVariants.map((g: any) => {
-          const list = g.items || g.options || g.values || g.variants || g.choices || [];
-          
-          // Las opciones INACTIVE (p. ej. sabor sin stock en la BD) no se ofrecen: el backend rechaza la orden con ellas
-          const normalizedList = list.filter((item: any) => item?.status !== 'INACTIVE').map((item: any) => ({
-            ...item,
-            name: item.title || item.name || item.label || 'Opción',
-            title: item.title || item.name || item.label || 'Opción',
-            label: item.title || item.name || item.label || 'Opción',
-            id: item.code || item.id || item.value,
-            value: item.code || item.value || item.id,
-            price: item.price || item.unitPrice || 0
-          }));
+        let normalizedGroups: any[] = [];
+        if (Array.isArray(rawVariants) && rawVariants.length > 0) {
+          const isGroupList = rawVariants.some((g: any) =>
+            g && typeof g === 'object' && (Array.isArray(g.items) || Array.isArray(g.options) || Array.isArray(g.values) || Array.isArray(g.variants) || Array.isArray(g.choices))
+          );
 
-          // CHECKIN = casillas de verificación del backend (p. ej. grupo "SIN": sin cebolla, sin salsa); antes caía en SINGLE (radio)
-          const isCheckbox = g.selectType === 'CHECKIN';
-          const isMultiple = g.selectType === 'MULTIPLE' || isCheckbox || g.max > 1;
+          if (isGroupList) {
+            normalizedGroups = rawVariants.map((g: any) => {
+              const list = g.items || g.options || g.values || g.variants || g.choices || [];
+              const normalizedList = Array.isArray(list) ? list.filter((item: any) => item?.status !== 'INACTIVE').map((item: any, idx: number) => ({
+                ...item,
+                name: item.title || item.name || item.label || (typeof item === 'string' ? item : `Opción ${idx + 1}`),
+                title: item.title || item.name || item.label || (typeof item === 'string' ? item : `Opción ${idx + 1}`),
+                label: item.title || item.name || item.label || (typeof item === 'string' ? item : `Opción ${idx + 1}`),
+                id: item.code || item.id || item.value || `opt-${idx}`,
+                code: item.code || item.id || item.value || `opt-${idx}`,
+                value: item.code || item.value || item.id || `opt-${idx}`,
+                price: Number(item.price || item.unitPrice || 0)
+              })) : [];
 
-          return {
-            ...g,
-            name: g.name || g.title || g.label || 'Opciones',
-            title: g.name || g.title || g.label || 'Opciones',
-            label: g.name || g.title || g.label || 'Opciones',
-            type: 'SIZE_RADIO', 
-            selectType: isMultiple ? 'MULTIPLE' : 'SINGLE',
-            checkbox: isCheckbox,
-            items: normalizedList,
-            options: normalizedList,
-            values: normalizedList,
-            variants: normalizedList,
-            choices: normalizedList
-          };
-        }) : [];
+              const isCheckbox = g.selectType === 'CHECKIN' || Boolean(g.checkbox);
+              const isMultiple = g.selectType === 'MULTIPLE' || isCheckbox || Number(g.max || g.maxItems || 0) > 1;
+
+              return {
+                ...g,
+                name: g.name || g.title || g.label || 'Opciones',
+                title: g.title || g.name || g.label || 'Opciones',
+                label: g.title || g.name || g.label || 'Opciones',
+                type: 'SIZE_RADIO', 
+                selectType: isCheckbox ? 'CHECKIN' : (isMultiple ? 'MULTIPLE' : (g.selectType || 'SINGLE')),
+                checkbox: isCheckbox,
+                items: normalizedList,
+                options: normalizedList,
+                values: normalizedList,
+                variants: normalizedList,
+                choices: normalizedList
+              };
+            });
+          } else {
+            // Lista plana de sabores u opciones
+            const normalizedList = rawVariants.filter((item: any) => item?.status !== 'INACTIVE').map((item: any, idx: number) => ({
+              ...item,
+              name: item.title || item.name || item.label || (typeof item === 'string' ? item : `Sabor ${idx + 1}`),
+              title: item.title || item.name || item.label || (typeof item === 'string' ? item : `Sabor ${idx + 1}`),
+              label: item.title || item.name || item.label || (typeof item === 'string' ? item : `Sabor ${idx + 1}`),
+              id: item.code || item.id || item.value || `flavor-${idx}`,
+              code: item.code || item.id || item.value || `flavor-${idx}`,
+              value: item.code || item.value || item.id || `flavor-${idx}`,
+              price: Number(item.price || item.unitPrice || 0)
+            }));
+
+            normalizedGroups = [{
+              name: 'Sabores / Opciones',
+              title: 'Sabores / Opciones',
+              label: 'Sabores / Opciones',
+              type: 'SIZE_RADIO',
+              selectType: 'MULTIPLE',
+              checkbox: false,
+              items: normalizedList,
+              options: normalizedList,
+              values: normalizedList,
+              variants: normalizedList,
+              choices: normalizedList
+            }];
+          }
+        }
 
         console.log('[AUDITORIA VARIANTES]', {
           producto: raw?.name,

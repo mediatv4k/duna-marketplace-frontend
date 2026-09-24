@@ -1,3 +1,5 @@
 {
+  "/api/combo/[id]/route": "app/api/combo/[id]/route.js",
+  "/api/bcv/route": "app/api/bcv/route.js",
   "/page": "app/page.js"
 }
