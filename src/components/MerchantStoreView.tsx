@@ -1,4 +1,4 @@
-﻿'use client';
+'use client';
 
 import React, { useState } from 'react';
 import { ShoppingBag, ChevronRight, Search, Star, Clock, MapPin, Sparkles, FileText, X, ZoomIn, Bike } from 'lucide-react';
@@ -81,6 +81,20 @@ export default function MerchantStoreView({
 
   const [searchQuery, setSearchQuery] = useState('');
   const [selectedCategory, setSelectedCategory] = useState('ALL');
+  const [selectedSubcategory, setSelectedSubcategory] = useState<string | null>(null);
+  // Solo scrollea al grid cuando el usuario elige un departamento específico (no en el montaje inicial con 'ALL')
+  const isFirstRender = React.useRef(true);
+  React.useEffect(() => {
+    if (isFirstRender.current) { isFirstRender.current = false; return; }
+    if (typeof document !== 'undefined') {
+      const el = document.getElementById('catalog-grid');
+      if (el) {
+        const offset = window.innerWidth < 1024 ? 80 : 120;
+        const y = el.getBoundingClientRect().top + window.scrollY - offset;
+        window.scrollTo({ top: Math.max(0, y), behavior: 'smooth' });
+      }
+    }
+  }, [selectedCategory, selectedSubcategory]);
 
   // Categorías reales de producto (CATEGORIA del Excel / product.category del API),
   // en el orden en que aparecen los productos. Sin categoría definida → agrupa en "Otros".
@@ -441,11 +455,13 @@ export default function MerchantStoreView({
 
   const filteredProducts = products.filter(p => {
     const cat = (p.category && String(p.category).trim()) || 'Otros';
+    const subcat = p.internalCategory || p.internal_category || p.subCategory || null;
     const matchesCategory = selectedCategory === 'ALL' || cat === selectedCategory;
+    const matchesSubcategory = !selectedSubcategory || selectedSubcategory === subcat;
     const matchesSearch =
       p.name.toLowerCase().includes(searchQuery.toLowerCase()) ||
       (p.category && p.category.toLowerCase().includes(searchQuery.toLowerCase()));
-    return matchesCategory && matchesSearch;
+    return matchesCategory && matchesSubcategory && matchesSearch;
   });
 
   const totalItems = cartItems.reduce((acc, item) => acc + (item.qty || item.quantity || 1), 0);
@@ -474,9 +490,9 @@ export default function MerchantStoreView({
   // fija que le daba un "top" de referencia; ver nota de MerchantTemplateEngine) y usa su propio padding horizontal
   // (antes usaba el truco `-mx-4 px-4`, que asumía vivir dentro de un contenedor ya paddeado en 16px).
   const searchNode = (
-    <div className={`${sidebarLayout ? 'max-w-7xl md:px-8' : 'max-w-4xl'} mx-auto px-4 pt-4`}>
-      <div className="relative">
-        <Search className="absolute left-4 top-4 w-4 h-4 text-slate-400" />
+    <div className="sticky top-0 z-40 bg-white/95 backdrop-blur-md shadow-sm border-b border-slate-200/60 py-2.5 px-4 transition-all duration-200">
+      <div className={`${sidebarLayout ? 'max-w-7xl md:px-8' : 'max-w-4xl'} mx-auto relative`}>
+        <Search className="absolute left-4 top-1/2 -translate-y-1/2 w-4 h-4 text-slate-400" />
         <input
           type="text"
           placeholder="Buscar productos, sabores, combos o especialidades..."
@@ -489,53 +505,16 @@ export default function MerchantStoreView({
     </div>
   );
   const heroNode = (
-    <>
-        {/* Proporción consistente (2026-09-22): antes una altura fija (h-52 lg:h-44) contra un ancho a sangre forzaba
-            una relación ~7:1 en escritorio, muy lejos de los banners reales (2.4:1–3:1), así que `object-cover`
-            recortaba el arte de forma agresiva. `aspect-[3/1]` se acerca al promedio real y escala con el ancho.
-            Ancho contenido en pantallas grandes (2026-09-22, corrección): en vez de dejar el banner a sangre en TODO
-            el viewport en escritorio (con `max-h` como único freno, y aun así se sentía tosco/desbalanceado en
-            monitores anchos), a partir de `lg:` se lo acota a `max-w-7xl` — el mismo ancho de contenido que usa el
-            resto de la tienda — y se redondea como una tarjeta (`lg:rounded-2xl`, con margen propio arriba). En
-            móvil sigue a sangre (borde a borde), que ahí se ve bien y no hay ancho de sobra que balancear. */}
-        <div className={`${isFarma ? 'lg:hidden' : ''} lg:max-w-7xl lg:mx-auto lg:px-8 lg:pt-4`}>
-        <div className="relative w-full aspect-[3/1] max-h-[420px] bg-slate-900 overflow-hidden lg:rounded-2xl">
-          {merchant.banner ? (
-            <img src={merchant.banner} alt={merchant.name} className="w-full h-full object-cover" />
-          ) : (
-            <div className="w-full h-full bg-gradient-to-r from-[#fe6712] to-amber-600" />
-          )}
-          <div className="absolute inset-0 bg-gradient-to-t from-black/80 via-black/20 to-transparent" />
-
-          <div className="absolute bottom-0 left-0 right-0 p-4 flex items-end gap-3">
-            <img
-              src={merchant.avatar || 'https://images.unsplash.com/photo-1541658016709-82535e94bc69'}
-              alt={merchant.name}
-              className="w-16 h-16 rounded-2xl object-cover shadow-md border-2 border-white shrink-0 bg-slate-100"
-            />
-            <div className="min-w-0 flex-1">
-              <h1 className="text-2xl font-bold text-white tracking-tight truncate">{merchant.name}</h1>
-              <div className="mt-2 flex flex-wrap items-center gap-2">
-                <span className="bg-white/20 backdrop-blur-md text-white text-xs font-semibold px-3 py-1.5 rounded-full flex items-center gap-1"><Star className="w-3 h-3 fill-current" /> {merchant.rating || '5.0'}</span>
-                {merchant.deliveryFee && <span className="bg-white/20 backdrop-blur-md text-white text-xs font-semibold px-3 py-1.5 rounded-full flex items-center gap-1"><Bike className="w-3 h-3" /> {merchant.deliveryFee}</span>}
-                {merchant.badge && <span className="bg-white/20 backdrop-blur-md text-white text-xs font-semibold px-3 py-1.5 rounded-full flex items-center gap-1"><Clock className="w-3 h-3" /> {merchant.badge}</span>}
-                {merchant.code && (
-                  <ShareButton
-                    title={merchant.name}
-                    text={`¡Visita el catálogo de ${merchant.name} y pide ahora!`}
-                    url={`${typeof window !== 'undefined' ? window.location.origin : ''}/store/${merchant.code}`}
-                    ariaLabel="Compartir tienda"
-                    className="bg-white/20 backdrop-blur-md hover:bg-white/30 text-white p-1.5 rounded-full transition"
-                  />
-                )}
-              </div>
-            </div>
-          </div>
-        </div>
-        </div>
-
-        {searchNode}
-    </>
+    <div className="w-full px-4 lg:max-w-7xl lg:mx-auto lg:px-8 lg:pt-4">
+      <div className="h-52 md:h-56 w-full relative overflow-hidden rounded-2xl mb-6 shadow-sm border border-slate-200/80 bg-slate-100">
+        {merchant.banner ? (
+          <img src={merchant.banner} alt={merchant.name} className="w-full h-full object-cover" />
+        ) : (
+          <div className="w-full h-full bg-gradient-to-r from-[#fe6712] to-amber-600" />
+        )}
+      </div>
+      {searchNode}
+    </div>
   );
   {/* Isologo D'una (2026-09-21): fixed en vez de absolute dentro del banner — flota sobre toda la vista, visible
       aunque se haga scroll, y ya no depende de que el banner esté presente (útil en escritorio de farmacia, donde
@@ -558,7 +537,18 @@ export default function MerchantStoreView({
   const recipeHref = waHref(`Hola ${merchant.name}, quiero enviarles mi récipe médico.`);
   const departmentCounts = productCategories
     .filter((c) => c !== 'ALL')
-    .map((cat) => ({ cat, count: products.filter((p: any) => ((p.category && String(p.category).trim()) || 'Otros') === cat).length }));
+    .map((cat) => {
+      const catProducts = products.filter((p: any) => ((p.category && String(p.category).trim()) || 'Otros') === cat);
+      const subcatsMap = new Map<string, number>();
+      catProducts.forEach((p: any) => {
+        const sub = p.internalCategory || p.internal_category || p.subCategory;
+        if (sub) {
+          subcatsMap.set(sub, (subcatsMap.get(sub) || 0) + 1);
+        }
+      });
+      const subcategories = Array.from(subcatsMap.entries()).map(([name, count]) => ({ name, count })).sort((a,b) => b.count - a.count);
+      return { cat, count: catProducts.length, subcategories };
+    });
   const storeBrands = Array.from(new Set(products.map((p: any) => p.brand || p.laboratory).filter(Boolean))) as string[];
 
   const featuredNode = (
@@ -568,10 +558,12 @@ export default function MerchantStoreView({
   );
   const catalogNode = (
     <>
-          <PromotionsCarousel
-            promotions={canShowPromotions ? promotions : []}
-            onSelectPromotion={handlePromotionClick}
-          />
+          {selectedCategory === 'ALL' && (
+            <PromotionsCarousel
+              promotions={canShowPromotions ? promotions : []}
+              onSelectPromotion={handlePromotionClick}
+            />
+          )}
 
           {!templateNiche && productCategories.length > 1 && (
             <div className="mt-4 sticky top-0 z-40 -mx-4 px-4 py-2 bg-white/95 backdrop-blur-md shadow-sm flex items-center gap-2 overflow-x-auto no-scrollbar lg:hidden">
@@ -579,7 +571,7 @@ export default function MerchantStoreView({
                 <button
                   key={cat}
                   type="button"
-                  onClick={() => setSelectedCategory(cat)}
+                  onClick={() => { setSelectedCategory(cat); setSelectedSubcategory(null); }}
                   className={`px-4 py-2 rounded-xl text-xs font-black transition cursor-pointer whitespace-nowrap shrink-0 ${
                     selectedCategory === cat
                       ? 'bg-[#fe6712] text-white shadow-md shadow-orange-500/20'
@@ -606,17 +598,19 @@ export default function MerchantStoreView({
 
           {/* El buscador ahora vive pegado al banner (ver `searchNode`, justo debajo de `heroNode`); ya no se repite aquí. */}
 
-          <div className="mt-8">
+          <div className="mt-8" id="catalog-grid">
             <div className="flex items-center justify-between mb-4">
               {sidebarLayout ? (
                 <div className="flex items-center gap-2">
-                  <h2 className="text-sm font-black text-slate-800 uppercase tracking-wider">Todos los Productos</h2>
+                  <h2 className="text-sm font-black text-slate-800 uppercase tracking-wider">
+                    {selectedCategory === 'ALL' ? 'Todos los Productos' : (selectedSubcategory || selectedCategory)}
+                  </h2>
                   <span className="rounded-full bg-slate-100 px-2.5 py-0.5 text-[10px] font-black text-slate-600">{filteredProducts.length}</span>
                   {isLoadingMore && <span className="text-[10px] font-bold text-slate-400">Cargando catálogo completo…</span>}
                 </div>
               ) : (
                 <h2 className="text-sm font-black text-slate-800 uppercase tracking-wider">
-                  Menú y Productos ({filteredProducts.length})
+                  {selectedCategory === 'ALL' ? 'Menú y Productos' : (selectedSubcategory || selectedCategory)} ({filteredProducts.length})
                 </h2>
               )}
             </div>
@@ -702,7 +696,7 @@ export default function MerchantStoreView({
       {/* Catálogo: barra lateral + productos */}
       <div className="grid grid-cols-1 lg:grid-cols-4 gap-8">
         {/* Offset uniforme (2026-09-21): sin la franja superior del motor (eliminada), ya no hace falta el `top-24` extra para plantillas */}
-        <aside className="hidden lg:block lg:col-span-1 space-y-6 sticky top-6 max-h-[calc(100vh-3rem)] self-start overflow-y-auto no-scrollbar -mx-1 px-1 pt-1 pb-3">
+        <aside className="hidden lg:block lg:col-span-1 space-y-6 sticky top-20 max-h-[calc(100vh-6rem)] self-start overflow-y-auto no-scrollbar -mx-1 px-1 pt-1 pb-3">
           {isFarma && recipeHref && (
             <a
               href={recipeHref}
@@ -726,25 +720,49 @@ export default function MerchantStoreView({
               <li>
                 <button
                   type="button"
-                  onClick={() => setSelectedCategory('ALL')}
+                  onClick={() => { setSelectedCategory('ALL'); setSelectedSubcategory(null); }}
                   className={`w-full flex items-center justify-between rounded-lg px-2.5 py-1.5 text-xs font-bold transition cursor-pointer ${selectedCategory === 'ALL' ? 'bg-orange-50 text-brand-orange' : 'text-slate-600 hover:bg-slate-50'}`}
                 >
                   <span>Todos</span>
                   <span className="text-[10px] font-black text-slate-400">{products.length}</span>
                 </button>
               </li>
-              {departmentCounts.map(({ cat, count }) => (
-                <li key={cat}>
-                  <button
-                    type="button"
-                    onClick={() => setSelectedCategory(cat)}
-                    className={`w-full flex items-center justify-between rounded-lg px-2.5 py-1.5 text-xs font-bold transition cursor-pointer ${selectedCategory === cat ? 'bg-orange-50 text-brand-orange' : 'text-slate-600 hover:bg-slate-50'}`}
-                  >
-                    <span className="truncate pr-2">{cat}</span>
-                    <span className="text-[10px] font-black text-slate-400">{count}</span>
-                  </button>
-                </li>
-              ))}
+              {departmentCounts.map(({ cat, count, subcategories }) => {
+                const isExpanded = selectedCategory === cat;
+                return (
+                  <li key={cat} className="flex flex-col">
+                    <button
+                      type="button"
+                      onClick={() => { setSelectedCategory(cat); setSelectedSubcategory(null); }}
+                      className={`w-full flex items-center justify-between rounded-lg px-2.5 py-1.5 text-xs font-bold transition cursor-pointer ${isExpanded ? 'bg-orange-50 text-brand-orange' : 'text-slate-600 hover:bg-slate-50'}`}
+                    >
+                      <div className="flex items-center gap-2 overflow-hidden pr-2">
+                        <span className="truncate">{cat}</span>
+                        {subcategories && subcategories.length > 0 && (
+                          <svg className={`w-3 h-3 shrink-0 transition-transform ${isExpanded ? 'rotate-180' : ''}`} fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M19 9l-7 7-7-7" /></svg>
+                        )}
+                      </div>
+                      <span className="text-[10px] font-black text-slate-400">{count}</span>
+                    </button>
+                    {isExpanded && subcategories && subcategories.length > 0 && (
+                      <ul className="mt-1 mb-1 ml-3 space-y-0.5 border-l-2 border-slate-100 pl-2">
+                        {subcategories.map(sub => (
+                           <li key={sub.name}>
+                             <button
+                               type="button"
+                               onClick={() => setSelectedSubcategory(sub.name)}
+                               className={`w-full flex items-center justify-between rounded-md px-2 py-1 transition cursor-pointer ${selectedSubcategory === sub.name ? 'text-brand-orange bg-orange-50/50 font-bold' : 'text-slate-500 font-semibold hover:text-slate-800 hover:bg-slate-50'}`}
+                             >
+                               <span className="text-[11px] truncate pr-2 text-left">{sub.name}</span>
+                               <span className="text-[9px] font-bold text-slate-300">{sub.count}</span>
+                             </button>
+                           </li>
+                        ))}
+                      </ul>
+                    )}
+                  </li>
+                );
+              })}
             </ul>
           </div>
 
@@ -846,25 +864,20 @@ export default function MerchantStoreView({
   const overlaysNode = (
     <>
         {cartItems.length > 0 && (
-          <div className="fixed bottom-6 left-0 right-0 z-50 flex justify-center px-4 animate-in fade-in slide-in-from-bottom-4">
-            <div className="w-full max-w-md bg-slate-900 text-white rounded-3xl p-4 shadow-2xl flex items-center justify-between border border-slate-800 backdrop-blur-lg">
-              <div className="flex items-center gap-3">
-                <div className="w-10 h-10 rounded-2xl bg-[#fe6712] flex items-center justify-center font-black text-white shadow-md">
-                  {totalItems}
-                </div>
-                <div>
-                  <p className="text-[10px] uppercase font-black text-slate-400 tracking-wider">Productos en bolsa</p>
-                  <p className="text-base font-black text-white">${subtotalUSD.toFixed(2)} USD</p>
-                </div>
-              </div>
-              <button
-                onClick={() => setIsCartOpen(true)}
-                className="bg-[#fe6712] hover:bg-[#e0580d] text-white px-5 py-3 rounded-2xl font-black text-xs transition flex items-center gap-2 cursor-pointer shadow-lg"
-              >
-                <span>Ver Pedido y Entrega</span>
-                <ChevronRight className="w-4 h-4" />
-              </button>
-            </div>
+          <div className="fixed bottom-6 left-0 right-0 z-50 flex justify-center px-4 pointer-events-none animate-in fade-in slide-in-from-bottom-4">
+            <button
+              onClick={() => setIsCartOpen(true)}
+              className="pointer-events-auto flex items-center gap-3 px-4 py-2.5 rounded-full bg-slate-950/90 hover:bg-slate-950 text-white backdrop-blur-md shadow-2xl border border-white/10 transition-all duration-300 cursor-pointer active:scale-95"
+            >
+              <span className="bg-[#FE6712] text-white text-xs font-bold px-2 py-0.5 rounded-full shadow-sm">{totalItems}</span>
+              <span className="font-bold text-sm tracking-wide">Total: ${subtotalUSD.toFixed(2)} USD</span>
+              <span className="flex items-center gap-1.5 text-[11px] font-bold text-slate-300 border-l border-white/20 pl-3 ml-1 uppercase tracking-wider">
+                Ver mi Pedido 
+                <svg className="w-3.5 h-3.5" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}>
+                  <path strokeLinecap="round" strokeLinejoin="round" d="M14 5l7 7m0 0l-7 7m7-7H3" />
+                </svg>
+              </span>
+            </button>
           </div>
         )}
 

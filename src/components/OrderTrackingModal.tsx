@@ -18,7 +18,10 @@ function withPaymentVerifiedStep(history: any[]): any[] {
   const asc = sortHistoryDesc(history).reverse();
   if (asc.length === 0 || asc.some((h) => h?.synthetic)) return history;
   let anchorIdx = -1;
-  asc.forEach((h, i) => { if (/^(inicia|solicitud completa)/i.test(String(h?.status ?? '').trim())) anchorIdx = i; });
+  asc.forEach((h, i) => { 
+    const hStatus = typeof h?.status === 'string' ? h.status : (h?.status?.name || h?.status?.label || h?.status?.title || '');
+    if (/^(inicia|solicitud completa)/i.test(String(hStatus).trim())) anchorIdx = i; 
+  });
   const prev = asc[anchorIdx];
   const next = asc[anchorIdx + 1];
   const step = {
@@ -87,7 +90,8 @@ export default function OrderTrackingModal({ isOpen, onClose, orderId, orderSumm
       if (res && res.code === 1 && res.data) {
         setRemote(res.data);
         setTrackingError(null);
-        if (!FINAL_STATUSES.includes(String(res.data.status || '').toUpperCase())) {
+        const remoteStatus = typeof res.data.status === 'string' ? res.data.status : (res.data.status?.name || res.data.status?.label || res.data.status?.title || '');
+        if (!FINAL_STATUSES.includes(String(remoteStatus).toUpperCase())) {
           timer = setTimeout(() => fetchOrder(false), POLL_INTERVAL_MS);
         }
       } else {
@@ -188,7 +192,8 @@ export default function OrderTrackingModal({ isOpen, onClose, orderId, orderSumm
   const isPagoMethod = (keyword: string) => metodoPagoLower.includes(keyword);
   // Inferencia de pago: status/paid REALES del backend (remote), no el estado local del checkout. Si el comercio avanza el pedido
   // (status distinto de los iniciales) se infiere pago validado; cancelado/rechazado/error NO cuentan como pago verificado.
-  const isPaymentVerified = remote?.paid === true || (!!remote?.status && !['REQUESTED_BEGIN', 'REQUESTED_END', 'CANCELLED', 'REJECTED', 'ERROR'].includes(String(remote.status).toUpperCase()));
+  const remoteCurrentStatus = typeof remote?.status === 'string' ? remote.status : (remote?.status?.name || remote?.status?.label || remote?.status?.title || '');
+  const isPaymentVerified = remote?.paid === true || (!!remoteCurrentStatus && !['REQUESTED_BEGIN', 'REQUESTED_END', 'CANCELLED', 'REJECTED', 'ERROR'].includes(String(remoteCurrentStatus).toUpperCase()));
   // Vista del timeline: con el pago inferido como verificado se agrega el escalón "Pago verificado exitosamente"
   const remoteView = (remote && isPaymentVerified && Array.isArray(remote.history)) ? { ...remote, history: withPaymentVerifiedStep(remote.history) } : remote;
   const DIVIDER = '-'.repeat(40);

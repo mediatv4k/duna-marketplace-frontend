@@ -1,11 +1,10 @@
-﻿'use client';
+'use client';
 
 import React, { useState, useRef, useEffect } from 'react';
 import MerchantStoreView from '@/components/MerchantStoreView';
 import CheckoutModal from '@/components/CheckoutModal';
 import OrderTrackingModal from '@/components/OrderTrackingModal';
 import PromotionsCarousel from '@/components/PromotionsCarousel';
-import HeroBannerCarousel from '@/components/HeroBannerCarousel';
 import StoreScheduleModal from '@/components/StoreScheduleModal';
 
 import { submitPurchaseOrder, getProductsByStore, getStorePromotions, getOrderPublic } from '@/services/marketplaceService';
@@ -14,17 +13,18 @@ import { getBCVRate } from '@/lib/bcvRate';
 
 import {
   Clock, ChevronLeft, ChevronRight, Sparkles, MapPin, X, Navigation,
-  Loader2, Home, Compass, ShoppingBag, Coins, Truck, Bike, ClipboardList, Search, Tag, Star
+  Loader2, Home, Compass, ShoppingBag, Coins, Truck, Bike, ClipboardList, Search, Tag, Star,
+  Pizza, UtensilsCrossed, Coffee, Cake, IceCream, Sandwich, Pill, Wine, Beef, Store
 } from 'lucide-react';
 
 const API_BASE = process.env.NEXT_PUBLIC_API_URL || 'https://dev.carjos-marketplace.cloud';
 const API_KEY = process.env.NEXT_PUBLIC_SERVER_API_KEY || 'bf8f1b64-6342-48c5-af05-501e4c15a6cb';
 const TIMEZONE = process.env.NEXT_PUBLIC_TIMEZONE || 'America/Caracas';
 
-const cabimasSectores = [
-  { id: 'centro', name: 'Casco Central / Centro', coords: { lat: 10.3950, lng: -71.4550 } },
-  { id: 'ambrosio', name: 'Ambrosio / Miraflores', coords: { lat: 10.4020, lng: -71.4420 } },
-];
+// Coordenadas de referencia de Cabimas (centro geométrico de la ciudad).
+// Usadas únicamente como fallback de distancia cuando el usuario aún no ha compartido su GPS.
+// El cálculo real de delivery usa siempre las coordenadas exactas del dispositivo.
+const CABIMAS_CENTER = { lat: 10.3950, lng: -71.4450 };
 
 function parseSafeLocation(loc: any) {
   if (!loc) return { lat: 10.3950, lng: -71.4450 };
@@ -41,6 +41,23 @@ function getDistanceInKm(lat1: number, lon1: number, lat2: number, lon2: number)
   const a = Math.sin(dLat / 2) * Math.sin(dLat / 2) + Math.cos(lat1 * (Math.PI / 180)) * Math.cos(lat2 * (Math.PI / 180)) * Math.sin(dLon / 2) * Math.sin(dLon / 2);
   const c = 2 * Math.atan2(Math.sqrt(a), Math.sqrt(1 - a));
   return Number((R * c).toFixed(1));
+}
+
+function getCategoryIcon(codeOrName: any): React.ComponentType<any> {
+  const norm = String(codeOrName || '').toLowerCase();
+  if (norm.includes('hamburg') || norm.includes('fast') || norm.includes('burger') || norm.includes('perro') || norm.includes('pollo') || norm.includes('combo')) return Sandwich;
+  if (norm.includes('pizza')) return Pizza;
+  if (norm.includes('dulce') || norm.includes('postre') || norm.includes('repost') || norm.includes('torta') || norm.includes('cake') || norm.includes('bakery')) return Cake;
+  if (norm.includes('bode') || norm.includes('super') || norm.includes('market') || norm.includes('viveres') || norm.includes('abarrote') || norm.includes('mini')) return ShoppingBag;
+  if (norm.includes('licor') || norm.includes('bebida') || norm.includes('cerveza') || norm.includes('bar') || norm.includes('vino') || norm.includes('bodegon') || norm.includes('bodegón')) return Wine;
+  if (norm.includes('farma') || norm.includes('salud') || norm.includes('medic')) return Pill;
+  if (norm.includes('carne') || norm.includes('parrilla') || norm.includes('carnic') || norm.includes('grill') || norm.includes('asado')) return Beef;
+  if (norm.includes('arabe') || norm.includes('árabe') || norm.includes('shawarma') || norm.includes('falafel') || norm.includes('kibbeh')) return UtensilsCrossed;
+  if (norm.includes('helad') || norm.includes('ice') || norm.includes('paleta')) return IceCream;
+  if (norm.includes('cafe') || norm.includes('café') || norm.includes('desayun') || norm.includes('coffee')) return Coffee;
+  if (norm.includes('bici') || norm.includes('ciclismo') || norm.includes('bike')) return Bike;
+  if (norm.includes('moda') || norm.includes('ropa') || norm.includes('calzado') || norm.includes('textil')) return Tag;
+  return Store;
 }
 
 export default function MultitiendaHub() {
@@ -95,7 +112,9 @@ export default function MultitiendaHub() {
 
   const [userLocation, setUserLocation] = useState<{ lat: number; lng: number; label: string } | null>(null);
   const [isLocating, setIsLocating] = useState<boolean>(false);
-  const [isFallbackModalOpen, setIsFallbackModalOpen] = useState<boolean>(false);
+  // isFallbackModalOpen eliminado (2026-09-23): el modal de microsectores (Casco Central / Ambrosio) fue reemplazado
+  // por GPS directo del dispositivo. La plataforma opera a nivel de ciudad; el selector de CIUDAD (futura expansión
+  // nacional) se implementará como reemplazo cuando aplique.
   const [scheduleStore, setScheduleStore] = useState<{ id: number | string; name: string } | null>(null);
 
   const categoryRailRef = useRef<HTMLDivElement>(null);
@@ -291,12 +310,23 @@ export default function MultitiendaHub() {
     setIsLocating(true);
     if (typeof window !== 'undefined' && navigator.geolocation) {
       navigator.geolocation.getCurrentPosition(
-        (pos) => { setUserLocation({ lat: pos.coords.latitude, lng: pos.coords.longitude, label: 'GPS Actual' }); setIsLocating(false); },
-        () => { setIsLocating(false); setIsFallbackModalOpen(true); },
+        (pos) => {
+          // Coordenadas exactas del dispositivo — fuente de verdad para cálculo de flete
+          setUserLocation({ lat: pos.coords.latitude, lng: pos.coords.longitude, label: 'Cabimas, Zulia' });
+          setIsLocating(false);
+        },
+        () => {
+          // GPS denegado o no disponible: fallback silencioso al centro geométrico de Cabimas.
+          // No se abre ningún modal de microsectores; la plataforma opera a nivel ciudad.
+          setUserLocation({ lat: CABIMAS_CENTER.lat, lng: CABIMAS_CENTER.lng, label: 'Cabimas, Zulia' });
+          setIsLocating(false);
+        },
         { timeout: 8000, enableHighAccuracy: true }
       );
     } else {
-      setIsLocating(false); setIsFallbackModalOpen(true);
+      // Geolocalización no soportada → fallback ciudad
+      setUserLocation({ lat: CABIMAS_CENTER.lat, lng: CABIMAS_CENTER.lng, label: 'Cabimas, Zulia' });
+      setIsLocating(false);
     }
   };
 
@@ -351,19 +381,6 @@ export default function MultitiendaHub() {
             if (url) window.open(url, '_blank');
           }}
         />
-
-        {/* Botón flotante persistente en la tienda: recupera el seguimiento cuando el modal está cerrado (el id de la orden vive en savedOrderId) */}
-        {savedOrderId && !savedOrderFinal && !isTrackingOpen && (
-          <div className="fixed bottom-24 md:bottom-6 right-4 z-50">
-            <button
-              type="button"
-              onClick={() => setIsTrackingOpen(true)}
-              className="bg-[#fe6712] hover:bg-amber-600 text-white font-black px-5 py-3 rounded-full shadow-2xl flex items-center gap-2 animate-bounce border-2 border-white cursor-pointer"
-            >
-              <Bike className="w-4 h-4" /> Ver mi Pedido
-            </button>
-          </div>
-        )}
 
         <OrderTrackingModal isOpen={isTrackingOpen} onClose={() => setIsTrackingOpen(false)} orderId={savedOrderId || activeOrderId} orderSummary={orderSummaryData} />
       </>
@@ -451,74 +468,98 @@ export default function MultitiendaHub() {
   return (
     <div suppressHydrationWarning className="min-h-screen flex flex-col bg-slate-50 text-slate-900 font-sans pb-16 md:pb-0">
       
-      {/* Cabecera única (2026-09-22): antes eran dos franjas oscuras apiladas (la barra fina de ubicación/moneda +
-          un <header> aparte con logo/buscador) — se unificaron en un solo contenedor sticky, un solo fondo,
-          un solo borde. Fila 1 (grid en escritorio, apilado en móvil): ubicación a la izquierda, logo naranja
-          centrado geométricamente, moneda+BCV a la derecha. Fila 2: buscador compacto, mismo contenedor oscuro. */}
-      {/* Franja superior — solo identidad (2026-09-22): antes compartía la barra oscura con ubicación, moneda,
-          BCV y buscador; ahora es exclusivamente el logo, centrado, con aire vertical propio. Todo lo funcional
-          bajó a la sub-barra clara de justo debajo (no sticky a propósito: apilar dos barras sticky habría
-          recreado el "doble header" que se eliminó en la misión anterior). */}
-      <div className="sticky top-0 z-40 bg-[#090d16] border-b border-white/10 shadow-sm">
-        <div className="max-w-7xl mx-auto px-4 md:px-8 py-4 flex items-center justify-center">
-          <div onClick={() => { setActiveMerchantId(null); setSelectedCategory('ALL'); setSearchQuery(''); if(typeof window !== 'undefined') localStorage.removeItem('current_cart_store_id'); }} className="flex items-center cursor-pointer select-none">
-            <img src="/images/logo-blanco-transparent.png" alt="D'una Marketplace" className="h-10 md:h-12 w-auto object-contain" />
-          </div>
-        </div>
-      </div>
+      {/* ── Navbar Principal — Single-Row Glass Blanca ────────────────────────────────────────────
+           3 columnas en una sola fila: Logo ← Buscador+Cercanos (centro flex-1) → Utilidades
+           Paleta corporativa #FE6712. Logo naranja sobre blanco. */}
+      <div className="sticky top-0 z-40 bg-white/95 backdrop-blur-md border-b border-slate-100 shadow-sm">
+        <div className="max-w-7xl mx-auto px-4 md:px-8 flex items-center justify-between gap-4 py-2.5 w-full">
 
-      {/* Sub-barra funcional — buscador + ubicación/moneda/BCV (2026-09-22): fila clara justo debajo del header
-          oscuro. Escritorio: buscador a la izquierda (max-w-md, no cruza toda la pantalla) y el resto agrupado a
-          la derecha; móvil: apilado, buscador arriba. */}
-      <div className="bg-white border-b border-slate-200">
-        <div className="max-w-7xl mx-auto px-4 md:px-8 py-2.5 flex flex-col md:flex-row md:items-center md:justify-between gap-2">
-          <div className="w-full md:max-w-md">
-            <div className="relative flex items-center bg-slate-50 rounded-2xl border border-[#FE6712]/50 focus-within:border-[#FE6712] focus-within:ring-1 focus-within:ring-[#FE6712] focus-within:bg-white transition">
-              <Search className="absolute left-4 w-3.5 h-3.5 text-slate-400" />
-              <input type="text" value={searchQuery} onChange={(e) => setSearchQuery(e.target.value)} placeholder="Busca comercios y productos..." className="w-full bg-transparent text-xs font-semibold text-slate-800 pl-11 pr-8 py-2.5 focus:outline-none placeholder-slate-400" />
+          {/* COL IZQUIERDA — Logo institucional */}
+          <div
+            onClick={() => { setActiveMerchantId(null); setSelectedCategory('ALL'); setSearchQuery(''); if(typeof window !== 'undefined') localStorage.removeItem('current_cart_store_id'); }}
+            className="flex items-center cursor-pointer select-none shrink-0"
+          >
+            <img
+              src="/images/logo-naranja-transparent.png"
+              alt="D'una Marketplace"
+              className="h-10 sm:h-12 w-auto object-contain"
+            />
+          </div>
+
+          {/* COL CENTRAL — Buscador pill + botón Cercanos */}
+          <div className="flex-1 max-w-xl mx-auto hidden sm:flex">
+            <div className="w-full flex items-center bg-slate-50 border border-slate-200/90 rounded-full px-3.5 py-1.5 shadow-inner focus-within:border-[#FE6712] focus-within:bg-white transition-all gap-2">
+              <svg className="w-3.5 h-3.5 text-slate-400 shrink-0" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}>
+                <path strokeLinecap="round" strokeLinejoin="round" d="M21 21l-4.35-4.35M17 11A6 6 0 1 1 5 11a6 6 0 0 1 12 0z" />
+              </svg>
+              <input
+                type="text"
+                value={searchQuery}
+                onChange={(e) => setSearchQuery(e.target.value)}
+                placeholder="Busca comercios o productos..."
+                className="flex-1 bg-transparent text-xs font-semibold text-slate-800 focus:outline-none placeholder-slate-400 min-w-0"
+              />
+              <button
+                type="button"
+                onClick={handleTriggerGpsCalculation}
+                className="bg-[#FE6712] text-white text-[11px] font-semibold px-3 py-1 rounded-full flex items-center gap-1.5 shadow-sm hover:bg-[#e0580d] transition shrink-0 cursor-pointer"
+              >
+                <svg className="w-3 h-3" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}>
+                  <path strokeLinecap="round" strokeLinejoin="round" d="M12 2a7 7 0 0 1 7 7c0 5-7 13-7 13S5 14 5 9a7 7 0 0 1 7-7z" />
+                  <circle cx="12" cy="9" r="2.5" fill="currentColor" stroke="none" />
+                </svg>
+                {isLocating ? 'Buscando…' : 'Cercanos'}
+              </button>
             </div>
           </div>
 
-          <div className="flex items-center gap-2 sm:gap-3 flex-wrap justify-center md:justify-end text-xs">
-            <div className="flex items-center gap-1.5 font-bold text-slate-600" suppressHydrationWarning>
+          {/* COL DERECHA — Utilidades: ubicación + BCV + selector moneda */}
+          <div className="flex items-center gap-2 shrink-0 text-xs">
+            <div className="hidden lg:flex items-center gap-1.5 font-bold text-slate-600" suppressHydrationWarning>
               <MapPin className="w-3.5 h-3.5 text-[#fe6712] shrink-0" />
-              <span className="truncate">Entregar en: <strong className="text-slate-900">{userLocation ? userLocation.label : 'Cabimas, Estado Zulia'}</strong></span>
-              {userLocation && (
-                <button type="button" onClick={() => setIsFallbackModalOpen(true)} className="text-[10px] bg-slate-100 px-2 py-0.5 rounded-full text-[#fe6712] cursor-pointer ml-1 shrink-0">Cambiar</button>
-              )}
+              <span className="truncate max-w-[130px]">
+                <strong className="text-slate-900">{userLocation ? userLocation.label : 'Cabimas, Zulia'}</strong>
+              </span>
             </div>
-            <div className="flex items-center bg-slate-100 p-0.5 rounded-full border border-slate-200 text-[10px] font-bold flex-wrap justify-center">
-              <button type="button" onClick={() => setCurrencyMode('DUAL')} className={`px-2 py-0.5 rounded-full cursor-pointer whitespace-nowrap ${currencyMode === 'DUAL' ? 'bg-[#fe6712] text-white' : 'text-slate-600'}`}>Dual ($/Bs)</button>
-              <button type="button" onClick={() => setCurrencyMode('USD')} className={`px-2 py-0.5 rounded-full cursor-pointer whitespace-nowrap ${currencyMode === 'USD' ? 'bg-[#fe6712] text-white' : 'text-slate-600'}`}>$ USD</button>
-              <button type="button" onClick={() => setCurrencyMode('VES')} className={`px-2 py-0.5 rounded-full cursor-pointer whitespace-nowrap ${currencyMode === 'VES' ? 'bg-[#fe6712] text-white' : 'text-slate-600'}`}>Bs. VES</button>
-            </div>
-            <div className="flex items-center gap-1.5 bg-slate-50 px-2.5 py-0.5 rounded-full border border-slate-200 text-slate-500 text-[11px]">
+            <div className="hidden xl:flex items-center gap-1.5 bg-slate-50 px-2.5 py-1 rounded-full border border-slate-200 text-slate-500 text-[11px]">
               <Coins className="w-3 h-3 text-amber-500" />
-              <span>Tasa BCV: <strong className="text-slate-900">{bcvRate ? `Bs. ${bcvRate.toFixed(2)}` : 'no disponible'}</strong></span>
+              <span>BCV: <strong className="text-slate-800">{bcvRate ? `Bs. ${bcvRate.toFixed(2)}` : '---'}</strong></span>
             </div>
+            <div className="flex items-center bg-slate-100 p-0.5 rounded-full border border-slate-200 text-[10px] font-bold">
+              <button type="button" onClick={() => setCurrencyMode('DUAL')} className={`px-2.5 py-1 rounded-full cursor-pointer whitespace-nowrap transition ${currencyMode === 'DUAL' ? 'bg-[#fe6712] text-white shadow-sm' : 'text-slate-600 hover:text-slate-900'}`}>$/Bs</button>
+              <button type="button" onClick={() => setCurrencyMode('USD')} className={`px-2.5 py-1 rounded-full cursor-pointer whitespace-nowrap transition ${currencyMode === 'USD' ? 'bg-[#fe6712] text-white shadow-sm' : 'text-slate-600 hover:text-slate-900'}`}>USD</button>
+              <button type="button" onClick={() => setCurrencyMode('VES')} className={`px-2.5 py-1 rounded-full cursor-pointer whitespace-nowrap transition ${currencyMode === 'VES' ? 'bg-[#fe6712] text-white shadow-sm' : 'text-slate-600 hover:text-slate-900'}`}>Bs</button>
+            </div>
+          </div>
+
+        </div>
+
+        {/* Buscador móvil — visible solo en xs (< sm) debajo de la fila única */}
+        <div className="sm:hidden px-4 pb-2.5">
+          <div className="w-full flex items-center bg-slate-50 border border-slate-200/90 rounded-full px-3.5 py-1.5 shadow-inner focus-within:border-[#FE6712] focus-within:bg-white transition-all gap-2">
+            <svg className="w-3.5 h-3.5 text-slate-400 shrink-0" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}>
+              <path strokeLinecap="round" strokeLinejoin="round" d="M21 21l-4.35-4.35M17 11A6 6 0 1 1 5 11a6 6 0 0 1 12 0z" />
+            </svg>
+            <input
+              type="text"
+              value={searchQuery}
+              onChange={(e) => setSearchQuery(e.target.value)}
+              placeholder="Busca comercios o productos..."
+              className="flex-1 bg-transparent text-xs font-semibold text-slate-800 focus:outline-none placeholder-slate-400 min-w-0"
+            />
           </div>
         </div>
       </div>
 
       <main className="max-w-7xl mx-auto w-full px-4 md:px-8 py-4 flex-1 space-y-6">
 
-        <HeroBannerCarousel
-          slides={[
-            { image: '/images/banner-commer.png', alt: 'Registra tu comercio y aumenta tus ventas', href: 'https://tr.ee/aJWg3IoL3q' },
-            { image: '/images/banner-delivery.png', alt: 'Sé parte de nuestro equipo Delivery', href: 'https://tr.ee/O553DC8j5Q' },
-            {
-              image: '/images/banner-cliente.png',
-              alt: 'Tus antojos con solo un click',
-              onClick: () => document.getElementById('categorias-tiendas')?.scrollIntoView({ behavior: 'smooth' }),
-            },
-          ]}
-        />
-
+        {/* Promociones en primera línea */}
         <PromotionsCarousel
           promotions={homePromotionsOpenOnly}
           onSelectPromotion={handleHomePromotionClick}
         />
 
+        {/* Categorías */}
         <section id="categorias-tiendas" className="space-y-2.5 pt-0.5 scroll-mt-24">
           <div className="flex justify-between items-center">
             <h3 className="text-sm md:text-base font-black text-slate-900 tracking-tight">Categorías</h3>
@@ -528,31 +569,64 @@ export default function MultitiendaHub() {
             </div>
           </div>
           
-          <div ref={categoryRailRef} className="flex items-center gap-2.5 overflow-x-auto no-scrollbar scroll-smooth py-2">
+          <div ref={categoryRailRef} className="flex items-center gap-2.5 overflow-x-auto no-scrollbar scroll-smooth py-1">
             <button
               type="button"
               onClick={() => setSelectedCategory('ALL')}
-              className={`flex-shrink-0 flex items-center gap-2 px-4 py-2 rounded-full border text-sm transition-all duration-200 cursor-pointer select-none whitespace-nowrap ${selectedCategory === 'ALL' ? 'bg-[#fe6712] text-white border-[#fe6712] shadow-sm shadow-[#fe6712]/25 font-semibold' : 'bg-slate-50 border-slate-200/70 text-slate-700 font-medium hover:border-[#fe6712]/40'}`}
+              className={`flex-shrink-0 flex flex-col items-center justify-center min-w-[76px] sm:min-w-[88px] p-2 rounded-2xl transition-all cursor-pointer select-none group ${
+                selectedCategory === 'ALL'
+                  ? 'bg-[#fe6712] text-white shadow-md shadow-[#fe6712]/30 border border-[#fe6712]'
+                  : 'bg-white border border-slate-100 hover:border-orange-200 text-slate-700 shadow-2xs hover:shadow-xs'
+              }`}
             >
-              <Sparkles className="w-4 h-4 shrink-0" />
-              Todos
+              <div
+                className={`w-12 h-12 rounded-2xl flex items-center justify-center mb-1.5 transition-transform group-hover:scale-110 ${
+                  selectedCategory === 'ALL'
+                    ? 'bg-white/20 text-white shadow-xs'
+                    : 'bg-orange-50 text-[#fe6712] group-hover:bg-orange-100'
+                }`}
+              >
+                <Sparkles className="w-6 h-6 shrink-0" strokeWidth={1.8} />
+              </div>
+              <span className={`text-xs tracking-tight text-center truncate max-w-[80px] ${selectedCategory === 'ALL' ? 'font-bold text-white' : 'font-semibold text-slate-700 group-hover:text-[#fe6712]'}`}>
+                Todos
+              </span>
             </button>
 
-            {realCategories.map(cat => {
-              const isActive = selectedCategory === cat.code;
+            {Array.isArray(realCategories) && realCategories.map((cat, idx) => {
+              const catCode = typeof cat === 'object' && cat ? String(cat.code || cat.id || idx) : String(idx);
+              const catName = typeof cat === 'object' && cat ? String(cat.name || cat.categoriesName || cat.code || 'Categoría') : 'Categoría';
+              const catImage = typeof cat === 'object' && cat && typeof cat.image === 'string' && cat.image.trim() !== '' ? cat.image : null;
+              const isActive = selectedCategory === catCode;
+              const CategoryIcon = getCategoryIcon(catName);
+              
               return (
                 <button
-                  key={cat.id}
+                  key={cat?.id ?? cat?.code ?? idx}
                   type="button"
-                  onClick={() => setSelectedCategory(cat.code)}
-                  className={`flex-shrink-0 flex items-center gap-2 px-4 py-2 rounded-full border text-sm transition-all duration-200 cursor-pointer select-none whitespace-nowrap ${isActive ? 'bg-[#fe6712] text-white border-[#fe6712] shadow-sm shadow-[#fe6712]/25 font-semibold' : 'bg-slate-50 border-slate-200/70 text-slate-700 font-medium hover:border-[#fe6712]/40'}`}
+                  onClick={() => setSelectedCategory(catCode)}
+                  className={`flex-shrink-0 flex flex-col items-center justify-center min-w-[76px] sm:min-w-[88px] p-2 rounded-2xl transition-all cursor-pointer select-none group ${
+                    isActive
+                      ? 'bg-[#fe6712] text-white shadow-md shadow-[#fe6712]/30 border border-[#fe6712]'
+                      : 'bg-white border border-slate-100 hover:border-orange-200 text-slate-700 shadow-2xs hover:shadow-xs'
+                  }`}
                 >
-                  {cat.image ? (
-                    <img src={cat.image} alt="" className="w-4 h-4 object-contain shrink-0" />
-                  ) : (
-                    <Tag className="w-4 h-4 shrink-0" />
-                  )}
-                  {cat.name}
+                  <div
+                    className={`w-12 h-12 rounded-2xl flex items-center justify-center mb-1.5 transition-transform group-hover:scale-110 ${
+                      isActive
+                        ? 'bg-white/20 text-white shadow-xs'
+                        : 'bg-slate-100/80 text-slate-600 group-hover:bg-orange-50 group-hover:text-[#fe6712]'
+                    }`}
+                  >
+                    {catImage ? (
+                      <img src={catImage} alt={catName} className="w-6 h-6 object-contain shrink-0" />
+                    ) : (
+                      <CategoryIcon className="w-6 h-6 shrink-0" strokeWidth={1.8} />
+                    )}
+                  </div>
+                  <span className={`text-xs tracking-tight text-center truncate max-w-[80px] ${isActive ? 'font-bold text-white' : 'font-semibold text-slate-700 group-hover:text-[#fe6712]'}`}>
+                    {catName}
+                  </span>
                 </button>
               );
             })}
@@ -571,7 +645,7 @@ export default function MultitiendaHub() {
               <Loader2 className="w-8 h-8 animate-spin text-[#fe6712]" />
             </div>
           ) : (
-            <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-3.5">
+            <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-4 sm:gap-5">
               {filteredMerchants.map(merchant => {
                 let distanceKm: number | null = null;
                 let calculatedFeeText: string | null = null;
@@ -583,44 +657,110 @@ export default function MultitiendaHub() {
                   calculatedFeeText = formatPriceBimonetary(feeUSD);
                 }
 
+                // Limpieza y desduplicación estricta de taxonomías
+                const cleanCategories = (() => {
+                  const raw = merchant.categoriesName || merchant.category || 'Comercio';
+                  const list = String(raw)
+                    .split(/[,/|;]+/)
+                    .map(s => s.trim())
+                    .filter(Boolean);
+                  const unique = Array.from(new Set(list));
+                  return unique.length > 0 ? unique.join(' • ') : 'Comercio';
+                })();
+
                 return (
-                  <div key={merchant.id} onClick={() => handleStoreClick(merchant)} className="bg-white rounded-2xl border border-slate-200/90 hover:border-[#fe6712]/50 p-3.5 flex items-center gap-3.5 shadow-2xs hover:shadow-md transition cursor-pointer group">
+                  <div
+                    key={merchant.id}
+                    onClick={() => handleStoreClick(merchant)}
+                    className="flex flex-col bg-white rounded-2xl border border-slate-100 shadow-[0_4px_12px_rgba(0,0,0,0.03)] hover:shadow-lg transition-shadow duration-300 overflow-hidden group cursor-pointer relative"
+                  >
+                    {/* Banner Superior Smart Fit (Doble Capa Sin Recortes) */}
+                    <div className="h-28 sm:h-32 w-full relative bg-slate-100 flex items-center justify-center">
+                      {/* Capa 1: Fondo difuminado de relleno */}
+                      {(merchant.banner || merchant.image) ? (
+                        <img
+                          src={merchant.banner || merchant.image}
+                          alt="bg"
+                          className="absolute inset-0 w-full h-full object-cover blur-md opacity-40 scale-110 z-0"
+                        />
+                      ) : (
+                        <div className="absolute inset-0 w-full h-full bg-gradient-to-br from-slate-200 via-orange-50/30 to-slate-100 z-0" />
+                      )}
 
-                    <div className="w-[80px] h-[80px] min-w-[80px] sm:w-[96px] sm:h-[96px] sm:min-w-[96px] flex-shrink-0 bg-slate-100 rounded-2xl overflow-hidden border border-slate-200/80 shadow-xs relative">
-                      <img src={merchant.avatar || '/images/logo-duna.png'} alt={merchant.name} className="w-full h-full object-cover group-hover:scale-105 transition-transform duration-300" />
-                    </div>
+                      {/* Capa 2: Imagen principal SIN CORTES (object-contain estricto) */}
+                      {(merchant.banner || merchant.image) ? (
+                        <img
+                          src={merchant.banner || merchant.image}
+                          alt={merchant.name}
+                          className="relative w-full h-full object-contain z-10 p-1 group-hover:scale-105 transition-transform duration-300"
+                        />
+                      ) : (
+                        <div className="relative z-10 flex items-center justify-center w-full h-full">
+                          <Store className="w-8 h-8 text-slate-300/80" />
+                        </div>
+                      )}
 
-                    <div className="flex-1 min-w-0 flex flex-col justify-center space-y-1 overflow-hidden">
-                      <div className="flex items-start justify-between gap-1">
-                        <h4 className="text-sm font-black text-slate-900 group-hover:text-[#fe6712] transition-colors truncate">{merchant.name}</h4>
-                        <span className="flex-shrink-0 flex items-center gap-0.5 bg-amber-50 text-amber-700 px-1.5 py-0.5 rounded-md text-[10px] font-black border border-amber-200 shadow-2xs"><Star className="w-2.5 h-2.5 fill-current" /> {merchant.storeScoring || 5.0}</span>
+                      {/* Rating en la esquina superior derecha */}
+                      <div className="absolute top-2 right-2 z-30 bg-white/95 backdrop-blur-sm text-slate-800 text-[10px] font-bold px-2 py-1 rounded-md flex items-center gap-1 shadow-sm border border-slate-100">
+                        <Star className="w-3 h-3 fill-amber-400 text-amber-500" /> {merchant.storeScoring || '5.0'}
                       </div>
 
-                      <p className="text-[11px] font-bold text-slate-400 truncate">{merchant.categoriesName || 'Comercio'}</p>
+                      {/* Logo Avatar Reposicionado a la Izquierda (Sin Recortes) */}
+                      <div className="absolute -bottom-6 left-3 sm:left-4 w-14 h-14 bg-white rounded-xl shadow-md border-2 border-white p-1 z-20 flex items-center justify-center overflow-hidden">
+                        <img
+                          src={merchant.avatar || merchant.logo || '/images/logo-duna.png'}
+                          alt={merchant.name}
+                          className="w-full h-full object-contain"
+                        />
+                      </div>
+                    </div>
 
-                      <div className="flex items-center gap-1.5 text-[10px] font-bold">
+                    {/* Información Inferior (Alineación a la Izquierda) */}
+                    <div className="pt-8 pb-4 px-3 sm:px-4 flex flex-col items-start text-left flex-1 justify-between">
+                      <div className="w-full space-y-0.5 text-left">
+                        <h4 className="font-extrabold text-slate-800 text-base line-clamp-1 w-full text-left group-hover:text-[#fe6712] transition-colors">
+                          {merchant.name}
+                        </h4>
+
+                        <p className="text-[11px] text-slate-500 truncate w-full mt-0.5 font-medium text-left">
+                          {cleanCategories}
+                        </p>
+                      </div>
+
+                      {/* Badges (Píldoras) Alineadas a la Izquierda */}
+                      <div className="flex items-center justify-start gap-2 mt-3 w-full flex-wrap pt-2 border-t border-slate-100/80">
                         <button
                           type="button"
                           onClick={(e) => { e.stopPropagation(); setScheduleStore({ id: merchant.id, name: merchant.name }); }}
                           title="Ver horario semanal"
-                          className={`flex items-center gap-1 px-1.5 py-0.5 rounded-md border text-[10px] font-bold shadow-2xs shrink-0 cursor-pointer hover:brightness-95 ${merchant.status === 'OPEN' ? 'text-emerald-700 bg-emerald-50 border-emerald-200/70' : 'text-slate-500 bg-slate-50 border-slate-200'}`}
+                          className={
+                            merchant.status === 'OPEN'
+                              ? 'bg-green-50 text-green-700 px-2 py-1 rounded-md text-[10px] font-bold uppercase tracking-wider flex items-center gap-1.5 cursor-pointer hover:bg-green-100 transition'
+                              : 'bg-slate-50 text-slate-500 px-2 py-1 rounded-md text-[10px] font-bold uppercase tracking-wider flex items-center gap-1 cursor-pointer hover:bg-slate-100 transition'
+                          }
                         >
-                          {merchant.status === 'OPEN' && <span className="h-1.5 w-1.5 rounded-full bg-emerald-500 animate-pulse"></span>}
-                          {merchant.scheduleInfo || (merchant.status === 'OPEN' ? 'Abierto' : 'Cerrado')}
+                          {merchant.status === 'OPEN' && (
+                            <span className="h-1.5 w-1.5 rounded-full bg-green-500 animate-pulse"></span>
+                          )}
+                          <span>{merchant.scheduleInfo || (merchant.status === 'OPEN' ? 'Abierto' : 'Cerrado')}</span>
                         </button>
 
                         {userLocation && calculatedFeeText ? (
-                          <span className="px-2 py-0.5 rounded-md bg-orange-50 text-[#fe6712] border border-orange-200 font-black text-[10px] whitespace-nowrap ml-auto flex items-center gap-1">
+                          <span className="bg-orange-50 text-[#FE6712] px-2 py-1 rounded-md text-[10px] font-bold flex items-center gap-1 border border-orange-100">
                             <Bike className="w-3 h-3" /> {calculatedFeeText} ({distanceKm} km)
                           </span>
                         ) : (
-                          <button type="button" onClick={handleTriggerGpsCalculation} disabled={isLocating} className="px-2 py-0.5 rounded-md bg-orange-50 hover:bg-orange-100 text-[#fe6712] border border-orange-200 font-black text-[10px] flex items-center gap-1 ml-auto">
+                          <button
+                            type="button"
+                            onClick={handleTriggerGpsCalculation}
+                            disabled={isLocating}
+                            className="bg-orange-50 hover:bg-orange-100 text-[#FE6712] px-2 py-1 rounded-md text-[10px] font-bold flex items-center gap-1 border border-orange-100 cursor-pointer transition"
+                          >
                             {isLocating ? <Loader2 className="w-3 h-3 animate-spin" /> : <><Bike className="w-3 h-3" /> Flete</>}
                           </button>
                         )}
                       </div>
                     </div>
-
                   </div>
                 );
               })}
@@ -630,23 +770,8 @@ export default function MultitiendaHub() {
 
       </main>
       
-      {isFallbackModalOpen && (
-        <div className="fixed inset-0 z-50 bg-black/60 backdrop-blur-xs flex items-center justify-center p-4" onClick={() => setIsFallbackModalOpen(false)}>
-          <div className="bg-white rounded-3xl max-w-md w-full p-6 shadow-2xl space-y-4 border border-slate-100" onClick={(e) => e.stopPropagation()}>
-            <div className="flex justify-between items-center pb-2 border-b border-slate-100">
-              <div className="flex items-center gap-2"><MapPin className="w-5 h-5 text-[#fe6712]" /><div><h3 className="font-black text-slate-900 text-base">Selecciona tu Sector</h3></div></div>
-              <button type="button" onClick={() => setIsFallbackModalOpen(false)} className="h-8 w-8 rounded-full bg-slate-100 text-slate-600 flex items-center justify-center cursor-pointer"><X className="w-4 h-4" /></button>
-            </div>
-            <div className="space-y-1.5 max-h-60 overflow-y-auto pr-1">
-              {cabimasSectores.map(sector => (
-                <div key={sector.id} onClick={() => { setUserLocation({ lat: sector.coords.lat, lng: sector.coords.lng, label: sector.name }); setIsFallbackModalOpen(false); }} className="p-3 rounded-xl border border-slate-200 bg-slate-50 hover:bg-orange-50 text-slate-700 text-xs font-bold flex justify-between items-center cursor-pointer">
-                  <span className="flex items-center gap-1"><MapPin className="w-3.5 h-3.5 text-slate-400" /> {sector.name}</span> <span className="text-[11px] font-black text-slate-400">Elegir →</span>
-                </div>
-              ))}
-            </div>
-          </div>
-        </div>
-      )}
+      {/* Modal de microsectores eliminado (2026-09-23): la plataforma opera por GPS exacto del dispositivo.
+          Fallback: centro geométrico de Cabimas. Selector de CIUDAD para expansión nacional, pendiente. */}
 
       <StoreScheduleModal
         isOpen={scheduleStore !== null}

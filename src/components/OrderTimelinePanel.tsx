@@ -215,7 +215,7 @@ export default function OrderTimelinePanel({ remote, trackingError }: OrderTimel
                   <div className={`w-6 h-6 rounded-full text-white flex items-center justify-center z-10 shrink-0 text-xs shadow-xs ${dotClass}`}>{isCancel ? '✕' : '✓'}</div>
                   <div>
                     <h5 className={`leading-none ${isCurrent ? 'text-sm font-black text-slate-900' : 'text-xs font-bold text-slate-600'}`}>
-                      {friendlyStatus(h.status)}
+                      {friendlyStatus(typeof h.status === 'string' ? h.status : (h.status?.name || h.status?.label || h.status?.title || ''))}
                       {isCurrent && <span className="ml-1.5 align-middle text-[8px] font-black uppercase tracking-wide text-[#fe6712] bg-orange-50 border border-orange-200 px-1.5 py-0.5 rounded-full">Estado actual</span>}
                     </h5>
                     <p className="text-[10px] text-slate-500 mt-0.5">{h.date ? new Date(h.date).toLocaleString('es-VE') : ''}</p>

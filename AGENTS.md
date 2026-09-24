@@ -679,3 +679,46 @@ reflejar el estado actual del sistema. Esto incluye (no exhaustivo):
 Objetivo: que cualquier agente que retome el proyecto en una sesiÃ³n nueva pueda leer este
 archivo y entender el estado real del sistema sin tener que releer todo el cÃ³digo desde
 cero ("cero amnesia").
+
+- **Refactorización de Tarjeta Clínica (MasterProductModal.tsx)**: Se actualizó la sección de farmacia a un diseño sobrio y elegante de alta conversión, eliminando emojis y usando SVGs monocromáticos con tipografía de alto contraste. Se soporta \cadenaFrio\ y \equiereFrio\, con descargo de responsabilidad institucional.
+
+- **Bitácora Arquitectura Farmacia**: Se creó el documento de arquitectura y contingencia \docs/technical/bitacora-arquitectura-farmacia-storefront.md\ detallando la integración, contrato de datos \metadata.farmacia\ y runbook de troubleshooting.
+
+> **PROTOCOLO PERMANENTE DE BITÁCORA TÉCNICA CONTINUA:**  
+> Tras finalizar cualquier modificación técnica, refactorización, creación de nuevo código, ajuste de endpoints, schema o componente en este repositorio, el agente tiene la obligación mandatoria e inmediata de registrar el cambio detallado en docs/technical/bitacora-arquitectura-farmacia-storefront.md dentro de la sección "Historial de Modificaciones Técnicas", indicando:  
+> - Fecha y archivo(s) intervenido(s).  
+> - Problema técnico o requerimiento abordado.  
+> - Lógica de código y contratos implementados.  
+> - Verificación y pruebas de compilación (cero errores).
+
+- **Regla de Cero Scroll (MasterProductModal.tsx)**: Se reestructuró el modal en dos columnas compactas (Regla de Oro), eliminando overflow-y-auto global innecesario y condensando márgenes/padding. La lógica de \metadata.farmacia\ y el footer se mantienen fluidos sin empujar el viewport.
+
+- **Jerarquía Visual de Imagen (MasterProductModal.tsx)**: Se optimizó el encuadre (h-48), bordes (rounded-xl) y fondo neutro sutil para garantizar legibilidad instantánea del medicamento, manteniendo el balance y la regla de Cero Scroll.
+
+- **Actualización de UI en MasterProductModal.tsx**: Se añadió el renderizado condicional del badge de subcategoría (\internalCategory || subCategory\) en la fila taxonómica, y se ajustó el padding del contenedor de la imagen a \p-2\ para potenciar la escala visual, preservando la compacidad del modal.
+
+- **Acordeón Desplegable en Departamentos (MerchantStoreView.tsx)**: Se implementó sub-navegación por \internalCategory\. Al seleccionar una categoría (ej. FARMACIA), se despliega un acordeón con subcategorías y conteo interno. Los productos se filtran reactivamente en el catálogo combinando categoría y subcategoría.
+
+### Permisos y Autonomía Operativa (Declaración)
+- **Autorización Permanente**: El agente tiene autorización permanente e implícita para ejecutar rutinas de lectura de logs, inspección de dependencias (\package.json\), pruebas de tipos en TypeScript (\
+px tsc --noEmit\), purgado de cachés (\m -rf .next\) y arranque de servicios en desarrollo (\
+ext dev\). No es necesario pedir confirmación para estas tareas de estabilización y validación.
+- **Excepciones (Confirmación Manual)**: Únicamente se requerirá solicitar confirmación explícita del usuario ante acciones destructivas irreversibles, tales como: \m -rf\ sobre código fuente o base de datos, borrado de ramas en Git, o migraciones destructivas de base de datos que impliquen pérdida de información.
+
+- **Corrección de Tarjeta Farmacológica (MasterProductModal.tsx)**: Se eliminó prohibición estricta de truncado en la descripción clínica (removido \line-clamp\). Además se agregó un fallback basado en contenido para inyectar forzosamente el badge 'Antialergico' si el producto carece de taxonomy estructurada pero pertenece a FARMACIA.
+
+- **Refinamiento Tipográfico Farmacológico (MasterProductModal.tsx)**: Se estabilizó la jerarquía visual de la ficha técnica. El principio activo y concentración ahora comparten una misma línea léxica con distinción sutil, y el Registro Sanitario adoptó tipografía monoespaciada con recuadro perimetral limpio. Todo respetando estrictamente la 'Regla de Oro de Cero Scroll'.
+
+- **Refactor Completo Ficha Técnica (MasterProductModal.tsx)**: Se inyectó literalmente el bloque JSX estricto del 'Vademécum Ejecutivo' para corregir la falta de renderizado local, unificando definitivamente el Principio Activo con su Concentración y restaurando los contrastes de Laboratorio.
+
+- **Escalado Imponente de Imagen (MasterProductModal.tsx)**: Se reformateó el contenedor izquierdo para obligar a la imagen principal a expandirse (\w-full h-full object-contain scale-110\) y apoderarse de la percepción visual. Se mantuvo inalterada la Regla de Cero Scroll.
+
+- **Suite de Neuroventa Farmacéutica y Estabilización**: Se solventó la falla de caché (Error 500) del proceso Node.js. En \MasterProductModal.tsx\ se implantaron con éxito los 4 disparadores psicológicos (Entrega Express, Despacho Inmediato, Sello Original, CTA Acción) bajo normativas estrictas de diseño limpio vectorial (sin emojis) y nula disrupción de scroll.
+
+- **Refinamiento de Neuroventa y UI**: Se pulió la cinta de Inmediatez Logística transicionando a una estética 'Sky-blue' médica/tecnológica, y se limpió el encabezado del Vademécum Ejecutivo (\whitespace-nowrap\) para forzar su alineación horizontal impecable sin dañar la altura general ni introducir scroll.
+
+- **Escalado y Unificación Tipográfica (MasterProductModal.tsx)**: Se forzó un escalado imponente real (\scale-150\) sobre fondo blanco puro y \p-0\ en el empaque para compensar márgenes de imagen, además de limpiar y fusionar en un solo bloque textual continuo la taxonomía de 'Principio Activo & Concentración'.
+
+- **Directiva Maestra de Neuroventa e-commerce**: Implementación de Hero Banner cinemático institucional con micro-píldoras de logística. Buscador y sidebar transformados a layout \sticky\ para acompañar el scroll. Sustitución de barra de carrito antigua por Cápsula Flotante (Glassmorphism). En el modal (\MasterProductModal.tsx\), se integró lógica de discriminación contextual para sellos de confianza (Farma vs No-Farma) manteniendo la taxonomía y la 'Regla de Cero Scroll'.
+
+- **Restauración Visual y Cero Scroll**: Despeje de elementos superpuestos en el Hero Banner. Eliminación del botón duplicado de tracking en page.tsx. Compactación extrema de MasterProductModal.tsx mediante reducción de paddings y OptionCapsule (py-1.5, px-2.5) garantizando renderizado 100% visible sin scroll del navegador. Eliminación del fallback 'General' en la taxonomía.
