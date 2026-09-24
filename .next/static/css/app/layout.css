@@ -3254,6 +3254,10 @@ video {
 .hover\:bg-yellow-50\/40:hover {
   background-color: rgb(254 252 232 / 0.4);
 }
+.hover\:bg-\[\#E05509\]:hover {
+  --tw-bg-opacity: 1;
+  background-color: rgb(224 85 9 / var(--tw-bg-opacity, 1));
+}
 .hover\:text-\[\#e0580d\]:hover {
   --tw-text-opacity: 1;
   color: rgb(224 88 13 / var(--tw-text-opacity, 1));

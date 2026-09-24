@@ -268,14 +268,12 @@ export default function ComboRoomPage({ params }: { params: { id: string } }) {
           </div>
           <h2 className="text-lg font-black text-slate-900">Sala no disponible</h2>
           <p className="text-sm text-slate-500 mb-4">{error || 'El enlace expiró o no existe.'}</p>
-          {hasDeadRoomInStorage && (
-            <button
-              onClick={handleClearDeadRoom}
-              className="w-full bg-[#FE6712] hover:bg-[#e0580d] text-white font-black py-3 px-4 rounded-xl text-sm transition-colors mt-4"
-            >
-              Crear nuevo pedido grupal
-            </button>
-          )}
+          <button
+            onClick={handleClearDeadRoom}
+            className="w-full bg-[#FE6712] hover:bg-[#E05509] text-white font-black py-3 px-4 rounded-xl text-sm transition-colors mt-4 shadow-md hover:shadow-lg"
+          >
+            Volver a la tienda
+          </button>
         </div>
       </div>
     );

@@ -854,12 +854,12 @@ export default function MasterProductModal({
     if (!product) return;
     setComboCreating(true);
     try {
-      const newId = Math.random().toString(36).slice(2, 10).toUpperCase();
-      const res = await fetch(`/api/combo/${newId}`, {
+      const tempId = "new";
+      const res = await fetch(`/api/combo/${tempId}`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
-          productId: product.id || product.code || newId,
+          productId: product.id || product.code || tempId,
           productName: product.name || 'Producto',
           storeName: store?.name || '',
           storeCode: store?.code || '',
@@ -870,13 +870,14 @@ export default function MasterProductModal({
       });
       const data = await res.json();
           if (data.ok) {
-          setComboRoomId(newId);
+          const finalRoomId = data.room.id;
+          setComboRoomId(finalRoomId);
           setComboRoomSlots(data.room.slots || []);
           setShowComboPanel(true);
           // Persistir sala activa para la barra flotante global
           if (typeof window !== 'undefined') {
             window.localStorage.setItem('duna_pedido_amigos_active', JSON.stringify({
-              roomId: newId,
+              roomId: finalRoomId,
               storeSlug: store?.code || '',
               storeName: store?.name || '',
               productName: product?.name || '',
@@ -889,7 +890,7 @@ export default function MasterProductModal({
           if (comboPollingRef.current) clearInterval(comboPollingRef.current);
           comboPollingRef.current = setInterval(async () => {
             try {
-              const pr = await fetch(`/api/combo/${newId}`);
+              const pr = await fetch(`/api/combo/${finalRoomId}`);
               const pd = await pr.json();
               if (pd.ok) setComboRoomSlots(pd.room.slots || []);
             } catch { /* silent */ }
