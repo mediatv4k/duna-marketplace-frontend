@@ -1,52 +1,26 @@
-/**
- * API Route: /api/combo/[id]
- * Sala de pedido colaborativo en vivo ("Armar Combo con Amigos").
- *
- * GET  /api/combo/[id]           → Estado completo de la sala (ranuras + participantes)
- * POST /api/combo/[id]           → Crear sala (anfitrión)
- * PUT  /api/combo/[id]           → Asignar/actualizar la selección de una ranura
- *
- * Estado almacenado en memoria del proceso (volatile — se reinicia con el servidor).
- * Para producción real, reemplazar `comboRooms` por Redis o similar.
- *
- * TTL: 4 horas por sala (limpia entradas antiguas en cada escritura).
- */
-
 import { NextRequest, NextResponse } from 'next/server';
+import { db } from '@/lib/firebase';
+import { doc, getDoc, setDoc, updateDoc } from 'firebase/firestore';
 
-/* ─── Tipos ──────────────────────────────────────────────────────────────── */
-export interface ComboSlotState {
-  slotIndex: number;          // 0-based
-  guestName: string;          // '' = libre
+interface ComboSlotState {
+  slotIndex: number;
+  guestName: string;
   selectedVariants: Record<string, any>;
   exclusions: string[];
-  completedAt: string | null; // ISO timestamp
+  completedAt: string | null;
 }
 
-export interface ComboRoom {
+interface ComboRoom {
   id: string;
   productId: string | number;
   productName: string;
   storeName: string;
   storeCode: string;
   totalSlots: number;
-  groups: any[];              // grupos de variantes normalizados
+  groups: any[];
   slots: ComboSlotState[];
-  createdAt: string;          // ISO timestamp
+  createdAt: string;
   hostName: string;
-}
-
-/* ─── Store en memoria ───────────────────────────────────────────────────── */
-const comboRooms: Map<string, ComboRoom> = (globalThis as any).comboRooms ??= new Map<string, ComboRoom>();
-const ROOM_TTL_MS = 4 * 60 * 60 * 1000; // 4 h
-
-function pruneExpiredRooms() {
-  const cutoff = Date.now() - ROOM_TTL_MS;
-  for (const [id, room] of comboRooms.entries()) {
-    if (new Date(room.createdAt).getTime() < cutoff) {
-      comboRooms.delete(id);
-    }
-  }
 }
 
 function generateRoomId(): string {
@@ -60,12 +34,18 @@ export async function GET(
   _req: NextRequest,
   { params }: { params: { id: string } }
 ) {
-  const room = comboRooms.get(params.id);
-  
-  if (!room) {
-    return NextResponse.json({ ok: false, error: 'Sala no encontrada' }, { status: 404 });
+  try {
+    const docRef = doc(db, 'comboRooms', params.id);
+    const docSnap = await getDoc(docRef);
+
+    if (!docSnap.exists()) {
+      return NextResponse.json({ ok: false, error: 'Sala no encontrada' }, { status: 404 });
+    }
+
+    return NextResponse.json({ ok: true, room: docSnap.data() as ComboRoom });
+  } catch (error) {
+    return NextResponse.json({ ok: false, error: 'Error al consultar la sala' }, { status: 500 });
   }
-  return NextResponse.json({ ok: true, room });
 }
 
 /* ─── POST — crear sala ──────────────────────────────────────────────────── */
@@ -73,8 +53,6 @@ export async function POST(
   req: NextRequest,
   { params }: { params: { id: string } }
 ) {
-  pruneExpiredRooms();
-
   try {
     const body = await req.json();
     const {
@@ -98,10 +76,17 @@ export async function POST(
       completedAt: null,
     }));
 
-    const finalId = params.id === 'new' ? generateRoomId() : (params.id || generateRoomId());
-
-    if (comboRooms.has(finalId)) {
+    // Generar un ID hasta que no exista colisión
+    let finalId = params.id === 'new' ? generateRoomId() : (params.id || generateRoomId());
+    
+    // Validar si ya existe en Firestore
+    const docRef = doc(db, 'comboRooms', finalId);
+    const docSnap = await getDoc(docRef);
+    if (docSnap.exists() && params.id !== 'new') {
       return NextResponse.json({ ok: false, error: 'Sala ya existe' }, { status: 409 });
+    } else if (docSnap.exists()) {
+      // Si fue autogenerado y colisionó (muy raro), generamos otro
+      finalId = generateRoomId();
     }
 
     const room: ComboRoom = {
@@ -117,9 +102,11 @@ export async function POST(
       hostName: hostName || 'Anfitrión',
     };
 
-    comboRooms.set(finalId, room);
+    // Guardar en Firestore
+    await setDoc(doc(db, 'comboRooms', finalId), room);
+
     return NextResponse.json({ ok: true, room }, { status: 201 });
-  } catch {
+  } catch (error) {
     return NextResponse.json({ ok: false, error: 'Error al crear la sala' }, { status: 500 });
   }
 }
@@ -129,13 +116,15 @@ export async function PUT(
   req: NextRequest,
   { params }: { params: { id: string } }
 ) {
-  let room = comboRooms.get(params.id);
-
-  if (!room) {
-    return NextResponse.json({ ok: false, error: 'Sala no encontrada' }, { status: 404 });
-  }
-
   try {
+    const docRef = doc(db, 'comboRooms', params.id);
+    const docSnap = await getDoc(docRef);
+
+    if (!docSnap.exists()) {
+      return NextResponse.json({ ok: false, error: 'Sala no encontrada' }, { status: 404 });
+    }
+
+    const room = docSnap.data() as ComboRoom;
     const body = await req.json();
     const { slotIndex, guestName, selectedVariants, exclusions } = body;
 
@@ -163,8 +152,11 @@ export async function PUT(
       completedAt: new Date().toISOString(),
     };
 
+    // Actualizar en Firestore
+    await updateDoc(docRef, { slots: room.slots });
+
     return NextResponse.json({ ok: true, room });
-  } catch {
+  } catch (error) {
     return NextResponse.json({ ok: false, error: 'Error al actualizar la ranura' }, { status: 500 });
   }
 }
