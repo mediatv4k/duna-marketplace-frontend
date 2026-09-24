@@ -172,25 +172,47 @@ export default function MultitiendaHub() {
 
   useEffect(() => {
     async function loadRealData() {
+      const controller = new AbortController();
+      const timeoutId = setTimeout(() => controller.abort(), 3000); // 3 segundos de timeout
+
       try {
         const headers = { 'apiKey': API_KEY, 'timeZone': TIMEZONE, 'Content-Type': 'application/json' };
         
-        const catRes = await fetch(`${API_BASE}/product/categories?unused=false`, { headers });
+        const catRes = await fetch(`${API_BASE}/product/categories?unused=false`, { headers, signal: controller.signal });
         const catData = await catRes.json();
         if (catData.code === 1) setRealCategories(catData.data || []);
 
-        const storeRes = await fetch(`${API_BASE}/store/find?category=&keywords=`, { headers });
+        const storeRes = await fetch(`${API_BASE}/store/find?category=&keywords=`, { headers, signal: controller.signal });
         const storeData = await storeRes.json();
         if (storeData.code === 1) setRealStores(storeData.data || []);
 
-        // Promociones de TODO el marketplace (sin filtro de tienda) — reutiliza la misma
-        // función de la Fase 3, no se duplica lógica de fetch.
         const promoRes = await getStorePromotions('');
         if (promoRes.code === 1 && Array.isArray(promoRes.data)) setHomePromotions(promoRes.data);
 
       } catch (error) {
-        console.error("Error cargando data real:", error);
+        console.warn("Backend inalcanzable. Cargando datos de respaldo (Mock)...", error);
+        
+        // Data Mock de Respaldo
+        setRealCategories([
+          { code: "FOOD", name: "Comida Rápida" },
+          { code: "SWEET", name: "Helados y Postres" },
+          { code: "MARKET", name: "Bodegón y Abasto" }
+        ]);
+
+        setRealStores([
+          { 
+            id: 991, code: "MOSTAZA", name: "Mostaza Food Truck", category: "Comida Rápida", 
+            banner: "https://images.unsplash.com/photo-1555939594-58d7cb561ad1?w=800&auto=format&fit=crop", 
+            isOpen: true, isDemo: true, location: "{\"lat\": 10.3950, \"lng\": -71.4450}" 
+          },
+          { 
+            id: 992, code: "PAPA_HELADO", name: "Papá Helado", category: "Helados y Postres", 
+            banner: "https://images.unsplash.com/photo-1563805042-7684c8e9e5cb?w=800&auto=format&fit=crop", 
+            isOpen: true, isDemo: true, location: "{\"lat\": 10.3950, \"lng\": -71.4450}" 
+          }
+        ]);
       } finally {
+        clearTimeout(timeoutId);
         setLoadingHome(false);
       }
     }
@@ -217,7 +239,11 @@ export default function MultitiendaHub() {
         localStorage.setItem('current_cart_store_id', storeIdStr);
       }
 
-      const res = await getProductsByStore(store.id);
+      const timeoutPromise = new Promise<any>((_, reject) => setTimeout(() => reject(new Error("Timeout")), 3000));
+      const res = await Promise.race([
+        getProductsByStore(store.id),
+        timeoutPromise
+      ]).catch(() => ({ code: 500, data: null }));
       
       let flatProducts: any[] = [];
       if (res.code === 1 && res.data) {
@@ -227,6 +253,23 @@ export default function MultitiendaHub() {
           flatProducts = res.data.products.flatMap((cat: any) => cat.data || cat);
         } else if (res.data.data && Array.isArray(res.data.data)) {
           flatProducts = res.data.data;
+        }
+      } else {
+        console.warn("Cargando productos Mock para", store.name);
+        if (store.code === 'MOSTAZA') {
+          flatProducts = [
+            { id: 101, code: "MF001", name: "Perro Sifrino", price: 3.10, desc: "Pan, salchicha, ensalada y full queso.", category: "PERROS CALIENTES", image: "https://images.unsplash.com/photo-1594212691516-74724655b412?w=500&auto=format&fit=crop", hasVariants: true, modifiers: [{ title: "Exclusiones", selectType: "MULTIPLE", items: [{ name: "Sin Papitas", price: 0 }, { name: "Sin Queso", price: 0 }] }] },
+            { id: 102, code: "MF002", name: "Hamburguesa Doble", price: 6.50, desc: "Doble carne, queso cheddar, vegetales.", category: "HAMBURGUESAS", image: "https://images.unsplash.com/photo-1568901346375-23c9450c58cd?w=500&auto=format&fit=crop", hasVariants: false }
+          ];
+        } else if (store.code === 'PAPA_HELADO') {
+          flatProducts = [
+            { id: 201, code: "PH001", name: "Helado de Chocolate 1L", price: 5.00, desc: "Puro cacao artesanal.", category: "HELADOS", image: "https://images.unsplash.com/photo-1570197571499-166b36435e9f?w=500&auto=format&fit=crop", hasVariants: false },
+            { id: 202, code: "PH002", name: "Barquilla Doble", price: 2.50, desc: "Dos sabores a elección.", category: "BARQUILLAS", image: "https://images.unsplash.com/photo-1559703248-dcaaec9fab78?w=500&auto=format&fit=crop", hasVariants: true, modifiers: [{ title: "Sabores", selectType: "MULTIPLE", items: [{ name: "Mantecado", price: 0 }, { name: "Fresa", price: 0 }] }] }
+          ];
+        } else {
+          flatProducts = [
+            { id: 301, code: "DEMO01", name: "Combo de Prueba", price: 10.00, desc: "Producto generado en modo desarrollo.", category: "GENERAL", image: "https://images.unsplash.com/photo-1560008511-11c63416e52d?w=500&auto=format&fit=crop", hasVariants: false }
+          ];
         }
       }
 

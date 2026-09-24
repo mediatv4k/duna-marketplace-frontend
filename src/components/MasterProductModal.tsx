@@ -66,9 +66,9 @@ interface OptionCapsuleProps {
   bsLabel: string | null;
   count: number;
   mode: 'single' | 'counter';
-  onSelect?: () => void;
-  onIncrement?: () => void;
-  onDecrement?: () => void;
+  onSelect?: (e: React.MouseEvent<HTMLButtonElement>) => void;
+  onIncrement?: (e: React.MouseEvent<HTMLButtonElement>) => void;
+  onDecrement?: (e: React.MouseEvent<HTMLButtonElement>) => void;
 }
 
 function OptionCapsule({ name, image, priceLabel, bsLabel, count, mode, onSelect, onIncrement, onDecrement }: OptionCapsuleProps) {
@@ -103,7 +103,7 @@ function OptionCapsule({ name, image, priceLabel, bsLabel, count, mode, onSelect
     return (
       <button
         type="button"
-        onClick={onSelect}
+        onClick={(e) => { e.preventDefault(); e.stopPropagation(); onSelect?.(e); }}
         aria-pressed={isActive}
         className={`${shell} flex items-center justify-between gap-2.5 text-left cursor-pointer active:scale-[0.99]`}
       >
@@ -126,7 +126,7 @@ function OptionCapsule({ name, image, priceLabel, bsLabel, count, mode, onSelect
     <div className={`${shell} flex items-center justify-between gap-2.5`}>
       <button
         type="button"
-        onClick={onIncrement}
+        onClick={(e) => { e.preventDefault(); e.stopPropagation(); onIncrement?.(e); }}
         className="flex min-w-0 flex-1 items-center text-left cursor-pointer active:scale-[0.99]"
       >
         {leftInfo}
@@ -136,7 +136,7 @@ function OptionCapsule({ name, image, priceLabel, bsLabel, count, mode, onSelect
         <div className="flex shrink-0 items-center gap-1 rounded-full border border-slate-200 bg-slate-50 p-0.5">
           <button
             type="button"
-            onClick={onDecrement}
+            onClick={(e) => { e.preventDefault(); e.stopPropagation(); onDecrement?.(e); }}
             disabled={count <= 0}
             aria-label={`Quitar ${name}`}
             className="flex h-5 w-5 items-center justify-center rounded-full text-slate-600 transition hover:bg-slate-200 cursor-pointer disabled:cursor-not-allowed disabled:opacity-30 disabled:hover:bg-transparent"
@@ -146,7 +146,7 @@ function OptionCapsule({ name, image, priceLabel, bsLabel, count, mode, onSelect
           <span className={`w-4 text-center text-xs font-black ${isActive ? 'text-[#fe6712]' : 'text-slate-400'}`}>{count}</span>
           <button
             type="button"
-            onClick={onIncrement}
+            onClick={(e) => { e.preventDefault(); e.stopPropagation(); onIncrement?.(e); }}
             aria-label={`Agregar ${name}`}
             className="flex h-5 w-5 items-center justify-center rounded-full bg-[#fe6712] text-white transition hover:bg-[#e0580d] cursor-pointer"
           >
@@ -157,6 +157,7 @@ function OptionCapsule({ name, image, priceLabel, bsLabel, count, mode, onSelect
     </div>
   );
 }
+
 
 interface MasterProductModalProps {
   isOpen: boolean;
@@ -401,7 +402,7 @@ export default function MasterProductModal({
       }
       setSlots(initialSlots);
     }
-  }, [product, isOpen, isCombo, baseSlotCount, availableGroups, startQty]);
+  }, [product?.id, isOpen]); // eslint-disable-line react-hooks/exhaustive-deps
 
   useEffect(() => {
     if (isOpen) document.body.style.overflow = 'hidden';
@@ -832,6 +833,10 @@ export default function MasterProductModal({
       variants: isSlotMode ? undefined : variantsPayload,
       pricing: isSlotMode ? undefined : { unitBasePrice, addonsTotal, unitFinalPrice }
     });
+    // Marcar sala colaborativa como completada y limpiar barra flotante
+    if (comboRoomId && typeof window !== 'undefined') {
+      window.localStorage.removeItem('duna_pedido_amigos_active');
+    }
     onClose();
   };
 
@@ -864,20 +869,32 @@ export default function MasterProductModal({
         }),
       });
       const data = await res.json();
-      if (data.ok) {
-        setComboRoomId(newId);
-        setComboRoomSlots(data.room.slots || []);
-        setShowComboPanel(true);
-        // Polling cada 2 s
-        if (comboPollingRef.current) clearInterval(comboPollingRef.current);
-        comboPollingRef.current = setInterval(async () => {
-          try {
-            const pr = await fetch(`/api/combo/${newId}`);
-            const pd = await pr.json();
-            if (pd.ok) setComboRoomSlots(pd.room.slots || []);
-          } catch { /* silent */ }
-        }, 2000);
-      }
+          if (data.ok) {
+          setComboRoomId(newId);
+          setComboRoomSlots(data.room.slots || []);
+          setShowComboPanel(true);
+          // Persistir sala activa para la barra flotante global
+          if (typeof window !== 'undefined') {
+            window.localStorage.setItem('duna_pedido_amigos_active', JSON.stringify({
+              roomId: newId,
+              storeSlug: store?.code || '',
+              storeName: store?.name || '',
+              productName: product?.name || '',
+              isHost: true,
+              createdAt: Date.now(),
+              status: 'ACTIVE',
+            }));
+          }
+          // Polling cada 2 s
+          if (comboPollingRef.current) clearInterval(comboPollingRef.current);
+          comboPollingRef.current = setInterval(async () => {
+            try {
+              const pr = await fetch(`/api/combo/${newId}`);
+              const pd = await pr.json();
+              if (pd.ok) setComboRoomSlots(pd.room.slots || []);
+            } catch { /* silent */ }
+          }, 2000);
+        }
     } catch { /* silent */ } finally {
       setComboCreating(false);
     }
@@ -1271,11 +1288,11 @@ export default function MasterProductModal({
                   {/* Columna Izquierda (Mitad 50% - Anclada / Sin Scroll) */}
                   <div className="w-full flex flex-col justify-between md:h-full overflow-hidden bg-slate-50/70 rounded-2xl p-4 border border-slate-200/80 gap-3">
                     {/* Imagen del producto */}
-                    <div className="relative flex items-center justify-center w-full rounded-2xl border border-slate-200/80 bg-white overflow-hidden p-2 h-36 sm:h-40 md:h-44 shrink-0 shadow-xs">
+                    <div className="relative flex items-center justify-center w-full rounded-2xl border border-slate-200/80 bg-white overflow-hidden p-4 h-36 sm:h-40 md:h-44 shrink-0 shadow-xs">
                       <img
                         src={product.image || product.img}
                         alt={product.name}
-                        className="w-full h-full object-contain"
+                        className="max-w-full max-h-full object-contain"
                         onError={(e:any)=>{e.target.src='https://images.unsplash.com/photo-1542838132-92c53300491e?w=500&auto=format&fit=crop&q=60'}}
                       />
                     </div>
@@ -1381,8 +1398,8 @@ export default function MasterProductModal({
                 <div className="shrink-0 p-3 sm:p-4 grid grid-cols-1 sm:grid-cols-2 gap-3 items-start bg-white z-20 shadow-sm border-b border-slate-100">
                   {/* Columna Izquierda: Imagen, Precio y Cantidad */}
                   <div className="flex flex-col gap-2.5">
-                    <div className="relative flex items-center justify-center w-full rounded-xl border border-slate-200/80 bg-white overflow-hidden p-0 h-36 sm:h-48">
-                      <img src={product.image || product.img} alt={product.name} className="w-full h-full object-contain" onError={(e:any)=>{e.target.src='https://images.unsplash.com/photo-1542838132-92c53300491e?w=500&auto=format&fit=crop&q=60'}} />
+                    <div className="relative flex items-center justify-center w-full rounded-xl border border-slate-200/80 bg-white overflow-hidden p-4 h-36 sm:h-48">
+                      <img src={product.image || product.img} alt={product.name} className="max-w-full max-h-full object-contain" onError={(e:any)=>{e.target.src='https://images.unsplash.com/photo-1542838132-92c53300491e?w=500&auto=format&fit=crop&q=60'}} />
                     </div>
                     <div className="flex items-center justify-center gap-1.5 rounded-lg bg-sky-50/70 border border-sky-200/60 px-2.5 py-1 text-sky-800">
                       <svg className="w-3.5 h-3.5 text-sky-600 shrink-0" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={1.75}>

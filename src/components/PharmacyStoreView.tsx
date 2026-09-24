@@ -152,7 +152,9 @@ export default function PharmacyStoreView() {
         <div className='grid grid-cols-1 sm:grid-cols-2 gap-3'>
           {filteredProducts.map(product => (
             <div key={product.id} onClick={() => setSelectedProduct(product)} className='bg-white rounded-2xl border border-slate-200 p-3.5 flex items-center gap-3.5 shadow-2xs hover:shadow-md transition cursor-pointer group'>
-              <img src={product.image} alt={product.name} className='w-16 h-16 rounded-xl object-cover bg-slate-100' />
+              <div className="w-16 h-16 rounded-xl border border-slate-100 bg-white flex items-center justify-center overflow-hidden shrink-0">
+                <img src={product.image} alt={product.name} className='max-w-full max-h-full object-contain' />
+              </div>
               <div className='flex-1 min-w-0'>
                 <span className='text-[10px] font-black bg-blue-50 text-blue-700 px-2 py-0.5 rounded-md'>{product.category}</span>
                 <h3 className='text-xs font-black text-slate-900 mt-1 truncate group-hover:text-[#fe6712] transition'>{product.name}</h3>

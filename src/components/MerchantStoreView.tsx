@@ -682,11 +682,11 @@ export default function MerchantStoreView({
                       {badge && (
                         <span className={`absolute top-2 left-2 px-2 py-0.5 rounded-md text-[8px] font-bold ${badge.className}`}>{badge.label}</span>
                       )}
-                      <div className="relative w-full aspect-square mb-2 mt-4 p-2 bg-white rounded-xl border border-slate-100 overflow-hidden">
+                      <div className="relative w-full aspect-square mb-2 mt-4 p-2 bg-white rounded-xl border border-slate-100 overflow-hidden flex items-center justify-center">
                         <img
                           src={product.image || 'https://images.unsplash.com/photo-1560008511-11c63416e52d'}
                           alt={product.name}
-                          className="w-full h-full object-cover rounded-lg"
+                          className="max-w-full max-h-full object-contain rounded-lg"
                         />
                         {/* Lightbox: solo la lupa lo abre (stopPropagation); tocar el resto de la foto abre la ficha del producto como el resto de la tarjeta */}
                         <button

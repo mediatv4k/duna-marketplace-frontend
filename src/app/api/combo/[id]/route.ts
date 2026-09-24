@@ -37,7 +37,7 @@ export interface ComboRoom {
 }
 
 /* ─── Store en memoria ───────────────────────────────────────────────────── */
-const comboRooms = new Map<string, ComboRoom>();
+const comboRooms: Map<string, ComboRoom> = (globalThis as any).comboRooms ??= new Map<string, ComboRoom>();
 const ROOM_TTL_MS = 4 * 60 * 60 * 1000; // 4 h
 
 function pruneExpiredRooms() {

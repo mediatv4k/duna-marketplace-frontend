@@ -126,6 +126,33 @@ export default function ComboRoomPage({ params }: { params: { id: string } }) {
   const [saving, setSaving] = useState(false);
   const [saveError, setSaveError] = useState<string | null>(null);
 
+  const [hasDeadRoomInStorage, setHasDeadRoomInStorage] = useState(false);
+  const [deadRoomStoreSlug, setDeadRoomStoreSlug] = useState<string | null>(null);
+
+  useEffect(() => {
+    if ((error || !loading) && !room) {
+      if (typeof window !== 'undefined') {
+        try {
+          const stored = window.localStorage.getItem('duna_pedido_amigos_active');
+          if (stored) {
+            const parsed = JSON.parse(stored);
+            if (parsed.roomId === roomId) {
+              setHasDeadRoomInStorage(true);
+              setDeadRoomStoreSlug(parsed.storeSlug || null);
+            }
+          }
+        } catch (e) {}
+      }
+    }
+  }, [error, room, loading, roomId]);
+
+  const handleClearDeadRoom = () => {
+    if (typeof window !== 'undefined') {
+      window.localStorage.removeItem('duna_pedido_amigos_active');
+      window.location.href = deadRoomStoreSlug ? `/${deadRoomStoreSlug}` : '/';
+    }
+  };
+
   /* ── Cargar sala ── */
   const loadRoom = useCallback(async () => {
     try {
@@ -240,7 +267,15 @@ export default function ComboRoomPage({ params }: { params: { id: string } }) {
             </svg>
           </div>
           <h2 className="text-lg font-black text-slate-900">Sala no disponible</h2>
-          <p className="text-sm text-slate-500">{error || 'El enlace expiró o no existe.'}</p>
+          <p className="text-sm text-slate-500 mb-4">{error || 'El enlace expiró o no existe.'}</p>
+          {hasDeadRoomInStorage && (
+            <button
+              onClick={handleClearDeadRoom}
+              className="w-full bg-[#FE6712] hover:bg-[#e0580d] text-white font-black py-3 px-4 rounded-xl text-sm transition-colors mt-4"
+            >
+              Crear nuevo pedido grupal
+            </button>
+          )}
         </div>
       </div>
     );
