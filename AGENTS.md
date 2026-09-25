@@ -743,4 +743,8 @@ ext dev\). No es necesario pedir confirmación para estas tareas de estabilizació
  -   S e   d e s l i g ó   e l   t a b   d e   R e c i b o   d e l   f o r m a t e a d o r   g e n é r i c o   p a r a   p r o c e s a r   d e   f o r m a   n a t i v a   l o s   s t r i n g s   f i n a n c i e r o s   d e l   b r e a k d o w n .  
  -   I m p l e m e n t a d o   f i l t r o   e s t r i c t o :   s e   o m i t e n   n o t a s   d e   p r e p a r a c i ó n   s i n   c o s t o   ( e j .   e x c l u s i o n e s   t i p o   ' S I N . . . ' ) .  
  -   E s t r u c t u r a   d e   3   c o l u m n a s   ( G r i d   C S S )   p a r a   e x t r a s :   N o m b r e   ( l i m p i o   d e   S K U s ) ,   I d e n t i f i c a d o r   d e l   c o m e n s a l   p e r f e c t a m e n t e   t a b u l a d o   y   m o n t o   a d i c i o n a l   a l i n e a d o   a   l a   d e r e c h a .  
+ # #   2 0 2 6 - 0 9 - 2 4 :   C o r r e c c i ó n   d e   A l i n e a c i ó n   T a b u l a r   e n   R e c i b o   C o n t a b l e  
+ -   R e f a c t o r i z a d a   l a   e s t r u c t u r a   d e   e x t r a s   e n   e l   t a b   R E C E I P T   u t i l i z a n d o   f l e x b o x   e s t r i c t o   c o n   a n c h o s   f i j o s   ( w - 2 4 ,   w - 1 6 ) .  
+ -   A l i n e a c i ó n   a   l a   d e r e c h a   f o r z a d a   p a r a   v a l o r e s   m o n e t a r i o s   g a r a n t i z a n d o   c o i n c i d e n c i a   v e r t i c a l   c o n   e l   t o t a l   y   s u b t o t a l .  
+ -   P r e s e r v a d a   l a   i n t e g r i d a d   v i s u a l   d e   l a   p e s t a ñ a   K I T C H E N   ( c e r o   a l t e r a c i o n e s ) .  
  

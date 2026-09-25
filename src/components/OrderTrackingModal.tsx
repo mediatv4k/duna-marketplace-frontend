@@ -514,10 +514,16 @@ export default function OrderTrackingModal({ isOpen, onClose, orderId, orderSumm
                                 {financialExtras.length > 0 && (
                                   <div className="mt-1 space-y-1">
                                     {financialExtras.map((ext, eIdx) => (
-                                      <div key={eIdx} className="grid grid-cols-[1fr_auto_auto] gap-2 items-center text-[10px] text-slate-600 pl-4">
-                                        <span className="truncate">{ext.name}</span>
-                                        <span className="italic text-slate-400 truncate max-w-[80px]">{ext.participant ? `(${ext.participant})` : ''}</span>
-                                        <span className="text-right tabular-nums whitespace-nowrap min-w-[50px]">{ext.price > 0 ? `+$ ${ext.price.toFixed(2)}` : ''}</span>
+                                      <div key={eIdx} className="flex items-center justify-between text-xs font-mono py-0.5 text-slate-600 pl-4">
+                                        <span className="text-left flex-1 truncate pr-2">
+                                          {ext.name}
+                                        </span>
+                                        <span className="text-center shrink-0 w-24 text-slate-400 italic">
+                                          {ext.participant ? `(${ext.participant})` : ''}
+                                        </span>
+                                        <span className="text-right shrink-0 w-16 font-medium text-slate-700">
+                                          {ext.price > 0 ? `+${ext.price.toFixed(2)}` : ''}
+                                        </span>
                                       </div>
                                     ))}
                                   </div>
