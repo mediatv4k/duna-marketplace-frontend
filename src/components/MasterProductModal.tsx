@@ -1533,9 +1533,9 @@ export default function MasterProductModal({
             hasVariants ? (
               /* LAYOUT SIMÉTRICO 50/50 BILATERAL PARA PRODUCTOS CON VARIANTES */
               <div className="flex-1 overflow-y-auto min-h-0">
-                <div className="grid grid-cols-1 md:grid-cols-2 gap-4 md:gap-6 p-4 md:p-6 items-start">
+                <div className={`grid grid-cols-1 ${viewMode === 'slots' ? '' : 'md:grid-cols-2'} gap-4 md:gap-6 p-4 md:p-6 items-start`}>
                   {/* Columna Izquierda (Mitad 50% - Anclada / Sin Scroll) */}
-                  <div className="w-full flex flex-col justify-between overflow-hidden bg-slate-50/70 rounded-2xl p-4 border border-slate-200/80 gap-3 md:sticky md:top-6">
+                  <div className={`w-full flex flex-col justify-between overflow-hidden bg-slate-50/70 rounded-2xl p-4 border border-slate-200/80 gap-3 md:sticky md:top-6 ${viewMode === 'slots' ? 'hidden md:hidden' : ''}`}>
                     {/* Imagen del producto */}
                     <div className="relative flex items-center justify-center w-full rounded-2xl border border-slate-200/80 bg-white overflow-hidden p-4 h-36 sm:h-40 md:h-44 shrink-0 shadow-xs">
                       <img
@@ -1622,7 +1622,7 @@ export default function MasterProductModal({
                   {/* Columna Derecha (Mitad 50% - Vitrina de Opciones con Scroll) */}
                   <div className="w-full flex flex-col flex-1 bg-white">
                     {/* Cabecera */}
-                    <div className="pb-3 border-b border-slate-100 shrink-0">
+                    <div className={`pb-3 border-b border-slate-100 shrink-0 ${viewMode === 'slots' ? 'hidden' : ''}`}>
                       <div className="flex flex-wrap items-center gap-1.5 mb-1.5 pr-14 text-[10px] font-black uppercase tracking-wider text-slate-500">
                         <span className="text-slate-900 bg-slate-100 px-2 py-0.5 rounded">{product.code}</span>
                         <span>|</span>
