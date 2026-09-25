@@ -453,33 +453,46 @@ export default function OrderTrackingModal({ isOpen, onClose, orderId, orderSumm
                             let currentParticipant = '';
                             
                             const rawLines = Array.isArray(item.breakdown) ? item.breakdown : [];
+                            // ─── FINANCIAL EXTRAS PARSER (RECEIPT ONLY) ────────────────
+                            // Reads breakdown[] lines from MasterProductModal.
+                            // Slot format  : "• #1 (Omar): ..." / "  >> EXTRA: [SKU] Name (+$X.XX)"
+                            // ComboRoom fmt: "• OMAR (1 Unidades)" / "  - Name (+$X.XX)"
                             rawLines.forEach((line: string) => {
                               const trimmed = line.trim();
-                              
-                              // Check for participant name header (e.g. "• OMAR (1 Unidades)" or "• #1 (Omar):")
-                              let pMatch = trimmed.match(/^•\s*(?:#\d+)?\s*\(([^)]+)\)/i);
-                              if (!pMatch) pMatch = trimmed.match(/^•\s*([^(]+?)\s*\(\d+\s*Unidades\)/i);
-                              
-                              if (pMatch) {
-                                currentParticipant = pMatch[1].trim();
+
+                              // ── Participant header detection ──
+                              // Matches "• OMAR (1 Unidades)" or "• #1 (Omar):"
+                              // Bullet may be any non-word char (Unicode corruption safe)
+                              const headerMatchA = trimmed.match(/^[^\w]*#?\d*\s*([A-Za-z\u00C0-\u017E][A-Za-z\u00C0-\u017E0-9 ]*?)\s*\(\d+\s*Unidades?\)/i);
+                              const headerMatchB = !headerMatchA && trimmed.match(/^[^\w]*#(\d+)\s*\(([^)]+)\)\s*:/i);
+
+                              if (headerMatchA) {
+                                currentParticipant = headerMatchA[1].trim();
                                 return;
                               }
-                              
-                              // Exclude non-financial kitchen prep instructions
-                              if (/sin\b/i.test(trimmed) || /sale con todo/i.test(trimmed)) return;
-                              
-                              // Extract price and clean name if it's an extra
-                              const priceMatch = trimmed.match(/\(\+\$([0-9.]+)\)/);
-                              if (priceMatch || trimmed.includes('>> EXTRA:')) {
-                                const extPrice = priceMatch ? Number(priceMatch[1]) : 0;
-                                let cleanedName = trimmed
-                                  .replace(/>>\s*EXTRA:\s*/i, '') // remove >> EXTRA:
-                                  .replace(/\[.*?\]\s*/, '')      // remove [SKU]
-                                  .replace(/\(\+\$[0-9.]+\)/, '') // remove (+$X.XX)
-                                  .replace(/^- /, '')             // remove leading dash
+                              if (headerMatchB) {
+                                currentParticipant = headerMatchB[2].trim();
+                                return;
+                              }
+
+                              // ── Skip pure kitchen-prep lines ──
+                              if (/^\s*-\s*sin\b/i.test(trimmed)) return;
+                              if (/sale con todo/i.test(trimmed)) return;
+                              if (/^---/.test(trimmed)) return;
+
+                              // ── Price extraction: (+$X.XX) anywhere in line ──
+                              const priceMatch = trimmed.match(/\(\+\$\s*([0-9]+(?:\.[0-9]{1,2})?)\)/);
+                              if (priceMatch) {
+                                const extPrice = Number(priceMatch[1]);
+                                const cleanedName = trimmed
+                                  .replace(/^-\s*/, '')
+                                  .replace(/^>>\s*EXTRA:\s*/i, '')
+                                  .replace(/\[[^\]]*\]\s*/g, '')
+                                  .replace(/\(\+\$[0-9.]+\)/g, '')
+                                  .replace(/\s{2,}/g, ' ')
                                   .trim();
-                                
-                                if (extPrice > 0 || cleanedName.length > 0) {
+
+                                if (cleanedName.length > 0 && extPrice > 0) {
                                   financialExtras.push({ name: cleanedName, participant: currentParticipant, price: extPrice });
                                 }
                               }
@@ -521,7 +534,7 @@ export default function OrderTrackingModal({ isOpen, onClose, orderId, orderSumm
                                         <span className="text-center shrink-0 w-24 text-slate-400 italic">
                                           {ext.participant ? `(${ext.participant})` : ''}
                                         </span>
-                                        <span className="text-right shrink-0 w-16 font-medium text-slate-700">
+                                        <span className="text-right shrink-0 min-w-[70px] font-medium text-slate-700 tabular-nums">
                                           {ext.price > 0 ? `+${ext.price.toFixed(2)}` : ''}
                                         </span>
                                       </div>
