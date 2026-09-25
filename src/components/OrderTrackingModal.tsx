@@ -199,8 +199,8 @@ export default function OrderTrackingModal({ isOpen, onClose, orderId, orderSumm
   const DIVIDER = '-'.repeat(40);
 
   return (
-    <div className="fixed inset-0 z-[160] flex items-center justify-center bg-black/75 p-3 backdrop-blur-sm animate-in fade-in duration-150">
-      <div className="w-full max-w-[420px] max-h-[90vh] overflow-hidden rounded-[28px] bg-white shadow-2xl border border-slate-100 flex flex-col justify-between">
+    <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/60 backdrop-blur-sm animate-in fade-in duration-150">
+      <div className="w-full max-w-md my-auto max-h-[90dvh] flex flex-col rounded-3xl overflow-hidden shadow-2xl bg-white border border-slate-100">
 
         {/* Cabecera */}
         <div className="bg-[#fe6712] px-5 py-3 text-white flex items-center justify-between shrink-0">
