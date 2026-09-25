@@ -473,7 +473,9 @@ export default function MerchantStoreView({
     }
     updateCartStorage(updated);
     setIsMasterModalOpen(false);
-    // El carrito ya no se abre solo al agregar: el cliente sigue comprando (se abre desde la barra "Productos en bolsa")
+    // El carrito ya no se abre solo al agregar: el cliente sigue comprando (se abre desde la barra "Productos en bolsa").
+    // Única excepción: el CTA "Proceder al Pago y Despacho" de la sala colaborativa (combo ya completo) lleva a caja.
+    if (configuredItem.proceedToCheckout === true) setIsCartOpen(true);
   };
 
   const handleUpdateQty = (identifier: string, delta: number) => {

@@ -42,6 +42,7 @@ export interface VariantSelectionPayload {
   slots?: ComboSlot[];
   variants?: any[];
   pricing?: { unitBasePrice: number; addonsTotal: number; unitFinalPrice: number };
+  proceedToCheckout?: boolean; // solo la sala colaborativa completa: la tienda abre el carrito al recibirlo
 }
 
 // Etiquetas de precio extra para una cápsula. Solo presentación: no participa en ningún cálculo.
@@ -724,7 +725,10 @@ export default function MasterProductModal({
     handleAddToCart();
   };
 
-  const handleAddToCart = () => {
+  // `proceedToCheckout === true` (solo el CTA "Proceder al Pago y Despacho" de la sala colaborativa) le pide a la
+  // tienda abrir el carrito de inmediato tras agregar el combo; los demás disparadores (onClick) pasan un evento y
+  // no cuentan, así el resto del flujo sigue agregando sin abrir el carrito.
+  const handleAddToCart = (proceedToCheckout: boolean | React.MouseEvent = false) => {
     if (!product) return;
     const breakdown: string[] = [];
 
@@ -763,14 +767,16 @@ export default function MasterProductModal({
         });
       
       onAddToCart({
-        productCode: String(product.id || product.code),
+        // Código real del backend (igual que el flujo normal); el id solo como último recurso
+        productCode: String(product.code || product.id),
         productName: product.name,
         qty: qty,
         quantity: qty,
         totalPrice: totalCartPrice,
         totalUSD: totalCartPrice,
         summaryText: breakdown.join(' | '),
-        breakdown: breakdown
+        breakdown: breakdown,
+        proceedToCheckout: proceedToCheckout === true
       });
       if (typeof window !== 'undefined') window.localStorage.removeItem('duna_pedido_amigos_active');
       onClose();
@@ -1012,6 +1018,12 @@ export default function MasterProductModal({
 
   const comboAllDone = comboRoomData && comboRoomData.claimedUnits >= comboRoomData.totalUnits;
 
+  // En la sala colaborativa el total real es la suma de lo reclamado por cada participante (incluye adicionales de los
+  // invitados), que es exactamente lo que `handleAddToCart` envía al carrito; fuera de la sala, el total de siempre.
+  const footerTotalUSD = viewMode === 'comboRoom' && comboRoomData
+    ? comboRoomData.participants.reduce((sum: number, p: any) => sum + Number(p.subtotalUsd || 0), 0)
+    : totalCalculated;
+
   const handleCopyComboLink = () => {
     if (!comboLink) return;
     navigator.clipboard.writeText(comboLink).then(() => {
@@ -1184,29 +1196,52 @@ export default function MasterProductModal({
               </div>
             </div>
             
-            <div className="space-y-1 mb-4">
+            <div className="space-y-1.5 mb-4">
               <div className="flex justify-between text-[11px] font-bold text-slate-700">
-                <span>Progreso del pozo</span>
-                <span>{comboRoomData.claimedUnits} / {comboRoomData.totalUnits} u</span>
+                <span>Ranuras ocupadas: {comboRoomData.claimedUnits} de {comboRoomData.totalUnits}</span>
+                <span className={comboAllDone ? 'text-emerald-600' : 'text-amber-600'}>{comboAllDone ? 'Combo completo' : `Faltan ${Math.max(0, comboRoomData.totalUnits - comboRoomData.claimedUnits)}`}</span>
               </div>
               <div className="h-2 w-full bg-slate-200 rounded-full overflow-hidden">
-                <div className="h-full bg-[#FE6712] transition-all" style={{ width: `${(comboRoomData.claimedUnits / comboRoomData.totalUnits) * 100}%` }}></div>
+                <div className="h-full bg-[#FE6712] transition-all" style={{ width: `${Math.min(100, (comboRoomData.claimedUnits / comboRoomData.totalUnits) * 100)}%` }}></div>
+              </div>
+              {/* Una pastilla por ranura: llena = ya reclamada por alguien, vacía = libre */}
+              <div className="flex flex-wrap gap-1 pt-0.5">
+                {Array.from({ length: comboRoomData.totalUnits }).map((_, i) => (
+                  <span
+                    key={i}
+                    className={`h-5 min-w-[1.25rem] px-1 rounded-md text-[10px] font-black flex items-center justify-center border ${i < comboRoomData.claimedUnits ? 'bg-[#FE6712] border-[#FE6712] text-white' : 'bg-white border-slate-200 text-slate-400'}`}
+                  >
+                    {i + 1}
+                  </span>
+                ))}
               </div>
             </div>
 
             <div className="space-y-2">
               <p className="text-[10px] font-black text-slate-400 uppercase">Participantes</p>
-              {comboRoomData.participants.map((p: any) => (
-                <div key={p.id} className="flex items-center justify-between bg-white border border-slate-200 rounded-xl px-3 py-2 shadow-sm">
-                  <div className="min-w-0">
-                    <p className="text-xs font-bold text-slate-800 truncate">{p.name} {p.isHost && '(Anfitrión)'}</p>
-                    <p className="text-[10px] text-slate-500 font-medium">{p.unitsCount}x unidades · {p.exclusions.length > 0 ? p.exclusions.map((e: string) => e.toUpperCase().startsWith('SIN ') ? e : 'Sin ' + e).join(', ') : 'Con Todo'}</p>
+              {comboRoomData.participants.map((p: any) => {
+                const detailParts: string[] = [];
+                (p.exclusions || []).forEach((e: string) => detailParts.push(e.toUpperCase().startsWith('SIN ') ? e : 'Sin ' + e));
+                Object.values(p.selectedVariants || {}).forEach((sel: any) => {
+                  if (Array.isArray(sel)) sel.forEach((it: any) => { if ((it?.count || 0) > 0) detailParts.push(`${it.count > 1 ? it.count + 'x ' : ''}${it.name}`); });
+                });
+                const isReady = !!p.completedAt;
+                return (
+                  <div key={p.id} className="flex items-center justify-between gap-2 bg-white border border-slate-200 rounded-xl px-3 py-2 shadow-sm">
+                    <div className="min-w-0">
+                      <div className="flex items-center gap-1.5">
+                        <p className="text-xs font-bold text-slate-800 truncate">{p.name}{p.isHost && !/anfitri/i.test(String(p.name)) ? ' (Anfitrión)' : ''}</p>
+                        <span className={`shrink-0 text-[9px] font-black px-1.5 py-0.5 rounded-full border ${isReady ? 'bg-emerald-50 text-emerald-700 border-emerald-200' : 'bg-amber-50 text-amber-700 border-amber-200'}`}>{isReady ? 'Listo' : 'Eligiendo'}</span>
+                      </div>
+                      <p className="text-[10px] text-slate-500 font-medium">{p.unitsCount} {p.unitsCount === 1 ? 'unidad' : 'unidades'} · {detailParts.length > 0 ? detailParts.join(' + ') : 'Con todo'}</p>
+                    </div>
+                    <div className="text-right shrink-0">
+                      <p className="text-xs font-black text-slate-900">${Number(p.subtotalUsd || 0).toFixed(2)}</p>
+                      {bcvRate ? <p className="text-[10px] font-bold text-slate-500">Bs. {(Number(p.subtotalUsd || 0) * bcvRate).toLocaleString('es-VE', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}</p> : null}
+                    </div>
                   </div>
-                  <div className="text-right shrink-0 ml-2">
-                    <p className="text-xs font-black text-slate-900">${p.subtotalUsd.toFixed(2)}</p>
-                  </div>
-                </div>
-              ))}
+                );
+              })}
             </div>
             
             <div className="mt-4 pt-3 border-t border-orange-200/60">
@@ -2043,12 +2078,36 @@ export default function MasterProductModal({
             </div>
           )}
           <div className={`p-4 sm:p-5 md:px-6 md:py-4 ${viewMode === 'host_setup' ? 'hidden' : ''}`}>
+            {/* Sala colaborativa activa: mientras falten ranuras el anfitrión puede seguir compartiendo; al llenarse, el
+                CTA lo lleva a caja (agrega el combo maestro al carrito y abre el carrito → checkout). */}
+            {viewMode === 'comboRoom' && comboRoomData && (
+              <div className="mb-3">
+                {comboAllDone ? (
+                  <button
+                    type="button"
+                    onClick={() => handleAddToCart(true)}
+                    className="w-full bg-[#FE6712] hover:bg-[#E05509] text-white font-bold py-3.5 px-4 rounded-xl shadow-lg transition flex items-center justify-center gap-2 cursor-pointer active:scale-[0.98]"
+                  >
+                    Proceder al Pago y Despacho ({comboRoomData.totalUnits}/{comboRoomData.totalUnits}) <ArrowRight className="w-4 h-4" />
+                  </button>
+                ) : (
+                  <a
+                    href={`https://api.whatsapp.com/send?text=${encodeURIComponent("¡Pilas panas! Entren a este link para armar el combo en D'una: " + comboLink)}`}
+                    target="_blank"
+                    rel="noopener noreferrer"
+                    className="w-full bg-[#25D366] hover:bg-[#20bd5a] text-white font-black py-3.5 px-4 rounded-xl text-sm transition flex items-center justify-center gap-2 cursor-pointer shadow-md"
+                  >
+                    Compartir de nuevo por WhatsApp ({comboRoomData.claimedUnits}/{comboRoomData.totalUnits})
+                  </a>
+                )}
+              </div>
+            )}
             <div className="flex items-center justify-between gap-3">
               <div className="shrink-0">
                 <span className="text-[10px] font-black text-slate-400 uppercase block mb-0.5">Total a Pagar</span>
                 <div className="flex flex-col sm:flex-row sm:items-baseline sm:gap-1.5">
-                  <span className="text-xl font-black text-slate-900 leading-none">${totalCalculated.toFixed(2)}</span>
-                  {bcvRate ? <span className="text-xs font-bold text-slate-500">/ Bs. {(totalCalculated * bcvRate).toFixed(2)}</span> : null}
+                  <span className="text-xl font-black text-slate-900 leading-none">${footerTotalUSD.toFixed(2)}</span>
+                  {bcvRate ? <span className="text-xs font-bold text-slate-500">/ Bs. {(footerTotalUSD * bcvRate).toFixed(2)}</span> : null}
                 </div>
               </div>
 
@@ -2087,7 +2146,7 @@ export default function MasterProductModal({
                     <span>{isMinimumsMet ? 'Continuar' : 'Selecciona tus opciones'}</span> <ArrowRight className="w-4 h-4" />
                   </button>
                 ) : (
-                  <div className="flex gap-2 justify-end w-full max-w-[240px]">
+                  <div className={`flex gap-2 justify-end w-full max-w-[240px] ${viewMode === 'comboRoom' ? 'hidden' : ''}`}>
                     {step === 2 && (
                       <button
                         onClick={handleAddToCart}

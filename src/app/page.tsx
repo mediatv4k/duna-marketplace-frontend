@@ -170,6 +170,20 @@ export default function MultitiendaHub() {
     getBCVRate().then(setBcvRate).catch(() => setBcvRate(null));
   }, []);
 
+  // Enlace directo a una tienda (`/?store={code}`): la app no tiene rutas por tienda, así que "Explorar el menú de la
+  // tienda" (pantalla final del invitado de un combo colaborativo) aterriza aquí y abre esa tienda. Corre una sola vez,
+  // cuando ya llegaron las tiendas. IMPORTANTE: este hook va ANTES del `return` condicional de la vista de tienda.
+  const deepLinkHandledRef = useRef(false);
+  useEffect(() => {
+    if (deepLinkHandledRef.current || realStores.length === 0 || typeof window === 'undefined') return;
+    deepLinkHandledRef.current = true;
+    const wanted = new URLSearchParams(window.location.search).get('store');
+    if (!wanted) return;
+    const match = realStores.find((s: any) => String(s.code || '').toLowerCase() === wanted.toLowerCase());
+    if (match) handleStoreClick(match);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [realStores]);
+
   useEffect(() => {
     async function loadRealData() {
       const controller = new AbortController();
@@ -416,6 +430,14 @@ export default function MultitiendaHub() {
             }
             setSavedOrderId(String(orderData.id));
             setHasCompletedOrder(true);
+            // Pedido colaborativo ("entre panas") ya pagado (comprobante o referencia adjuntos): se cierra el checkout y se
+            // abre de inmediato el seguimiento, que siempre arranca en la pestaña "Estatus". Si aún NO hay pago adjunto se
+            // mantiene la confirmación del checkout (ahí el cliente elige cómo pagar) y su botón "Ver seguimiento".
+            const isCollabOrder = (orderData.items || []).some((it: any) => String(it?.breakdown?.[0] || '').includes('PEDIDO ENTRE PANAS'));
+            if (isCollabOrder && (orderData.referencia || orderData.comprobante)) {
+              setIsCheckoutOpen(false);
+              setIsTrackingOpen(true);
+            }
           }}
           onBackToCart={() => { setIsCheckoutOpen(false); setForceCartOpenCount(prev => prev + 1); }}
           onViewTracking={() => { setIsCheckoutOpen(false); setIsTrackingOpen(true); }}

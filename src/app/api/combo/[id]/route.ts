@@ -137,6 +137,10 @@ export async function PUT(
     const room = docSnap.data() as ComboRoomData;
     const body = await req.json();
     const { name, unitsCount, selectedVariants, exclusions } = body;
+    // Adicionales (papas, bebidas…) que el invitado suma a su porción: monto ya calculado en cliente con los precios
+    // reales del producto; aquí solo se sanea (número finito, no negativo, 2 decimales).
+    const rawAddons = Number(body.addonsUsd);
+    const addonsUsd = Number.isFinite(rawAddons) && rawAddons > 0 ? Math.round(rawAddons * 100) / 100 : 0;
 
     if (!name || String(name).trim().length === 0) {
       return NextResponse.json({ ok: false, error: 'Se requiere un nombre' }, { status: 400 });
@@ -156,7 +160,7 @@ export async function PUT(
       unitsCount,
       exclusions: Array.isArray(exclusions) ? exclusions : [],
       selectedVariants: selectedVariants || {},
-      subtotalUsd: unitsCount * room.unitPriceUsd,
+      subtotalUsd: unitsCount * room.unitPriceUsd + addonsUsd,
       isHost: false,
       completedAt: new Date().toISOString(),
     };

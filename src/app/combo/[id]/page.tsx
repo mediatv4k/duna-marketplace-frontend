@@ -128,7 +128,20 @@ export default function ComboRoomPage({ params }: { params: { id: string } }) {
   const [saving, setSaving] = useState(false);
   const [saveError, setSaveError] = useState<string | null>(null);
 
+  // Adicionales (papas, bebidas…) que el invitado suma a su porción: clave `${grupo}:${code}` → cantidad
+  const [addonCounts, setAddonCounts] = useState<Record<string, number>>({});
+
   const [deadRoomStoreSlug, setDeadRoomStoreSlug] = useState<string | null>(null);
+
+  // Tasa BCV oficial (misma fuente que el Home): sin ella el invitado solo vería USD y no podría hacer Pago Móvil
+  useEffect(() => {
+    let alive = true;
+    getBCVRate().then((r) => { if (alive) setBcvRate(r); }).catch(() => {});
+    return () => { alive = false; };
+  }, []);
+
+  // La app vive en `/` (no hay rutas /store/{code}); `?store=` la lee el Home para abrir esa tienda directo
+  const storeMenuHref = (slug?: string | null) => (slug ? `/?store=${encodeURIComponent(slug)}` : '/');
 
   useEffect(() => {
     if ((error || !loading) && !room) {
@@ -149,7 +162,7 @@ export default function ComboRoomPage({ params }: { params: { id: string } }) {
   const handleClearDeadRoom = () => {
     if (typeof window !== 'undefined') {
       window.localStorage.removeItem('duna_pedido_amigos_active');
-      window.location.href = deadRoomStoreSlug ? `/${deadRoomStoreSlug}` : '/';
+      window.location.href = storeMenuHref(deadRoomStoreSlug);
     }
   };
 
@@ -268,18 +281,33 @@ export default function ComboRoomPage({ params }: { params: { id: string } }) {
     await submitClaim(localVariants, localExclusions);
   };
 
+  // Adicionales elegidos por el invitado (solo opciones con precio real > 0 del producto) y su monto en USD
+  const getAddonItems = () => {
+    const items: any[] = [];
+    (room?.groups || []).forEach((g: any, gIdx: number) => {
+      (g.options || []).forEach((o: any) => {
+        const count = addonCounts[`${gIdx}:${o.code}`] || 0;
+        if (count > 0 && Number(o.price) > 0) items.push({ name: o.name, code: o.code, price: Number(o.price), count });
+      });
+    });
+    return items;
+  };
+  const getAddonsUsd = () => getAddonItems().reduce((sum, it) => sum + it.price * it.count, 0);
+
   const submitClaim = async (variants: Record<string, any>, exclusions: string[]) => {
     setSaving(true);
     setSaveError(null);
     try {
+      const addonItems = getAddonItems();
       const res = await fetch(`/api/combo/${roomId}`, {
         method: 'PUT',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
           name: guestName.trim(),
           unitsCount: claimedUnits,
-          selectedVariants: variants,
+          selectedVariants: addonItems.length > 0 ? { ...variants, addons: addonItems } : variants,
           exclusions,
+          addonsUsd: getAddonsUsd(),
         }),
       });
       const data = await res.json();
@@ -365,6 +393,15 @@ export default function ComboRoomPage({ params }: { params: { id: string } }) {
   }
 
   const availableUnits = room.totalUnits - room.claimedUnits;
+
+  // Opciones de pago extra reales del producto (excluye el grupo "SIN", que resta ingredientes, y los grupos BASE)
+  const addonOptions = (room.groups || []).flatMap((g: any, gIdx: number) =>
+    /\bsin\b/i.test(String(g.name || g.title || '')) || g.pricingRole === 'BASE'
+      ? []
+      : (g.options || []).filter((o: any) => Number(o.price) > 0).map((o: any) => ({ ...o, key: `${gIdx}:${o.code}` }))
+  );
+  const myPartUsd = claimedUnits * room.unitPriceUsd + getAddonsUsd();
+  const formatBs = (usd: number) => (bcvRate ? usd * bcvRate : 0).toLocaleString('es-VE', { minimumFractionDigits: 2, maximumFractionDigits: 2 });
 
   if (phase === 'pick') {
     const hasSinGroups = (room.groups || []).some((g: any) => /\bsin\b/i.test(String(g.name || g.title || '')));
@@ -481,6 +518,51 @@ export default function ComboRoomPage({ params }: { params: { id: string } }) {
                   </div>
                 )}
 
+                {/* Adicionales (upselling): carrusel horizontal, solo con opciones con precio real del producto */}
+                {addonOptions.length > 0 && (
+                  <div className="space-y-2">
+                    <p className="text-[10px] font-black text-slate-400 uppercase tracking-wider">¿Le sumas algo? (opcional)</p>
+                    <div className="flex gap-2 overflow-x-auto no-scrollbar pb-1 -mx-1 px-1">
+                      {addonOptions.map((opt: any) => {
+                        const count = addonCounts[opt.key] || 0;
+                        return (
+                          <div key={opt.key} className="w-60 shrink-0">
+                            <OptionCapsule
+                              name={opt.name}
+                              image={opt.image || opt.imageUrl}
+                              priceLabel={`+$${Number(opt.price).toFixed(2)}`}
+                              count={count}
+                              mode="counter"
+                              onIncrement={() => setAddonCounts(prev => ({ ...prev, [opt.key]: (prev[opt.key] || 0) + 1 }))}
+                              onDecrement={() => setAddonCounts(prev => ({ ...prev, [opt.key]: Math.max(0, (prev[opt.key] || 0) - 1) }))}
+                            />
+                          </div>
+                        );
+                      })}
+                    </div>
+                  </div>
+                )}
+
+                {/* Tu parte, Bs. protagonista (Pago Móvil) + referencia en USD y tasa BCV */}
+                <div className="rounded-2xl border border-orange-200 bg-orange-50/60 p-3.5 space-y-1">
+                  <p className="text-[10px] font-black text-slate-500 uppercase tracking-wider">
+                    {room.paymentMode === 'host_pays' ? 'Invita el anfitrión' : 'Tu parte a pagar'}
+                  </p>
+                  {room.paymentMode === 'host_pays' ? (
+                    <p className="text-sm font-black text-emerald-700">No pagas nada, solo elige.</p>
+                  ) : bcvRate ? (
+                    <>
+                      <p className="text-2xl font-black text-slate-900 leading-tight">Bs. {formatBs(myPartUsd)}</p>
+                      <p className="text-[11px] font-bold text-slate-500">(${myPartUsd.toFixed(2)} USD • Tasa BCV: Bs. {bcvRate.toLocaleString('es-VE', { minimumFractionDigits: 2, maximumFractionDigits: 2 })})</p>
+                    </>
+                  ) : (
+                    <>
+                      <p className="text-2xl font-black text-slate-900 leading-tight">${myPartUsd.toFixed(2)}</p>
+                      <p className="text-[11px] font-bold text-slate-400">Tasa BCV no disponible por ahora.</p>
+                    </>
+                  )}
+                </div>
+
                 <button
                   type="button"
                   disabled={!guestName.trim() || saving || availableUnits < 1}
@@ -513,8 +595,15 @@ export default function ComboRoomPage({ params }: { params: { id: string } }) {
             </div>
             <div>
               <h2 className="text-xl font-black text-slate-900">¡Listo, {guestName}!</h2>
-              <p className="text-sm text-slate-500 mt-2">Tus {myClaim.unitsCount} unidades ya fueron confirmadas y agregadas a la orden. ¡Buen provecho!</p>
+              <p className="text-sm text-slate-500 mt-2">Tu pedido quedó reservado en la sala: tus {myClaim.unitsCount} unidades ya fueron confirmadas y agregadas a la orden. ¡Buen provecho!</p>
             </div>
+            <button
+              type="button"
+              onClick={() => { window.location.href = storeMenuHref(room.storeCode); }}
+              className="w-full bg-[#FE6712] hover:bg-[#E05509] text-white font-bold py-3 px-4 rounded-xl shadow-md transition cursor-pointer"
+            >
+              Explorar el menú de la tienda
+            </button>
           </div>
         </div>
       );
@@ -529,7 +618,7 @@ export default function ComboRoomPage({ params }: { params: { id: string } }) {
             </div>
             <div>
               <h2 className="text-xl font-black text-slate-900">¡Listo, {guestName}!</h2>
-              <p className="text-sm text-slate-500 mt-1">El anfitrión ha recibido tu pedido.</p>
+              <p className="text-sm text-slate-500 mt-1">Tu pedido quedó reservado en la sala. El anfitrión ya lo recibió.</p>
             </div>
           </div>
 
@@ -542,18 +631,23 @@ export default function ComboRoomPage({ params }: { params: { id: string } }) {
               ) : (
                 <p className="text-xs text-emerald-600 font-bold mt-1.5">Con Todo</p>
               )}
+              {Object.values(myClaim.selectedVariants || {}).flatMap((sel: any) => (Array.isArray(sel) ? sel : [])).filter((it: any) => (it?.count || 0) > 0).map((it: any, i: number) => (
+                <p key={i} className="text-xs text-slate-600 font-bold mt-1">+ {it.count > 1 ? `${it.count}x ` : ''}{it.name}</p>
+              ))}
             </div>
             <div className="pt-3 border-t border-slate-200 flex items-center justify-between">
               <div className="flex flex-col gap-1 w-full">
-                <div className="flex justify-between items-baseline">
-                  <span className="text-xs font-black text-slate-500 uppercase">Tu parte:</span>
-                  <span className="text-lg font-black text-slate-900">${myClaim.subtotalUsd.toFixed(2)}</span>
-                </div>
-                {bcvRate && (
-                  <div className="flex justify-between items-baseline pt-1 border-t border-slate-100">
-                    <span className="text-[10px] font-bold text-slate-400 uppercase">En Bolívares (BCV):</span>
-                    <span className="text-xs font-bold text-slate-500">Bs. {(myClaim.subtotalUsd * bcvRate).toLocaleString('es-VE', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}</span>
-                  </div>
+                <span className="text-xs font-black text-slate-500 uppercase">Tu parte a pagar</span>
+                {bcvRate ? (
+                  <>
+                    <span className="text-2xl font-black text-slate-900 leading-tight">Bs. {(myClaim.subtotalUsd * bcvRate).toLocaleString('es-VE', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}</span>
+                    <span className="text-[11px] font-bold text-slate-500">(${myClaim.subtotalUsd.toFixed(2)} USD • Tasa BCV: Bs. {bcvRate.toLocaleString('es-VE', { minimumFractionDigits: 2, maximumFractionDigits: 2 })})</span>
+                  </>
+                ) : (
+                  <>
+                    <span className="text-2xl font-black text-slate-900 leading-tight">${myClaim.subtotalUsd.toFixed(2)}</span>
+                    <span className="text-[11px] font-bold text-slate-400">Tasa BCV no disponible por ahora.</span>
+                  </>
                 )}
               </div>
             </div>
@@ -568,6 +662,14 @@ export default function ComboRoomPage({ params }: { params: { id: string } }) {
           >
             <svg className="w-4 h-4" fill="currentColor" viewBox="0 0 24 24"><path d="M17.472 14.382c-.297-.149-1.758-.867-2.03-.967-.273-.099-.471-.148-.67.15-.197.297-.767.966-.94 1.164-.173.199-.347.223-.644.075-.297-.15-1.255-.463-2.39-1.475-.883-.788-1.48-1.761-1.653-2.059-.173-.297-.018-.458.13-.606.134-.133.298-.347.446-.52.149-.174.198-.298.298-.497.099-.198.05-.371-.025-.52-.075-.149-.669-1.612-.916-2.207-.242-.579-.487-.5-.669-.51a12.8 12.8 0 00-.57-.01c-.198 0-.52.074-.792.372-.272.297-1.04 1.016-1.04 2.479 0 1.462 1.065 2.875 1.213 3.074.149.198 2.096 3.2 5.077 4.487.709.306 1.262.489 1.694.625.712.227 1.36.195 1.871.118.571-.085 1.758-.719 2.006-1.413.248-.694.248-1.289.173-1.413-.074-.124-.272-.198-.57-.347m-5.421 7.403h-.004a9.87 9.87 0 01-5.031-1.378l-.361-.214-3.741.982.998-3.648-.235-.374a9.86 9.86 0 01-1.51-5.26c.001-5.45 4.436-9.884 9.888-9.884 2.64 0 5.122 1.03 6.988 2.898a9.825 9.825 0 012.893 6.994c-.003 5.45-4.437 9.884-9.885 9.884m8.413-18.297A11.815 11.815 0 0012.05 0C5.495 0 .16 5.335.157 11.892c0 2.096.547 4.142 1.588 5.945L.057 24l6.305-1.654a11.882 11.882 0 005.683 1.448h.005c6.554 0 11.89-5.335 11.893-11.893a11.821 11.821 0 00-3.48-8.413z"/></svg>
             Avisar al Anfitrión por WhatsApp
+          </button>
+
+          <button
+            type="button"
+            onClick={() => { window.location.href = storeMenuHref(room.storeCode); }}
+            className="w-full bg-[#FE6712] hover:bg-[#E05509] text-white font-bold py-3 px-4 rounded-xl shadow-md transition cursor-pointer"
+          >
+            Explorar el menú de la tienda
           </button>
         </div>
       </div>
