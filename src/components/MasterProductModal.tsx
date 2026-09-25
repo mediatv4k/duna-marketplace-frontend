@@ -1288,22 +1288,45 @@ export default function MasterProductModal({
       {/* SELECTOR DE COMBOS POR RANURAS / MODO RANURAS */}
       {viewMode === 'slots' ? (
           <div className="space-y-4">
-            {/* 1. CABECERA ERGONÓMICA: NOMBRE COMPACTO + BOTÓN INTEGRADO */}
-            <div className="sticky top-0 bg-white z-20 py-3 px-3 sm:px-4 border-b border-slate-100 flex items-center justify-between gap-2 shadow-xs">
-              <button
-                type="button"
-                disabled={activeSlotIndex === 0}
-                onClick={() => setActiveSlotIndex(Math.max(0, activeSlotIndex - 1))}
-                className="text-[11px] font-black text-slate-600 disabled:opacity-30 disabled:cursor-not-allowed flex items-center gap-1 transition cursor-pointer bg-slate-50 hover:bg-slate-100 px-3 py-2 rounded-lg border border-slate-200 shrink-0"
-              >
-                <svg className="w-4 h-4" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2.5}><path strokeLinecap="round" strokeLinejoin="round" d="M15 19l-7-7 7-7" /></svg>
-                <span className="hidden sm:inline">Anterior</span>
-              </button>
-              
-              <div className="flex items-center gap-2 flex-1 justify-end">
-                <span className="text-[10px] font-black text-slate-400 uppercase tracking-wider hidden sm:inline-block pt-0.5">Unidad {activeSlotIndex + 1} de {slots.length}</span>
-                <span className="text-[10px] font-black text-slate-400 uppercase tracking-wider sm:hidden pt-0.5">{activeSlotIndex + 1}/{slots.length}</span>
-                
+            {/* 1. CABECERA 2 RENGLONES: NAVEGACIÓN + INPUT ANCHO COMPLETO */}
+            <div className="sticky top-0 bg-white z-20 border-b border-slate-100 shadow-xs">
+              {/* Renglón 1: Atrás | Unidad X de Y | Cerrar */}
+              <div className="flex items-center justify-between px-3 sm:px-4 py-2.5 gap-2">
+                <button
+                  type="button"
+                  disabled={activeSlotIndex === 0}
+                  onClick={() => setActiveSlotIndex(Math.max(0, activeSlotIndex - 1))}
+                  className="flex items-center gap-1.5 text-slate-600 disabled:opacity-30 disabled:cursor-not-allowed bg-slate-50 hover:bg-slate-100 px-3 py-2 rounded-lg border border-slate-200 shrink-0 transition cursor-pointer"
+                >
+                  <svg className="w-4 h-4" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2.5}><path strokeLinecap="round" strokeLinejoin="round" d="M15 19l-7-7 7-7" /></svg>
+                  <span className="text-xs font-bold hidden sm:inline">Atrás</span>
+                </button>
+
+                <span className="font-bold text-slate-800 text-sm text-center leading-tight">
+                  Unidad {activeSlotIndex + 1} de {slots.length}
+                </span>
+
+                <button
+                  type="button"
+                  onClick={() => {
+                    const configuredCount = slots.filter(s => Object.keys(s.selectedVariants).length > 0 || s.exclusions?.length > 0).length;
+                    if (configuredCount > 0 && configuredCount < slots.length) {
+                      if (window.confirm(`Has configurado ${configuredCount} de ${slots.length} unidades. ¿Salir? Las restantes saldrán "Con Todo".`)) {
+                        setViewMode('options');
+                      }
+                    } else {
+                      setViewMode('options');
+                    }
+                  }}
+                  className="flex items-center justify-center w-8 h-8 rounded-full bg-slate-100 hover:bg-slate-200 text-slate-500 hover:text-slate-800 transition cursor-pointer shrink-0"
+                  aria-label="Cerrar personalización"
+                >
+                  <svg className="w-4 h-4" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2.5}><path strokeLinecap="round" strokeLinejoin="round" d="M6 18L18 6M6 6l12 12" /></svg>
+                </button>
+              </div>
+
+              {/* Renglón 2: Input de nombre a ancho completo */}
+              <div className="px-3 sm:px-4 pb-3">
                 <input
                   type="text"
                   value={slots[activeSlotIndex].name || ''}
@@ -1312,33 +1335,13 @@ export default function MasterProductModal({
                     newSlots[activeSlotIndex].name = e.target.value;
                     setSlots(newSlots);
                   }}
-                  placeholder="Nombre (opcional)"
-                  maxLength={20}
-                  className="w-24 sm:w-36 max-w-[180px] h-9 text-xs px-2.5 rounded-lg border border-slate-200 bg-slate-50 font-bold text-slate-900 focus:bg-white focus:outline-none focus:border-[#fe6712] transition"
+                  placeholder="¿Para quién es este? (Ej. Carlos, Mamá)"
+                  maxLength={30}
+                  className="w-full h-11 text-sm px-3.5 py-2.5 rounded-xl border border-slate-200 bg-slate-50 font-medium text-slate-900 placeholder:text-slate-400 focus:bg-white focus:outline-none focus:border-[#FE6712] transition"
                 />
-
-                {activeSlotIndex < slots.length - 1 ? (
-                  <button
-                    type="button"
-                    onClick={() => setActiveSlotIndex(Math.min(slots.length - 1, activeSlotIndex + 1))}
-                    className="h-9 px-3 sm:px-4 rounded-lg bg-slate-900 hover:bg-slate-800 text-white text-xs font-bold flex items-center gap-1 transition cursor-pointer shrink-0"
-                  >
-                    <span className="hidden sm:inline">Siguiente</span>
-                    <svg className="w-4 h-4" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2.5}><path strokeLinecap="round" strokeLinejoin="round" d="M9 5l7 7-7 7" /></svg>
-                  </button>
-                ) : (
-                  <button
-                    type="button"
-                    onClick={() => setViewMode('options')}
-                    className="h-9 px-3 sm:px-4 rounded-lg bg-[#FE6712] hover:bg-[#e0580d] text-white text-xs font-black shadow-md flex items-center gap-1 transition cursor-pointer shrink-0 active:scale-95"
-                  >
-                    <span className="hidden sm:inline">Listo, confirmar</span>
-                    <span className="sm:hidden">Confirmar</span>
-                    <svg className="w-4 h-4" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2.5}><path strokeLinecap="round" strokeLinejoin="round" d="M5 13l4 4L19 7" /></svg>
-                  </button>
-                )}
               </div>
             </div>
+
 
             {/* Active Slot Content */}
             <div className="p-4 sm:p-5 bg-white border border-slate-100 rounded-2xl space-y-6 shadow-sm">
@@ -1468,7 +1471,7 @@ export default function MasterProductModal({
                                   <p className="text-[11px] font-bold text-slate-900 truncate">{opt.name}</p>
                                   <div className="flex items-center gap-1.5 mt-0.5">
                                     {opt.sku || opt.code ? <span className="text-[9px] font-bold text-slate-400">{(opt.sku || opt.code || '').substring(0, 8)}</span> : null}
-                                    <span className="text-[10px] font-black text-orange-700">+$${(Number(opt.price) || 0).toFixed(2)}</span>
+                                    <span className="text-[10px] font-black text-orange-700">+${(Number(opt.price) || 0).toFixed(2)}</span>
                                   </div>
                                 </div>
                                 <button
@@ -1489,23 +1492,27 @@ export default function MasterProductModal({
                 return groupsRendered;
               })()}
             </div>
-            {/* Quick exit button just in case */}
-            <div className="flex justify-center pb-4">
-              <button
-                onClick={() => {
-                  const configuredCount = slots.filter(s => Object.keys(s.selectedVariants).length > 0 || s.exclusions?.length > 0).length;
-                  if (configuredCount > 0 && configuredCount < slots.length) {
-                     if (window.confirm(`Has configurado ${configuredCount} de ${slots.length} unidades. ¿Deseas continuar configurando o salir y que las restantes salgan Con Todo?`)) {
-                        setViewMode('options');
-                     }
-                  } else {
-                     setViewMode('options');
-                  }
-                }}
-                className="text-[11px] font-black text-slate-400 hover:text-slate-600 underline cursor-pointer"
-              >
-                Salir al menú sin confirmar
-              </button>
+                        {/* BOTÓN PRINCIPAL ANCHO — PIE DE LA PERSONALIZACIÓN */}
+            <div className="pt-4 pb-6 px-1">
+              {activeSlotIndex < slots.length - 1 ? (
+                <button
+                  type="button"
+                  onClick={() => setActiveSlotIndex(Math.min(slots.length - 1, activeSlotIndex + 1))}
+                  className="w-full bg-[#FE6712] hover:bg-[#E05509] text-white font-bold py-3.5 px-4 rounded-xl shadow-md transition flex items-center justify-center gap-2 active:scale-[0.98] cursor-pointer"
+                >
+                  <span>Continuar al perro {activeSlotIndex + 2} de {slots.length}</span>
+                  <svg className="w-5 h-5" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2.5}><path strokeLinecap="round" strokeLinejoin="round" d="M9 5l7 7-7 7" /></svg>
+                </button>
+              ) : (
+                <button
+                  type="button"
+                  onClick={() => setViewMode('options')}
+                  className="w-full bg-[#FE6712] hover:bg-[#E05509] text-white font-bold py-3.5 px-4 rounded-xl shadow-md transition flex items-center justify-center gap-2 active:scale-[0.98] cursor-pointer"
+                >
+                  <svg className="w-5 h-5" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2.5}><path strokeLinecap="round" strokeLinejoin="round" d="M5 13l4 4L19 7" /></svg>
+                  <span>Listo, confirmar combo</span>
+                </button>
+              )}
             </div>
           </div>
         ) : (
