@@ -70,8 +70,11 @@ export async function POST(
       hostUnitsCount,
       hostSelectedVariants,
       hostExclusions,
+      hostAddonsUsd,
         paymentMode = 'split',
       } = body;
+    const rawHostAddons = Number(hostAddonsUsd);
+    const hostAddons = Number.isFinite(rawHostAddons) && rawHostAddons > 0 ? Math.round(rawHostAddons * 100) / 100 : 0;
 
     if (!productId || !productName || !totalUnits || totalUnits < 1) {
       return NextResponse.json({ ok: false, error: 'Parámetros inválidos' }, { status: 400 });
@@ -83,7 +86,7 @@ export async function POST(
       unitsCount: hostUnitsCount || 0,
       exclusions: Array.isArray(hostExclusions) ? hostExclusions : [],
       selectedVariants: hostSelectedVariants || {},
-      subtotalUsd: (hostUnitsCount || 0) * (unitPriceUsd || 0),
+      subtotalUsd: (hostUnitsCount || 0) * (unitPriceUsd || 0) + hostAddons,
       isHost: true,
       completedAt: new Date().toISOString(),
     };
@@ -173,5 +176,48 @@ export async function PUT(
     return NextResponse.json({ ok: true, room });
   } catch (error) {
     return NextResponse.json({ ok: false, error: 'Error al unirse a la sala' }, { status: 500 });
+  }
+}
+
+/* ─── PATCH — el anfitrión actualiza SU personalización (exclusiones / adicionales) ─────────────────────── */
+// No cambia las unidades reclamadas ni crea participantes: solo reemplaza exclusiones y opciones elegidas de la
+// tarjeta del anfitrión y recalcula su subtotal (unidades × precio unitario + adicionales). Solo admite `host`.
+export async function PATCH(
+  req: NextRequest,
+  { params }: { params: { id: string } }
+) {
+  try {
+    const docRef = doc(db, 'comboRooms', params.id);
+    const docSnap = await getDoc(docRef);
+    if (!docSnap.exists()) {
+      return NextResponse.json({ ok: false, error: 'Sala no encontrada' }, { status: 404 });
+    }
+
+    const room = docSnap.data() as ComboRoomData;
+    const body = await req.json();
+    if (body.participantId !== 'host') {
+      return NextResponse.json({ ok: false, error: 'Solo se puede actualizar al anfitrión' }, { status: 400 });
+    }
+
+    const idx = room.participants.findIndex((p) => p.isHost);
+    if (idx < 0) {
+      return NextResponse.json({ ok: false, error: 'La sala no tiene anfitrión con unidades' }, { status: 409 });
+    }
+
+    const rawAddons = Number(body.addonsUsd);
+    const addonsUsd = Number.isFinite(rawAddons) && rawAddons > 0 ? Math.round(rawAddons * 100) / 100 : 0;
+    const host = room.participants[idx];
+    room.participants[idx] = {
+      ...host,
+      exclusions: Array.isArray(body.exclusions) ? body.exclusions.map(String) : [],
+      selectedVariants: body.selectedVariants && typeof body.selectedVariants === 'object' ? body.selectedVariants : {},
+      subtotalUsd: host.unitsCount * room.unitPriceUsd + addonsUsd,
+    };
+
+    await updateDoc(docRef, { participants: room.participants });
+
+    return NextResponse.json({ ok: true, room });
+  } catch (error) {
+    return NextResponse.json({ ok: false, error: 'Error al actualizar la sala' }, { status: 500 });
   }
 }

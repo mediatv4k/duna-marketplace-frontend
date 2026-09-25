@@ -197,7 +197,11 @@ export default function MasterProductModal({
   const [comboRoomId, setComboRoomId] = useState<string | null>(null);
   const [comboRoomData, setComboRoomData] = useState<any>(null);
     const [viewMode, setViewMode] = useState<'options' | 'customize' | 'slots' | 'host_setup' | 'comboRoom'>('options');
-  const [slotReturnView, setSlotReturnView] = useState<'options' | 'host_setup'>('options');
+  // A dónde vuelve la vista de personalización (ranuras): 'options' = compra individual; 'host_setup' / 'comboRoom' =
+  // personalización del anfitrión dentro del flujo colaborativo, que SIEMPRE regresa a la sala (nunca a la compra individual)
+  const [slotReturnView, setSlotReturnView] = useState<'options' | 'host_setup' | 'comboRoom'>('options');
+  const [hostSaving, setHostSaving] = useState(false);
+  const [hostSaveError, setHostSaveError] = useState<string | null>(null);
     const [hostPaymentMode, setHostPaymentMode] = useState<'split' | 'host_pays'>('split');
     const [hostSetupUnits, setHostSetupUnits] = useState(1);
     const [hostSetupExclusions, setHostSetupExclusions] = useState<string[]>([]);
@@ -950,10 +954,78 @@ export default function MasterProductModal({
   const hostTotalUSD = hostBaseTotal + hostAddonsTotal;
   const hostTotalBS = hostTotalUSD * (bcvRate || 0);
 
+  // Nombre corto de la unidad para los botones ("Personalizar mi perro"): primera palabra del producto, en minúscula
+  const unitNoun = (String(product?.name || '').trim().split(/\s+/)[0] || 'pedido').toLowerCase();
+  // Unidades del anfitrión ya reclamadas en la sala (si aún no hay sala, las del setup)
+  const hostRoomUnits: number = comboRoomData?.participants?.find((p: any) => p.isHost)?.unitsCount || hostSetupUnits;
+  // Cuántas unidades recorre la vista de personalización según de dónde se abrió
+  const slotViewUnits = slotReturnView === 'host_setup' ? hostSetupUnits : slotReturnView === 'comboRoom' ? hostRoomUnits : slots.length;
+
+  // Resume lo elegido por el anfitrión en sus primeras `units` ranuras al formato que guarda la sala (mismo que el
+  // invitado): exclusiones sueltas + lista de opciones con cantidad y el monto extra en USD (solo opciones con precio).
+  const buildHostClaim = (units: number) => {
+    const exclusions: string[] = [];
+    const merged = new Map<string, any>();
+    let addonsUsd = 0;
+    slots.slice(0, units).forEach((slot) => {
+      (slot.exclusions || []).forEach((e: string) => { if (!exclusions.includes(e)) exclusions.push(e); });
+      Object.values(slot.selectedVariants || {}).forEach((sel: any) => {
+        const list: any[] = Array.isArray(sel) ? sel : (sel && sel.name ? [{ ...sel, count: 1 }] : []);
+        list.forEach((it: any) => {
+          const count = it.count || 0;
+          if (count <= 0) return;
+          const price = Number(it.price || 0);
+          const key = String(it.code ?? it.id ?? it.name);
+          const prev = merged.get(key);
+          merged.set(key, { name: it.name, code: it.code ?? it.id, price, count: (prev?.count || 0) + count });
+          addonsUsd += price * count;
+        });
+      });
+    });
+    const addons = Array.from(merged.values());
+    return { exclusions, selectedVariants: addons.length > 0 ? { addons } : {}, addonsUsd: Math.round(addonsUsd * 100) / 100 };
+  };
+
+  // Desde el Monitor en Vivo: el anfitrión personaliza SUS unidades sin salir de la sala
+  const openHostCustomization = () => {
+    setHostSaveError(null);
+    setActiveSlotIndex(0);
+    setSlotReturnView('comboRoom');
+    setViewMode('slots');
+  };
+
+  // Botón final de la personalización del anfitrión: guarda y vuelve al hub (setup o monitor), nunca a la compra individual
+  const saveAndReturnToRoom = async () => {
+    setHostSaveError(null);
+    if (slotReturnView === 'comboRoom' && comboRoomId) {
+      setHostSaving(true);
+      try {
+        const claim = buildHostClaim(hostRoomUnits);
+        const res = await fetch(`/api/combo/${comboRoomId}`, {
+          method: 'PATCH',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ participantId: 'host', exclusions: claim.exclusions, selectedVariants: claim.selectedVariants, addonsUsd: claim.addonsUsd }),
+        });
+        const data = await res.json();
+        if (!data.ok) { setHostSaveError(data.error || 'No se pudo guardar. Intenta de nuevo.'); return; }
+        setComboRoomData(data.room);
+      } catch {
+        setHostSaveError('Error de red. Intenta de nuevo.');
+        return;
+      } finally {
+        setHostSaving(false);
+      }
+      setViewMode('comboRoom');
+      return;
+    }
+    setViewMode(slotReturnView === 'options' ? 'options' : 'host_setup');
+  };
+
   const createComboRoom = async () => {
     if (!product) return;
     setComboCreating(true);
     try {
+      const hostClaim = buildHostClaim(hostSetupUnits);
       const tempId = "new";
       const totalUnits = (baseSlotCount > 1 ? baseSlotCount : 1) * qty;
       const unitPriceUsd = totalCalculated / totalUnits;
@@ -970,8 +1042,9 @@ export default function MasterProductModal({
           unitPriceUsd,
           hostName: 'Anfitrión',
           hostUnitsCount: hostSetupUnits,
-          hostSelectedVariants: {},
-          hostExclusions: hostSetupExclusions,
+          hostSelectedVariants: hostClaim.selectedVariants,
+          hostExclusions: hostClaim.exclusions,
+          hostAddonsUsd: hostClaim.addonsUsd,
           paymentMode: hostPaymentMode,
         }),
       });
@@ -1064,7 +1137,7 @@ export default function MasterProductModal({
             {viewMode === 'options' && (isCombo || qty > 1) && (
           <div className="pb-3 border-b border-gray-100 flex justify-center mt-3">
             <button
-              onClick={() => { setIsSlotCustomizationActive(true); setViewMode('customize'); }}
+              onClick={() => { setIsSlotCustomizationActive(true); setSlotReturnView('options'); setViewMode('customize'); }}
               className="border border-[#fe6712] text-[#fe6712] font-black py-2.5 px-6 rounded-full text-xs hover:bg-orange-50 transition cursor-pointer flex items-center gap-2 shadow-xs active:scale-95"
             >
               {isSlotCustomizationActive ? `✏️ Editar personalización (${slots.filter(s => Object.keys(s.selectedVariants).length > 0 || s.exclusions?.length > 0).length}/${qty} listas)` : (isCombo ? 'Personalizar combo' : 'Personalizar tu pedido')}
@@ -1081,7 +1154,7 @@ export default function MasterProductModal({
             </div>
             
             <button
-              onClick={() => setViewMode('slots')}
+              onClick={() => { setSlotReturnView('options'); setViewMode('slots'); }}
               className="w-full bg-white hover:bg-slate-50 border border-slate-200 text-slate-700 font-black py-4 px-4 rounded-xl text-sm transition text-left flex items-center justify-between group cursor-pointer"
             >
               <div>
@@ -1146,7 +1219,7 @@ export default function MasterProductModal({
                           <div className="text-[10px] text-slate-500">{hasModifications ? 'Personalizado' : 'Sale con todo (Estándar)'}</div>
                         </div>
                         <button onClick={() => { setActiveSlotIndex(i); setSlotReturnView('host_setup'); setViewMode('slots'); }} className="text-[#fe6712] font-black text-[10px] bg-orange-50 px-2.5 py-1.5 rounded-lg border border-orange-100 hover:bg-orange-100 cursor-pointer">
-                          ⚙️ Personalizar
+                          ⚙️ Personalizar mi {unitNoun}{hostSetupUnits > 1 ? ` ${i + 1}` : ''}
                         </button>
                       </div>
                     );
@@ -1234,6 +1307,15 @@ export default function MasterProductModal({
                         <span className={`shrink-0 text-[9px] font-black px-1.5 py-0.5 rounded-full border ${isReady ? 'bg-emerald-50 text-emerald-700 border-emerald-200' : 'bg-amber-50 text-amber-700 border-amber-200'}`}>{isReady ? 'Listo' : 'Eligiendo'}</span>
                       </div>
                       <p className="text-[10px] text-slate-500 font-medium">{p.unitsCount} {p.unitsCount === 1 ? 'unidad' : 'unidades'} · {detailParts.length > 0 ? detailParts.join(' + ') : 'Con todo'}</p>
+                      {p.isHost && (
+                        <button
+                          type="button"
+                          onClick={openHostCustomization}
+                          className="mt-2 text-xs font-bold text-[#FE6712] bg-orange-50 border border-orange-200 hover:bg-orange-100 py-1.5 px-3 rounded-lg flex items-center gap-1.5 transition cursor-pointer"
+                        >
+                          ⚙️ Personalizar mi {unitNoun}
+                        </button>
+                      )}
                     </div>
                     <div className="text-right shrink-0">
                       <p className="text-xs font-black text-slate-900">${Number(p.subtotalUsd || 0).toFixed(2)}</p>
@@ -1342,11 +1424,21 @@ export default function MasterProductModal({
                 </button>
 
                 <span className="font-bold text-slate-800 text-sm text-center leading-tight">
-                  Unidad {activeSlotIndex + 1} de {slotReturnView === 'host_setup' ? hostSetupUnits : slots.length}
+                  Unidad {activeSlotIndex + 1} de {slotViewUnits}
                 </span>
 
-                {/* Spacer to keep text centered */}
-                <div className="w-8 shrink-0" />
+                {/* Personalización del anfitrión: salida explícita al hub (sin guardar); si no, spacer para centrar el texto */}
+                {slotReturnView !== 'options' ? (
+                  <button
+                    type="button"
+                    onClick={() => setViewMode(slotReturnView)}
+                    className="text-[11px] font-bold text-slate-500 hover:text-slate-800 shrink-0 cursor-pointer"
+                  >
+                    Volver
+                  </button>
+                ) : (
+                  <div className="w-8 shrink-0" />
+                )}
               </div>
 
 
@@ -1519,15 +1611,27 @@ export default function MasterProductModal({
             </div>
                         {/* BOTÓN PRINCIPAL ANCHO — PIE DE LA PERSONALIZACIÓN */}
             <div className="pt-4 pb-6 px-1">
-              {(slotReturnView === 'host_setup' ? activeSlotIndex < hostSetupUnits - 1 : activeSlotIndex < slots.length - 1) ? (
+              {activeSlotIndex < slotViewUnits - 1 ? (
                 <button
                   type="button"
-                  onClick={() => setActiveSlotIndex(Math.min(slots.length - 1, activeSlotIndex + 1))}
+                  onClick={() => setActiveSlotIndex(Math.min(slotViewUnits - 1, activeSlotIndex + 1))}
                   className="w-full bg-[#FE6712] hover:bg-[#E05509] text-white font-bold py-3.5 px-4 rounded-xl shadow-md transition flex items-center justify-center gap-2 active:scale-[0.98] cursor-pointer"
                 >
-                  <span>Continuar a la unidad {activeSlotIndex + 2} de {slotReturnView === 'host_setup' ? hostSetupUnits : slots.length}</span>
+                  <span>Continuar a la unidad {activeSlotIndex + 2} de {slotViewUnits}</span>
                   <svg className="w-5 h-5" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2.5}><path strokeLinecap="round" strokeLinejoin="round" d="M9 5l7 7-7 7" /></svg>
                 </button>
+              ) : slotReturnView !== 'options' ? (
+                <>
+                  <button
+                    type="button"
+                    onClick={saveAndReturnToRoom}
+                    disabled={hostSaving}
+                    className="w-full bg-[#FE6712] hover:bg-[#E05509] disabled:opacity-60 text-white font-bold py-3.5 px-4 rounded-xl shadow-md transition flex items-center justify-center gap-2 active:scale-[0.98] cursor-pointer"
+                  >
+                    <span>{hostSaving ? 'Guardando...' : 'Guardar personalización y volver a la sala ✓'}</span>
+                  </button>
+                  {hostSaveError && <p className="mt-2 text-xs font-bold text-red-600 text-center">{hostSaveError}</p>}
+                </>
               ) : (
                 <button
                   type="button"
