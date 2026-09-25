@@ -196,6 +196,7 @@ export default function MasterProductModal({
   const [comboRoomId, setComboRoomId] = useState<string | null>(null);
   const [comboRoomData, setComboRoomData] = useState<any>(null);
     const [viewMode, setViewMode] = useState<'options' | 'customize' | 'slots' | 'host_setup' | 'comboRoom'>('options');
+  const [slotReturnView, setSlotReturnView] = useState<'options' | 'host_setup'>('options');
     const [hostPaymentMode, setHostPaymentMode] = useState<'split' | 'host_pays'>('split');
     const [hostSetupUnits, setHostSetupUnits] = useState(1);
     const [hostSetupExclusions, setHostSetupExclusions] = useState<string[]>([]);
@@ -211,6 +212,9 @@ export default function MasterProductModal({
     () => parseDescriptionTags(product?.desc || product?.description),
     [product]
   );
+
+
+
 
   const isCombo = useMemo(() => {
     if (!product) return false;
@@ -924,6 +928,22 @@ export default function MasterProductModal({
   const currentUpsells: { code: string; name: string; price: number; icon?: string }[] = [];
 
   // ── Helpers del Pedido Colaborativo ────────────────────────────────────────
+  const hostBaseTotal = ((totalCalculated - totalUpsells) / ((baseSlotCount > 1 ? baseSlotCount : 1) * qty)) * hostSetupUnits;
+  const hostAddonsTotal = slots.slice(0, hostSetupUnits).reduce((sum, slot) => {
+    let slotExtra = 0;
+    Object.values(slot.selectedVariants).forEach((selection: any) => {
+      if (!selection) return;
+      if (Array.isArray(selection)) {
+        selection.forEach(item => { if ((item.count || 0) > 0 && (item.price || 0) > 0) slotExtra += item.price * item.count; });
+      } else if (selection.price > 0) {
+        slotExtra += selection.price;
+      }
+    });
+    return sum + slotExtra;
+  }, 0);
+  const hostTotalUSD = hostBaseTotal + hostAddonsTotal;
+  const hostTotalBS = hostTotalUSD * (bcvRate || 0);
+
   const createComboRoom = async () => {
     if (!product) return;
     setComboCreating(true);
@@ -1042,7 +1062,7 @@ export default function MasterProductModal({
         {viewMode === 'customize' && (
           <div className="space-y-4 pb-4 border-b border-gray-100 mt-2">
             <div className="flex items-center gap-2 mb-4">
-              <button onClick={() => setViewMode('options')} className="p-1.5 bg-slate-100 text-slate-500 rounded-full hover:bg-slate-200 transition cursor-pointer">
+              <button onClick={() => setViewMode(slotReturnView)} className="p-1.5 bg-slate-100 text-slate-500 rounded-full hover:bg-slate-200 transition cursor-pointer">
                 <svg className="w-4 h-4" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={3}><path strokeLinecap="round" strokeLinejoin="round" d="M15 19l-7-7 7-7" /></svg>
               </button>
               <h4 className="text-sm font-black text-slate-900 uppercase tracking-wider">Volver al producto</h4>
@@ -1098,24 +1118,28 @@ export default function MasterProductModal({
                 </div>
               </div>
               
-              {product.exclusions && product.exclusions.length > 0 && (
-                <div className="mt-3 space-y-2">
-                  <span className="text-[10px] font-bold text-slate-500 uppercase">Quitar Ingredientes (Opcional)</span>
-                  <div className="grid grid-cols-2 gap-2">
-                    {product.exclusions.map((exc: string) => (
-                      <label key={exc} className="flex items-center gap-2 bg-white p-2 rounded-xl border border-slate-200 text-[10px] font-bold text-slate-700 cursor-pointer shadow-xs hover:border-[#fe6712] transition">
-                        <input
-                          type="checkbox"
-                          checked={hostSetupExclusions.includes(exc)}
-                          onChange={() => setHostSetupExclusions(prev => prev.includes(exc) ? prev.filter(i => i !== exc) : [...prev, exc])}
-                          className="w-3.5 h-3.5 accent-[#fe6712] rounded cursor-pointer"
-                        />
-                        <span className="truncate">{exc}</span>
-                      </label>
-                    ))}
-                  </div>
+                              <div className="mt-3 space-y-2">
+                  <span className="text-[10px] font-bold text-slate-500 uppercase">Tus unidades</span>
+                  {slots.slice(0, hostSetupUnits).map((slot, i) => {
+                    const hasExclusions = slot.exclusions && slot.exclusions.length > 0;
+                    const hasFinancialExtras = Object.values(slot.selectedVariants).some((selection: any) => {
+                      if (Array.isArray(selection)) return selection.some(item => (item.count || 0) > 0 && (item.price || 0) > 0);
+                      return selection?.price > 0;
+                    });
+                    const hasModifications = hasExclusions || hasFinancialExtras;
+                    return (
+                      <div key={i} className="flex items-center justify-between bg-white p-3 rounded-xl border border-slate-200 shadow-xs">
+                        <div>
+                          <div className="text-xs font-bold text-slate-800">Tu {product?.name?.split(' ')[0] || 'Unidad'} {i + 1}</div>
+                          <div className="text-[10px] text-slate-500">{hasModifications ? 'Personalizado' : 'Sale con todo (Estándar)'}</div>
+                        </div>
+                        <button onClick={() => { setActiveSlotIndex(i); setSlotReturnView('host_setup'); setViewMode('slots'); }} className="text-[#fe6712] font-black text-[10px] bg-orange-50 px-2.5 py-1.5 rounded-lg border border-orange-100 hover:bg-orange-100 cursor-pointer">
+                          ⚙️ Personalizar
+                        </button>
+                      </div>
+                    );
+                  })}
                 </div>
-              )}
             </div>
 
             <div className="pt-3 border-t border-slate-200">
@@ -1143,28 +1167,8 @@ export default function MasterProductModal({
                 </button>
               </div>
             </div>
+
             
-            <div className="pt-3 border-t border-slate-200">
-              <button
-                onClick={() => {
-                  createComboRoom().then(() => {
-                    const hostUrl = window.location.origin + `/combo/${comboRoomId || 'new'}`; // The real ID gets set after createComboRoom, but we can't await state. 
-                    // Better to just let createComboRoom open whatsapp.
-                  });
-                }}
-                disabled={comboCreating}
-                className="w-full bg-[#25D366] hover:bg-[#20bd5a] text-white font-black py-3.5 px-4 rounded-xl text-xs transition flex items-center justify-center gap-2 cursor-pointer shadow-md disabled:opacity-50"
-              >
-                {comboCreating ? (
-                  <><div className="w-3.5 h-3.5 border-2 border-white border-t-transparent rounded-full animate-spin" /> Creando...</>
-                ) : (
-                  <>
-                    <svg className="w-4 h-4" fill="currentColor" viewBox="0 0 24 24"><path d="M17.472 14.382c-.297-.149-1.758-.867-2.03-.967-.273-.099-.471-.148-.67.15-.197.297-.767.966-.94 1.164-.173.199-.347.223-.644.075-.297-.15-1.255-.463-2.39-1.475-.883-.788-1.48-1.761-1.653-2.059-.173-.297-.018-.458.13-.606.134-.133.298-.347.446-.52.149-.174.198-.298.298-.497.099-.198.05-.371-.025-.52-.075-.149-.669-1.612-.916-2.207-.242-.579-.487-.5-.669-.51a12.8 12.8 0 00-.57-.01c-.198 0-.52.074-.792.372-.272.297-1.04 1.016-1.04 2.479 0 1.462 1.065 2.875 1.213 3.074.149.198 2.096 3.2 5.077 4.487.709.306 1.262.489 1.694.625.712.227 1.36.195 1.871.118.571-.085 1.758-.719 2.006-1.413.248-.694.248-1.289.173-1.413-.074-.124-.272-.198-.57-.347m-5.421 7.403h-.004a9.87 9.87 0 01-5.031-1.378l-.361-.214-3.741.982.998-3.648-.235-.374a9.86 9.86 0 01-1.51-5.26c.001-5.45 4.436-9.884 9.888-9.884 2.64 0 5.122 1.03 6.988 2.898a9.825 9.825 0 012.893 6.994c-.003 5.45-4.437 9.884-9.885 9.884m8.413-18.297A11.815 11.815 0 0012.05 0C5.495 0 .16 5.335.157 11.892c0 2.096.547 4.142 1.588 5.945L.057 24l6.305-1.654a11.882 11.882 0 005.683 1.448h.005c6.554 0 11.89-5.335 11.893-11.893a11.821 11.821 0 00-3.48-8.413z"/></svg>
-                    Crear Sala y Enviar a WhatsApp
-                  </>
-                )}
-              </button>
-            </div>
           </div>
         </div>
       )}
@@ -1303,7 +1307,7 @@ export default function MasterProductModal({
                 </button>
 
                 <span className="font-bold text-slate-800 text-sm text-center leading-tight">
-                  Unidad {activeSlotIndex + 1} de {slots.length}
+                  Unidad {activeSlotIndex + 1} de {slotReturnView === 'host_setup' ? hostSetupUnits : slots.length}
                 </span>
 
                 {/* Spacer to keep text centered */}
@@ -1480,13 +1484,13 @@ export default function MasterProductModal({
             </div>
                         {/* BOTÓN PRINCIPAL ANCHO — PIE DE LA PERSONALIZACIÓN */}
             <div className="pt-4 pb-6 px-1">
-              {activeSlotIndex < slots.length - 1 ? (
+              {(slotReturnView === 'host_setup' ? activeSlotIndex < hostSetupUnits - 1 : activeSlotIndex < slots.length - 1) ? (
                 <button
                   type="button"
                   onClick={() => setActiveSlotIndex(Math.min(slots.length - 1, activeSlotIndex + 1))}
                   className="w-full bg-[#FE6712] hover:bg-[#E05509] text-white font-bold py-3.5 px-4 rounded-xl shadow-md transition flex items-center justify-center gap-2 active:scale-[0.98] cursor-pointer"
                 >
-                  <span>Continuar al perro {activeSlotIndex + 2} de {slots.length}</span>
+                  <span>Continuar a la unidad {activeSlotIndex + 2} de {slotReturnView === 'host_setup' ? hostSetupUnits : slots.length}</span>
                   <svg className="w-5 h-5" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2.5}><path strokeLinecap="round" strokeLinejoin="round" d="M9 5l7 7-7 7" /></svg>
                 </button>
               ) : (
