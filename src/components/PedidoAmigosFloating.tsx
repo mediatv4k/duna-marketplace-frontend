@@ -1,6 +1,7 @@
 'use client';
 
 import { useState, useEffect, useCallback } from 'react';
+import { usePathname } from 'next/navigation';
 
 const STORAGE_KEY = 'duna_pedido_amigos_active';
 const ROOM_TTL_MS = 4 * 60 * 60 * 1000;
@@ -38,6 +39,8 @@ export function PedidoAmigosFloating() {
   const [mounted, setMounted] = useState(false);
   const [order, setOrder] = useState<ActiveGroupOrder | null>(null);
   const [confirmingCancel, setConfirmingCancel] = useState(false);
+  // El invitado (/combo/[id]) no es un comprador tradicional: en su ruta no se muestra esta barra (hook antes de los returns)
+  const pathname = usePathname();
 
   const refresh = useCallback(() => {
     setOrder(parseActiveOrder());
@@ -59,14 +62,32 @@ export function PedidoAmigosFloating() {
     };
   }, [refresh]);
 
-  if (!mounted || !order) return null;
+  if (!mounted || !order || pathname?.startsWith('/combo/')) return null;
 
-  const handleReturn = () => {
-    window.location.href = `/combo/${order.roomId}`;
+  // Anfitrión: vuelve al Monitor en Vivo dentro de la tienda (`/?store=…&resumeRoom=…&resumeProduct=…`), NUNCA a la vista
+  // de invitado. El id del producto se toma de la propia sala (fuente de verdad); si la sala ya no existe se limpia la sesión.
+  const handleReturn = async () => {
+    if (!order.isHost) {
+      window.location.href = `/combo/${order.roomId}`;
+      return;
+    }
+    try {
+      const res = await fetch(`/api/combo/${order.roomId}`);
+      const data = await res.json();
+      if (!data.ok) throw new Error('sala no disponible');
+      const slug = data.room.storeCode || order.storeSlug;
+      const qs = new URLSearchParams({ store: slug, resumeRoom: order.roomId, resumeProduct: String(data.room.productId) });
+      window.location.href = `/?${qs.toString()}`;
+    } catch {
+      localStorage.removeItem(STORAGE_KEY);
+      localStorage.removeItem('active_combo_host');
+      setOrder(null);
+    }
   };
 
   const handleCancelConfirm = () => {
     localStorage.removeItem(STORAGE_KEY);
+    localStorage.removeItem('active_combo_host');
     setOrder(null);
     setConfirmingCancel(false);
   };
@@ -112,7 +133,7 @@ export function PedidoAmigosFloating() {
             {/* Texto */}
             <div className="min-w-0 flex-1">
               <p className="text-[10px] font-black text-[#fe6712] uppercase tracking-widest leading-none">
-                Pedido entre amigos activo
+                {order.isHost ? 'Anfitrión · Pedido entre amigos activo' : 'Pedido entre amigos activo'}
               </p>
               <p className="text-xs font-bold text-white truncate mt-0.5">{order.productName}</p>
               {order.storeName && (

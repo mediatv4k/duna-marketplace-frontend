@@ -9,6 +9,7 @@ export interface ParticipantClaim {
   exclusions: string[];
   selectedVariants: Record<string, any>;
   subtotalUsd: number;
+  unitExclusions?: string[][]; // exclusiones por unidad (solo si el invitado personalizó varias unidades por separado)
   notes?: string[]; // sugerencias para la cocina (una por unidad, máx. 80 caracteres c/u)
   isHost: boolean;
   completedAt: string | null;
@@ -20,6 +21,7 @@ export interface ComboRoomData {
   productName: string;
   storeName: string;
   storeCode: string;
+  storeId?: string | number; // id real de la tienda (el invitado carga el catálogo para ofrecer complementos)
   totalUnits: number;
   unitPriceUsd: number;
   claimedUnits: number;
@@ -33,6 +35,12 @@ export interface ComboRoomData {
 function cleanNotes(raw: unknown): string[] {
   const list = Array.isArray(raw) ? raw : typeof raw === "string" ? [raw] : [];
   return list.map((n) => String(n).replace(/s+/g, " ").trim().slice(0, 80)).filter(Boolean).slice(0, 12);
+}
+
+// Exclusiones por unidad: lista de listas de textos cortos (máx. `units` listas, 20 por lista, 60 car. c/u)
+function cleanUnitExclusions(raw: unknown, units: number): string[][] {
+  if (!Array.isArray(raw)) return [];
+  return raw.slice(0, units).map((l) => (Array.isArray(l) ? l.map((e) => String(e).trim().slice(0, 60)).filter(Boolean).slice(0, 20) : []));
 }
 
 function generateRoomId(): string {
@@ -71,6 +79,7 @@ export async function POST(
       productName,
       storeName,
       storeCode,
+      storeId,
       totalUnits,
       unitPriceUsd,
       hostName,
@@ -116,6 +125,7 @@ export async function POST(
       productName,
       storeName: storeName || '',
       storeCode: storeCode || '',
+      ...(storeId !== undefined && storeId !== null && storeId !== '' ? { storeId } : {}),
       totalUnits,
       unitPriceUsd: unitPriceUsd || 0,
       claimedUnits: hostClaim.unitsCount,
@@ -173,6 +183,7 @@ export async function PUT(
       exclusions: Array.isArray(exclusions) ? exclusions : [],
       selectedVariants: selectedVariants || {},
       notes: cleanNotes(body.notes),
+      ...(unitsCount > 1 && Array.isArray(body.unitExclusions) ? { unitExclusions: cleanUnitExclusions(body.unitExclusions, unitsCount) } : {}),
       subtotalUsd: unitsCount * room.unitPriceUsd + addonsUsd,
       isHost: false,
       completedAt: new Date().toISOString(),

@@ -1,7 +1,7 @@
 'use client';
 
 import React, { useState, useEffect, useCallback, useRef } from 'react';
-import { getProduct } from '@/services/marketplaceService';
+import { getProduct, getProductsByStore } from '@/services/marketplaceService';
 import { getBCVRate } from '@/lib/bcvRate';
 import KitchenNote, { cleanKitchenNote } from '@/components/KitchenNote';
 
@@ -13,6 +13,7 @@ interface ParticipantClaim {
   selectedVariants: Record<string, any>;
   subtotalUsd: number;
   notes?: string[];
+  unitExclusions?: string[][];
   isHost: boolean;
   completedAt: string | null;
 }
@@ -30,6 +31,7 @@ interface ComboRoomData {
   participants: ParticipantClaim[];
   createdAt: string;
   hostName: string;
+  storeId?: string | number;
   groups?: any[]; // Re-hidrated on client
 }
 
@@ -134,6 +136,25 @@ export default function ComboRoomPage({ params }: { params: { id: string } }) {
   const [addonCounts, setAddonCounts] = useState<Record<string, number>>({});
   // Sugerencia para la cocina de las unidades del invitado (máx. 70 caracteres)
   const [guestNote, setGuestNote] = useState('');
+  // Personalización por unidad (solo con más de 1 unidad): exclusiones de cada una y pestaña activa
+  const [unitEx, setUnitEx] = useState<string[][]>([]);
+  const [activeUnit, setActiveUnit] = useState(0);
+  // Catálogo real de la tienda (complementos: papas, bebidas, tequeños…) cuando el producto no trae adicionales con precio
+  const [catalogExtras, setCatalogExtras] = useState<any[]>([]);
+  const roomStoreId = room?.storeId;
+  useEffect(() => {
+    if (!roomStoreId) return;
+    let alive = true;
+    getProductsByStore(roomStoreId)
+      .then((res) => {
+        if (!alive || res.code !== 1 || !res.data) return;
+        const d = res.data;
+        const list: any[] = Array.isArray(d) ? d : Array.isArray(d.data) ? d.data : Array.isArray(d.products) ? d.products.flatMap((c: any) => c.data || c) : [];
+        setCatalogExtras(list);
+      })
+      .catch(() => {});
+    return () => { alive = false; };
+  }, [roomStoreId]);
 
   const [deadRoomStoreSlug, setDeadRoomStoreSlug] = useState<string | null>(null);
 
@@ -273,6 +294,8 @@ export default function ComboRoomPage({ params }: { params: { id: string } }) {
     });
     setLocalVariants(vars);
     setLocalExclusions([]);
+    setUnitEx([]);
+    setActiveUnit(0);
   };
 
   const handleSaveStandard = async () => {
@@ -282,23 +305,53 @@ export default function ComboRoomPage({ params }: { params: { id: string } }) {
 
   const handleSaveCustom = async () => {
     if (!guestName.trim()) { setSaveError('Escribe tu nombre antes de guardar.'); return; }
+    if (claimedUnits > 1) {
+      // Una lista de exclusiones por unidad; `exclusions` conserva la unión para lo que ya la lee (monitor, desglose)
+      const perUnit = Array.from({ length: claimedUnits }, (_, i) => unitEx[i] || []);
+      const union = Array.from(new Set(perUnit.flat()));
+      await submitClaim(localVariants, union, perUnit);
+      return;
+    }
     await submitClaim(localVariants, localExclusions);
   };
 
-  // Adicionales elegidos por el invitado (solo opciones con precio real > 0 del producto) y su monto en USD
-  const getAddonItems = () => {
-    const items: any[] = [];
-    (room?.groups || []).forEach((g: any, gIdx: number) => {
-      (g.options || []).forEach((o: any) => {
-        const count = addonCounts[`${gIdx}:${o.code}`] || 0;
-        if (count > 0 && Number(o.price) > 0) items.push({ name: o.name, code: o.code, price: Number(o.price), count, groupName: g.name || g.title, groupCode: g.code, groupType: g.selectType });
-      });
-    });
-    return items;
+  // Opciones extra que se ofrecen al invitado: (a) las del propio producto con precio real (grupos que no son "SIN" ni BASE);
+  // si el producto no trae ninguna, (b) complementos reales del catálogo de la tienda, con el mismo criterio que el modal del
+  // anfitrión (papas/tequeños/bebidas…, sin stock 0, sin el propio producto, máx. 4).
+  const buildAddonOptions = (): any[] => {
+    const native = (room?.groups || []).flatMap((g: any, gIdx: number) =>
+      /\bsin\b/i.test(String(g.name || g.title || '')) || g.pricingRole === 'BASE'
+        ? []
+        : (g.options || []).filter((o: any) => Number(o.price) > 0).map((o: any) => ({ ...o, key: `${gIdx}:${o.code}`, group: g }))
+    );
+    if (native.length > 0) return native;
+    const keywords = ['papa', 'tequeño', 'tequeno', 'bebida', 'refresco', 'extra', 'adicional', 'acompañante'];
+    return catalogExtras
+      .filter((p: any) => {
+        if (String(p.id) === String(room?.productId)) return false;
+        if (p.stock === 0 || p.outOfStock) return false;
+        if (!(Number(p.price) > 0)) return false;
+        const n = String(p.name || '').toLowerCase();
+        const c = String(p.category || '').toLowerCase();
+        const sub = String(p.internalCategory || p.subCategory || '').toLowerCase();
+        return keywords.some((k) => n.includes(k) || c.includes(k) || sub.includes(k));
+      })
+      .slice(0, 4)
+      .map((p: any) => ({ name: p.name, code: String(p.code || p.sku || p.id), price: Number(p.price), image: p.image || p.imageUrl, key: `cat:${p.id}`, group: null }));
   };
+
+  // Adicionales elegidos por el invitado y su monto en USD
+  const getAddonItems = () =>
+    buildAddonOptions()
+      .map((o: any) => ({ o, count: addonCounts[o.key] || 0 }))
+      .filter(({ count }) => count > 0)
+      .map(({ o, count }) => ({
+        name: o.name, code: o.code, price: Number(o.price), count,
+        ...(o.group ? { groupName: o.group.name || o.group.title, groupCode: o.group.code, groupType: o.group.selectType } : {}),
+      }));
   const getAddonsUsd = () => getAddonItems().reduce((sum, it) => sum + it.price * it.count, 0);
 
-  const submitClaim = async (variants: Record<string, any>, exclusions: string[]) => {
+  const submitClaim = async (variants: Record<string, any>, exclusions: string[], unitExclusions?: string[][]) => {
     setSaving(true);
     setSaveError(null);
     try {
@@ -311,6 +364,7 @@ export default function ComboRoomPage({ params }: { params: { id: string } }) {
           unitsCount: claimedUnits,
           selectedVariants: addonItems.length > 0 ? { ...variants, addons: addonItems } : variants,
           exclusions,
+          ...(unitExclusions ? { unitExclusions } : {}),
           addonsUsd: getAddonsUsd(),
           notes: cleanKitchenNote(guestNote) ? [cleanKitchenNote(guestNote)] : [],
         }),
@@ -400,11 +454,22 @@ export default function ComboRoomPage({ params }: { params: { id: string } }) {
   const availableUnits = room.totalUnits - room.claimedUnits;
 
   // Opciones de pago extra reales del producto (excluye el grupo "SIN", que resta ingredientes, y los grupos BASE)
-  const addonOptions = (room.groups || []).flatMap((g: any, gIdx: number) =>
-    /\bsin\b/i.test(String(g.name || g.title || '')) || g.pricingRole === 'BASE'
-      ? []
-      : (g.options || []).filter((o: any) => Number(o.price) > 0).map((o: any) => ({ ...o, key: `${gIdx}:${o.code}` }))
-  );
+  const addonOptions = buildAddonOptions();
+  // Con más de 1 unidad y personalización, las exclusiones se eligen por unidad (pestañas #1, #2…)
+  const perUnitMode = claimedUnits > 1 && customizationType === 'custom';
+  const safeUnit = Math.min(activeUnit, Math.max(0, claimedUnits - 1));
+  const currentExclusions = perUnitMode ? (unitEx[safeUnit] || []) : localExclusions;
+  const toggleExclusion = (label: string) => {
+    if (perUnitMode) {
+      setUnitEx((prev) => {
+        const next = Array.from({ length: claimedUnits }, (_, i) => [...(prev[i] || [])]);
+        next[safeUnit] = next[safeUnit].includes(label) ? next[safeUnit].filter((e) => e !== label) : [...next[safeUnit], label];
+        return next;
+      });
+    } else {
+      setLocalExclusions((prev) => (prev.includes(label) ? prev.filter((e) => e !== label) : [...prev, label]));
+    }
+  };
   const myPartUsd = claimedUnits * room.unitPriceUsd + getAddonsUsd();
   const formatBs = (usd: number) => (bcvRate ? usd * bcvRate : 0).toLocaleString('es-VE', { minimumFractionDigits: 2, maximumFractionDigits: 2 });
 
@@ -497,14 +562,35 @@ export default function ComboRoomPage({ params }: { params: { id: string } }) {
 
                 {hasSinGroups && customizationType === 'custom' && (
                   <div className="p-3 bg-slate-50 border border-slate-200 rounded-xl space-y-2">
-                    <p className="text-[10px] font-black text-slate-500 uppercase tracking-wider">Selecciona lo que NO quieres:</p>
+                    {perUnitMode && (
+                      <div className="flex items-center gap-1.5 overflow-x-auto no-scrollbar pb-1">
+                        {Array.from({ length: claimedUnits }).map((_, i) => (
+                          <button
+                            key={i}
+                            type="button"
+                            onClick={() => setActiveUnit(i)}
+                            className={`shrink-0 px-3 py-1.5 rounded-lg text-xs font-black border transition cursor-pointer ${i === safeUnit ? 'bg-[#FE6712] text-white border-[#FE6712]' : 'bg-white text-slate-700 border-slate-300 hover:border-[#FE6712]/50'}`}
+                          >
+                            #{i + 1}{(unitEx[i] || []).length > 0 ? ' •' : ''}
+                          </button>
+                        ))}
+                        <button
+                          type="button"
+                          onClick={() => setUnitEx(Array.from({ length: claimedUnits }, () => [...(unitEx[safeUnit] || [])]))}
+                          className="shrink-0 ml-auto px-3 py-1.5 rounded-lg text-[11px] font-bold text-[#FE6712] bg-orange-50 border border-orange-200 hover:bg-orange-100 transition cursor-pointer"
+                        >
+                          Repetir en todos
+                        </button>
+                      </div>
+                    )}
+                    <p className="text-[10px] font-black text-slate-500 uppercase tracking-wider">{perUnitMode ? `Unidad #${safeUnit + 1}: selecciona lo que NO quieres` : 'Selecciona lo que NO quieres:'}</p>
                     <div className="grid grid-cols-2 gap-2">
                       {(room.groups || [])
                         .filter((g: any) => /\bsin\b/i.test(String(g.name || g.title || '')))
                         .flatMap((g: any) => g.options || g.items || [])
                         .map((opt: any) => {
                           const label = opt.name || opt.title || '';
-                          const selected = localExclusions.includes(label);
+                          const selected = currentExclusions.includes(label);
                           // Prevent Sin SIN duplication
                           const displayLabel = label.toUpperCase().startsWith('SIN ') ? label : 'Sin ' + label;
                           return (
@@ -512,7 +598,7 @@ export default function ComboRoomPage({ params }: { params: { id: string } }) {
                               <input
                                 type="checkbox"
                                 checked={selected}
-                                onChange={() => setLocalExclusions(prev => selected ? prev.filter(e => e !== label) : [...prev, label])}
+                                onChange={() => toggleExclusion(label)}
                                 className="w-4 h-4 accent-[#FE6712] rounded cursor-pointer"
                               />
                               <span className={selected ? 'line-through opacity-70' : ''}>{displayLabel}</span>
@@ -634,7 +720,15 @@ export default function ComboRoomPage({ params }: { params: { id: string } }) {
             <div>
               <p className="text-[10px] font-black text-slate-400 uppercase tracking-wider mb-1">Resumen de tu pedido</p>
               <p className="text-sm font-black text-slate-800">{myClaim.unitsCount}x {room.productName}</p>
-              {myClaim.exclusions.length > 0 ? (
+              {Array.isArray(myClaim.unitExclusions) && myClaim.unitExclusions.length > 1 ? (
+                <div className="mt-1.5 space-y-0.5">
+                  {myClaim.unitExclusions.map((ex, i) => (
+                    <p key={i} className={`text-xs font-bold ${ex.length > 0 ? 'text-red-500' : 'text-emerald-600'}`}>
+                      #{i + 1}: {ex.length > 0 ? ex.map(e => e.toUpperCase().startsWith('SIN ') ? e : 'Sin ' + e).join(', ') : 'Con Todo'}
+                    </p>
+                  ))}
+                </div>
+              ) : myClaim.exclusions.length > 0 ? (
                 <p className="text-xs text-red-500 font-bold mt-1.5">{myClaim.exclusions.map(e => e.toUpperCase().startsWith('SIN ') ? e : 'Sin ' + e).join(', ')}</p>
               ) : (
                 <p className="text-xs text-emerald-600 font-bold mt-1.5">Con Todo</p>

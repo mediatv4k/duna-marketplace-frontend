@@ -63,6 +63,8 @@ export default function MerchantStoreView({
   });
 
   const [isCartOpen, setIsCartOpen] = useState(false);
+  // Rescate de sesión del anfitrión: `?resumeRoom=&resumeProduct=` (lo arma la barra flotante) reabre el Monitor en Vivo
+  const [modalResumeRoomId, setModalResumeRoomId] = useState<string | null>(null);
   // Lightbox de la grilla de productos: clic en la foto (no en el resto de la tarjeta) la amplía; no toca el carrito ni abre el modal del producto
   const [lightboxImage, setLightboxImage] = useState<{ url: string; name: string } | null>(null);
 
@@ -71,6 +73,21 @@ export default function MerchantStoreView({
   // scroll bajado en el Home (o cambiando de una tienda a otra), la vista nueva podía abrir a mitad de página.
   React.useEffect(() => {
     if (typeof window !== 'undefined') window.scrollTo({ top: 0, left: 0, behavior: 'instant' });
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []);
+  // Reanuda la sala del anfitrión una sola vez al montar (los parámetros se limpian sin tocar `history.state`, que Next usa)
+  React.useEffect(() => {
+    if (typeof window === 'undefined') return;
+    const sp = new URLSearchParams(window.location.search);
+    const room = sp.get('resumeRoom');
+    const prod = sp.get('resumeProduct');
+    if (!room || !prod) return;
+    setModalResumeRoomId(room);
+    handleProductClick(products.find((p: any) => String(p.id) === prod) || { id: prod });
+    sp.delete('resumeRoom');
+    sp.delete('resumeProduct');
+    const qs = sp.toString();
+    window.history.replaceState(window.history.state, '', window.location.pathname + (qs ? `?${qs}` : ''));
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
   React.useEffect(() => {
@@ -941,7 +958,8 @@ export default function MerchantStoreView({
             nicheEngine={modalEngine}
             bcvRate={bcvRate}
             initialQty={modalInitialQty}
-            store={{ name: merchant.name, code: merchant.code }}
+            store={{ name: merchant.name, code: merchant.code, id: merchant.id }}
+            resumeRoomId={modalResumeRoomId}
           />
         )}
 
@@ -1043,6 +1061,8 @@ export default function MerchantStoreView({
         storeNiche={storeNiche}
         merchantName={merchant.name}
         storeCode={merchant.code}
+        storeId={merchant.id}
+        resumeRoomId={modalResumeRoomId}
         hero={heroNode}
         bcvRate={bcvRate}
         products={products}

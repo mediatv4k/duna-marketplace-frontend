@@ -72,6 +72,8 @@ export interface MerchantTemplateEngineProps {
   // Nicho de negocio real de la tienda. Si el padre ya lo detectó, se usa tal cual (badges, umbral y motor del modal idénticos a los actuales)
   storeNiche?: StoreNiche;
   merchantName?: string;
+  storeId?: string | number; // id real de la tienda (para la sala colaborativa)
+  resumeRoomId?: string | null; // rescate de sesión del anfitrión
   storeCode?: string; // slug real de la tienda (ej. "papa-helado"), para el botón "Compartir" del modal de producto
   hero?: React.ReactNode;     // portada de la tienda (a sangre, fuera del contenedor centrado)
   children?: React.ReactNode; // catálogo del comercio (grilla), lo aporta el padre
@@ -140,6 +142,8 @@ export default function MerchantTemplateEngine({
   storeNiche: storeNicheProp,
   merchantName,
   storeCode,
+  storeId,
+  resumeRoomId = null,
   hero,
   children,
   onOpenCart,
@@ -406,7 +410,8 @@ export default function MerchantTemplateEngine({
           bcvRate={bcvRate ?? null}
           onAddToCart={onAddToCart}
           initialQty={productInitialQty}
-          store={storeCode ? { name: merchantName || '', code: storeCode } : null}
+          store={storeCode ? { name: merchantName || '', code: storeCode, id: storeId } : null}
+          resumeRoomId={resumeRoomId}
         />
       )}
     </div>

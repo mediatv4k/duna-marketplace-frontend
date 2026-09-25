@@ -172,7 +172,8 @@ interface MasterProductModalProps {
   onAddToCart: (payload: VariantSelectionPayload) => void;
   initialQty?: number;
   storeCatalog?: any[]; // unidades con las que arranca el contador al abrir (p. ej. el pedido del asistente); por defecto 1
-  store?: { name: string; code: string } | null; // para el botón "Compartir" (nombre y slug reales de la tienda)
+  store?: { name: string; code: string; id?: string | number } | null; // botón "Compartir" (nombre y slug reales) e id real para la sala
+  resumeRoomId?: string | null; // rescate de sesión del anfitrión: reabre el Monitor en Vivo de esa sala al abrir el modal
 }
 
 export default function MasterProductModal({
@@ -184,7 +185,8 @@ export default function MasterProductModal({
   onAddToCart,
   initialQty = 1,
   storeCatalog = [],
-  store
+  store,
+  resumeRoomId = null
 }: MasterProductModalProps) {
   // Cantidad válida: entero entre 1 y 99
   const startQty = Math.min(Math.max(Math.floor(Number(initialQty)) || 1, 1), 99);
@@ -750,7 +752,12 @@ export default function MasterProductModal({
           totalCartPrice += p.subtotalUsd;
           breakdown.push(`• ${String(p.name || 'INVITADO').toUpperCase()} (${p.unitsCount} Unidades)`);
           
-          if (p.exclusions && p.exclusions.length > 0) {
+          if (Array.isArray(p.unitExclusions) && p.unitExclusions.length > 1) {
+            // Una línea por unidad para la cocina (personalización independiente)
+            p.unitExclusions.forEach((ex: string[], i: number) => {
+              breakdown.push(`  - #${i + 1}: ${ex.length > 0 ? ex.map((e) => (e.toUpperCase().startsWith('SIN ') ? e : `Sin ${e}`)).join(', ') : 'Sale con todo'}`);
+            });
+          } else if (p.exclusions && p.exclusions.length > 0) {
             p.exclusions.forEach((e: string) => {
               breakdown.push(`  - ${e.toUpperCase().startsWith('SIN ') ? e : `Sin ${e}`}`);
             });
@@ -827,6 +834,7 @@ export default function MasterProductModal({
         proceedToCheckout: proceedToCheckout === true
       });
       if (typeof window !== 'undefined') window.localStorage.removeItem('duna_pedido_amigos_active');
+      window.localStorage.removeItem('active_combo_host');
       onClose();
       return;
     }
@@ -986,6 +994,7 @@ export default function MasterProductModal({
     // Marcar sala colaborativa como completada y limpiar barra flotante
     if (comboRoomId && typeof window !== 'undefined') {
       window.localStorage.removeItem('duna_pedido_amigos_active');
+      window.localStorage.removeItem('active_combo_host');
     }
     onClose();
   };
@@ -1108,6 +1117,7 @@ export default function MasterProductModal({
           productName: product.name || 'Producto',
           storeName: store?.name || '',
           storeCode: store?.code || '',
+          storeId: store?.id,
           totalUnits,
           unitPriceUsd,
           hostName: 'Anfitrión',
@@ -1137,10 +1147,13 @@ export default function MasterProductModal({
             storeSlug: store?.code || '',
             storeName: store?.name || '',
             productName: product?.name || '',
+            productId: product?.id ?? product?.code ?? '',
             isHost: true,
             createdAt: Date.now(),
             status: 'ACTIVE',
           }));
+          // Sesión del anfitrión (rescate tras salir al catálogo o refrescar): la barra flotante lo identifica como Anfitrión
+          window.localStorage.setItem('active_combo_host', JSON.stringify({ roomId: finalRoomId, comboId: product?.id ?? product?.code ?? '', storeId: store?.id ?? '' }));
         }
         if (comboPollingRef.current) clearInterval(comboPollingRef.current);
         comboPollingRef.current = setInterval(async () => {
@@ -1250,6 +1263,49 @@ export default function MasterProductModal({
   }, [roomFull]);
 
   useEffect(() => () => { if (beaconTimerRef.current) clearTimeout(beaconTimerRef.current); }, []);
+
+  // Rescate de sesión del anfitrión: si la tienda abre el modal con `resumeRoomId`, se recupera la sala y se vuelve directo
+  // al Monitor en Vivo (nunca a la vista de invitado). Sala inexistente/vencida -> se limpia la sesión y queda el modal normal.
+  const resumedRoomRef = React.useRef<string | null>(null);
+  useEffect(() => {
+    if (!isOpen || !product || !resumeRoomId || resumedRoomRef.current === resumeRoomId) return;
+    resumedRoomRef.current = resumeRoomId;
+    let cancelled = false;
+    (async () => {
+      try {
+        const res = await fetch(`/api/combo/${resumeRoomId}`);
+        const data = await res.json();
+        if (cancelled) return;
+        if (!data.ok) {
+          window.localStorage.removeItem('duna_pedido_amigos_active');
+          window.localStorage.removeItem('active_combo_host');
+          return;
+        }
+        const hostUnits: number = data.room.participants?.find((p: any) => p.isHost)?.unitsCount || 1;
+        setSlots((prev) => {
+          if (prev.length >= hostUnits) return prev;
+          const expanded = [...prev];
+          for (let i = prev.length; i < hostUnits; i++) expanded.push(createInitialSlot(i));
+          return expanded;
+        });
+        setHostSetupUnits(hostUnits);
+        setComboRoomId(data.room.id);
+        setComboRoomData(data.room);
+        setShowComboPanel(true);
+        setViewMode('comboRoom');
+        if (comboPollingRef.current) clearInterval(comboPollingRef.current);
+        comboPollingRef.current = setInterval(async () => {
+          try {
+            const pr = await fetch(`/api/combo/${data.room.id}`);
+            const pd = await pr.json();
+            if (pd.ok) setComboRoomData(pd.room);
+          } catch { /* silent */ }
+        }, 2000);
+      } catch { /* silent */ }
+    })();
+    return () => { cancelled = true; };
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [isOpen, product?.id, resumeRoomId]);
 
   if (!isOpen || !product) return null;
 
@@ -1440,7 +1496,13 @@ export default function MasterProductModal({
               <p className="text-[10px] font-black text-slate-400 uppercase">Participantes</p>
               {comboRoomData.participants.map((p: any) => {
                 const detailParts: string[] = [];
-                (p.exclusions || []).forEach((e: string) => detailParts.push(e.toUpperCase().startsWith('SIN ') ? e : 'Sin ' + e));
+                const sinLabel = (e: string) => (e.toUpperCase().startsWith('SIN ') ? e : 'Sin ' + e);
+                if (Array.isArray(p.unitExclusions) && p.unitExclusions.length > 1) {
+                  // Invitado con varias unidades personalizadas por separado: "#1 Sin cebolla · #2 Con todo"
+                  detailParts.push(p.unitExclusions.map((ex: string[], i: number) => `#${i + 1} ${ex.length > 0 ? ex.map(sinLabel).join(', ') : 'Con todo'}`).join(' · '));
+                } else {
+                  (p.exclusions || []).forEach((e: string) => detailParts.push(sinLabel(e)));
+                }
                 Object.values(p.selectedVariants || {}).forEach((sel: any) => {
                   if (Array.isArray(sel)) sel.forEach((it: any) => { if ((it?.count || 0) > 0) detailParts.push(`${it.count > 1 ? it.count + 'x ' : ''}${it.name}`); });
                 });
@@ -1470,17 +1532,6 @@ export default function MasterProductModal({
                   </div>
                 );
               })}
-            </div>
-            
-            <div className="mt-4 pt-3 border-t border-orange-200/60">
-              <p className="text-xs text-slate-600 font-medium text-center mb-2">Envía el link a tus panas para que se sumen</p>
-              <button
-                onClick={handleCopyComboLink}
-                className="w-full bg-white hover:bg-orange-100 border border-orange-300 text-orange-700 font-black py-2.5 px-4 rounded-xl text-xs transition cursor-pointer flex items-center justify-center gap-2"
-              >
-                <svg className="w-4 h-4" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}><path strokeLinecap="round" strokeLinejoin="round" d="M8 16H6a2 2 0 01-2-2V6a2 2 0 012-2h8a2 2 0 012 2v2m-6 12h8a2 2 0 002-2v-8a2 2 0 00-2-2h-8a2 2 0 00-2 2v8a2 2 0 002 2z" /></svg>
-                {comboCopied ? '¡Link copiado!' : 'Copiar Link'}
-              </button>
             </div>
           </div>
         </div>
@@ -2344,7 +2395,7 @@ export default function MasterProductModal({
             {/* Sala colaborativa activa: mientras falten ranuras el anfitrión puede seguir compartiendo; al llenarse, el
                 CTA lo lleva a caja (agrega el combo maestro al carrito y abre el carrito → checkout). */}
             {viewMode === 'comboRoom' && comboRoomData && (
-              <div className="mb-3">
+              <div className="mb-3 md:flex md:justify-end">
                 {comboAllDone ? (
                   <button
                     type="button"
@@ -2359,7 +2410,7 @@ export default function MasterProductModal({
                     href={`https://api.whatsapp.com/send?text=${encodeURIComponent("¡Pilas panas! Entren a este link para armar el combo en D'una: " + comboLink)}`}
                     target="_blank"
                     rel="noopener noreferrer"
-                    className="w-full bg-[#25D366] hover:bg-[#20bd5a] text-white font-black py-3.5 px-4 rounded-xl text-sm transition flex items-center justify-center gap-2 cursor-pointer shadow-md"
+                    className="w-full md:w-auto md:px-6 md:py-3 bg-[#25D366] hover:bg-[#20bd5a] text-white font-black py-3.5 px-4 rounded-xl text-sm transition flex items-center justify-center gap-2 cursor-pointer shadow-md"
                   >
                     Compartir de nuevo por WhatsApp ({comboRoomData.claimedUnits}/{comboRoomData.totalUnits})
                   </a>
