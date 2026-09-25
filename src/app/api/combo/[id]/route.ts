@@ -9,6 +9,7 @@ export interface ParticipantClaim {
   exclusions: string[];
   selectedVariants: Record<string, any>;
   subtotalUsd: number;
+  notes?: string[]; // sugerencias para la cocina (una por unidad, máx. 80 caracteres c/u)
   isHost: boolean;
   completedAt: string | null;
 }
@@ -26,6 +27,12 @@ export interface ComboRoomData {
   participants: ParticipantClaim[];
   createdAt: string;
   hostName: string;
+}
+
+// Sugerencias para la cocina: lista de textos cortos, sin saltos de línea, tope 80 caracteres c/u y 12 en total
+function cleanNotes(raw: unknown): string[] {
+  const list = Array.isArray(raw) ? raw : typeof raw === "string" ? [raw] : [];
+  return list.map((n) => String(n).replace(/s+/g, " ").trim().slice(0, 80)).filter(Boolean).slice(0, 12);
 }
 
 function generateRoomId(): string {
@@ -71,6 +78,7 @@ export async function POST(
       hostSelectedVariants,
       hostExclusions,
       hostAddonsUsd,
+      hostNotes,
         paymentMode = 'split',
       } = body;
     const rawHostAddons = Number(hostAddonsUsd);
@@ -86,6 +94,7 @@ export async function POST(
       unitsCount: hostUnitsCount || 0,
       exclusions: Array.isArray(hostExclusions) ? hostExclusions : [],
       selectedVariants: hostSelectedVariants || {},
+      notes: cleanNotes(hostNotes),
       subtotalUsd: (hostUnitsCount || 0) * (unitPriceUsd || 0) + hostAddons,
       isHost: true,
       completedAt: new Date().toISOString(),
@@ -163,6 +172,7 @@ export async function PUT(
       unitsCount,
       exclusions: Array.isArray(exclusions) ? exclusions : [],
       selectedVariants: selectedVariants || {},
+      notes: cleanNotes(body.notes),
       subtotalUsd: unitsCount * room.unitPriceUsd + addonsUsd,
       isHost: false,
       completedAt: new Date().toISOString(),
@@ -210,6 +220,7 @@ export async function PATCH(
     room.participants[idx] = {
       ...host,
       exclusions: Array.isArray(body.exclusions) ? body.exclusions.map(String) : [],
+      notes: cleanNotes(body.notes),
       selectedVariants: body.selectedVariants && typeof body.selectedVariants === 'object' ? body.selectedVariants : {},
       subtotalUsd: host.unitsCount * room.unitPriceUsd + addonsUsd,
     };

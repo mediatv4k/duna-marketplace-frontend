@@ -441,7 +441,8 @@ export default function MerchantStoreView({
       return;
     }
     // Identidad única por producto + configuración de variantes: sabores distintos del mismo producto NO deben fusionarse
-    const cartItemId = `${productCode}::${JSON.stringify(configuredItem.variants || [])}`;
+    // La sugerencia para la cocina también distingue el ítem: mismo producto con notas distintas no se fusiona.
+    const cartItemId = `${productCode}::${JSON.stringify(configuredItem.variants || [])}${configuredItem.notes ? `::${configuredItem.notes}` : ''}`;
 
     const existingIndex = cartItems.findIndex(item => item.cartItemId === cartItemId);
     let updated;
@@ -466,6 +467,7 @@ export default function MerchantStoreView({
         breakdown: configuredItem.breakdown || [],
         variants: configuredItem.variants || [],
         pricing: configuredItem.pricing || null,
+        notes: configuredItem.notes || undefined,
         image: selectedProductDetail?.image || '',
         category: selectedProductDetail?.category || 'General'
       };

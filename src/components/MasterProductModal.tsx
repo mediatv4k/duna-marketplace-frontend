@@ -22,12 +22,14 @@ import {
 import { parseDescriptionTags } from '@/lib/productTags';
 import ProductTagBadges from './ProductTagBadges';
 import ShareButton from './ShareButton';
+import KitchenNote, { cleanKitchenNote } from './KitchenNote';
 
 export interface ComboSlot {
   id: number;
   name: string;
   selectedVariants: Record<string | number, any>;
   exclusions: string[];
+  notes?: string; // sugerencia para la cocina de esta unidad (máx. 70 caracteres)
 }
 
 export interface VariantSelectionPayload {
@@ -43,6 +45,7 @@ export interface VariantSelectionPayload {
   variants?: any[];
   pricing?: { unitBasePrice: number; addonsTotal: number; unitFinalPrice: number };
   proceedToCheckout?: boolean; // solo la sala colaborativa completa: la tienda abre el carrito al recibirlo
+  notes?: string; // sugerencia para la cocina del producto simple (las de combo/ranura viajan dentro de breakdown)
 }
 
 // Etiquetas de precio extra para una cápsula. Solo presentación: no participa en ningún cálculo.
@@ -192,6 +195,8 @@ export default function MasterProductModal({
   const [selectedVariants, setSelectedVariants] = useState<Record<string, any>>({});
   const [selectedExclusions, setSelectedExclusions] = useState<string[]>([]);
   const [upsellSelections, setUpsellSelections] = useState<Record<string, any>>({});
+  // Sugerencia para la cocina del producto simple individual (la de cada unidad de un combo vive en `slot.notes`)
+  const [productNote, setProductNote] = useState('');
 
   // ── Pedido Colaborativo ("Armar Combo con Amigos en Vivo") ─────────────────
   const [comboRoomId, setComboRoomId] = useState<string | null>(null);
@@ -396,6 +401,7 @@ export default function MasterProductModal({
       setIsSlotCustomizationActive(false);
       setActiveSlotIndex(0);
       setUpsellSelections({});
+      setProductNote('');
 
       const initialVars: Record<string, any> = {};
       if (availableGroups.length > 0) {
@@ -768,6 +774,12 @@ export default function MasterProductModal({
           if ((!p.exclusions || p.exclusions.length === 0) && !hasExtras) {
             breakdown.push(`  - Sale con todo`);
           }
+
+          // Sugerencias para la cocina de este participante (una por unidad, ya saneadas en la sala)
+          (Array.isArray(p.notes) ? p.notes : []).forEach((n: string) => {
+            const clean = cleanKitchenNote(n);
+            if (clean) breakdown.push(`  >> NOTA: ${clean}`);
+          });
         });
       
       onAddToCart({
@@ -843,6 +855,10 @@ export default function MasterProductModal({
             if (extrasParts.length > 0) {
                extrasParts.forEach(extraLine => breakdown.push(`  ${extraLine}`));
             }
+
+            // Sugerencia para la cocina de esta unidad (sin paréntesis: ver cleanKitchenNote)
+            const slotNote = cleanKitchenNote(slot.notes || '');
+            if (slotNote) breakdown.push(`  >> NOTA: ${slotNote}`);
         });
       } else {
         Object.keys(selectedVariants).forEach(key => {
@@ -866,6 +882,10 @@ export default function MasterProductModal({
     Object.values(upsellSelections).forEach(up => {
       breakdown.push(`+ ${up.name} ($${up.price.toFixed(2)})`);
     });
+
+    // Producto simple individual: la sugerencia viaja en el desglose (Comanda POS) y como `notes` del ítem
+    const simpleNote = !isSlotMode ? cleanKitchenNote(productNote) : '';
+    if (simpleNote) breakdown.push(`Nota: ${simpleNote}`);
 
     // Estructura de variantes para el backend (pricingRole BASE reemplaza el precio, ADDON se suma)
     let unitBasePrice = product.price || 0;
@@ -919,7 +939,8 @@ export default function MasterProductModal({
       breakdown: breakdown,
       slots: isSlotMode ? slots : undefined,
       variants: isSlotMode ? undefined : variantsPayload,
-      pricing: isSlotMode ? undefined : { unitBasePrice, addonsTotal, unitFinalPrice }
+      pricing: isSlotMode ? undefined : { unitBasePrice, addonsTotal, unitFinalPrice },
+      notes: simpleNote || undefined
     });
     // Marcar sala colaborativa como completada y limpiar barra flotante
     if (comboRoomId && typeof window !== 'undefined') {
@@ -966,8 +987,11 @@ export default function MasterProductModal({
   const buildHostClaim = (units: number) => {
     const exclusions: string[] = [];
     const merged = new Map<string, any>();
+    const notes: string[] = [];
     let addonsUsd = 0;
-    slots.slice(0, units).forEach((slot) => {
+    slots.slice(0, units).forEach((slot, i) => {
+      const note = cleanKitchenNote(slot.notes || '');
+      if (note) notes.push(units > 1 ? `U${i + 1}: ${note}` : note);
       (slot.exclusions || []).forEach((e: string) => { if (!exclusions.includes(e)) exclusions.push(e); });
       Object.values(slot.selectedVariants || {}).forEach((sel: any) => {
         const list: any[] = Array.isArray(sel) ? sel : (sel && sel.name ? [{ ...sel, count: 1 }] : []);
@@ -983,7 +1007,7 @@ export default function MasterProductModal({
       });
     });
     const addons = Array.from(merged.values());
-    return { exclusions, selectedVariants: addons.length > 0 ? { addons } : {}, addonsUsd: Math.round(addonsUsd * 100) / 100 };
+    return { exclusions, selectedVariants: addons.length > 0 ? { addons } : {}, addonsUsd: Math.round(addonsUsd * 100) / 100, notes };
   };
 
   // Desde el Monitor en Vivo: el anfitrión personaliza SUS unidades sin salir de la sala
@@ -1004,7 +1028,7 @@ export default function MasterProductModal({
         const res = await fetch(`/api/combo/${comboRoomId}`, {
           method: 'PATCH',
           headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify({ participantId: 'host', exclusions: claim.exclusions, selectedVariants: claim.selectedVariants, addonsUsd: claim.addonsUsd }),
+          body: JSON.stringify({ participantId: 'host', exclusions: claim.exclusions, selectedVariants: claim.selectedVariants, addonsUsd: claim.addonsUsd, notes: claim.notes }),
         });
         const data = await res.json();
         if (!data.ok) { setHostSaveError(data.error || 'No se pudo guardar. Intenta de nuevo.'); return; }
@@ -1045,6 +1069,7 @@ export default function MasterProductModal({
           hostSelectedVariants: hostClaim.selectedVariants,
           hostExclusions: hostClaim.exclusions,
           hostAddonsUsd: hostClaim.addonsUsd,
+          hostNotes: hostClaim.notes,
           paymentMode: hostPaymentMode,
         }),
       });
@@ -1306,7 +1331,7 @@ export default function MasterProductModal({
                         <p className="text-xs font-bold text-slate-800 truncate">{p.name}{p.isHost && !/anfitri/i.test(String(p.name)) ? ' (Anfitrión)' : ''}</p>
                         <span className={`shrink-0 text-[9px] font-black px-1.5 py-0.5 rounded-full border ${isReady ? 'bg-emerald-50 text-emerald-700 border-emerald-200' : 'bg-amber-50 text-amber-700 border-amber-200'}`}>{isReady ? 'Listo' : 'Eligiendo'}</span>
                       </div>
-                      <p className="text-[10px] text-slate-500 font-medium">{p.unitsCount} {p.unitsCount === 1 ? 'unidad' : 'unidades'} · {detailParts.length > 0 ? detailParts.join(' + ') : 'Con todo'}</p>
+                      <p className="text-[10px] text-slate-500 font-medium">{p.unitsCount} {p.unitsCount === 1 ? 'unidad' : 'unidades'} · {detailParts.length > 0 ? detailParts.join(' + ') : 'Con todo'}{Array.isArray(p.notes) && p.notes.length > 0 ? ` • Nota: ${p.notes.join(' / ')}` : ''}</p>
                       {p.isHost && (
                         <button
                           type="button"
@@ -1541,7 +1566,7 @@ export default function MasterProductModal({
                             >
                               <span className={isSelected ? 'text-[#FE6712]' : 'text-slate-400 font-black'}>{isSelected ? '✓' : '+'}</span>
                               <span className="truncate max-w-[150px]">{opt.name || opt.title}</span>
-                              {opt.price > 0 && <span className={isSelected ? 'text-orange-700 font-black' : 'text-slate-500'}>(+$${opt.price.toFixed(2)})</span>}
+                              {opt.price > 0 && <span className={isSelected ? 'text-orange-700 font-black' : 'text-slate-500'}>(+${opt.price.toFixed(2)})</span>}
                             </button>
                           );
                         })}
@@ -1608,6 +1633,13 @@ export default function MasterProductModal({
                 
                 return groupsRendered;
               })()}
+
+              {/* Sugerencia para la cocina de ESTA unidad (acordeón compacto, máx. 70 caracteres) */}
+              <KitchenNote
+                key={activeSlotIndex}
+                value={slots[activeSlotIndex]?.notes || ''}
+                onChange={(v) => setSlots((prev) => prev.map((s, i) => (i === activeSlotIndex ? { ...s, notes: v } : s)))}
+              />
             </div>
                         {/* BOTÓN PRINCIPAL ANCHO — PIE DE LA PERSONALIZACIÓN */}
             <div className="pt-4 pb-6 px-1">
@@ -1666,6 +1698,11 @@ export default function MasterProductModal({
                 ))}
               </div>
             </div>
+          )}
+
+          {/* Sugerencia para la cocina del producto simple individual (punto 2 de 2 donde se permiten notas) */}
+          {viewMode === 'options' && !isCombo && !isSlotMode && (
+            <KitchenNote value={productNote} onChange={setProductNote} />
           )}
         </div>
       )}

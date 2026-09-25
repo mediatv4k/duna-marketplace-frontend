@@ -3,6 +3,7 @@
 import React, { useState, useEffect, useCallback, useRef } from 'react';
 import { getProduct } from '@/services/marketplaceService';
 import { getBCVRate } from '@/lib/bcvRate';
+import KitchenNote, { cleanKitchenNote } from '@/components/KitchenNote';
 
 interface ParticipantClaim {
   id: string;
@@ -11,6 +12,7 @@ interface ParticipantClaim {
   exclusions: string[];
   selectedVariants: Record<string, any>;
   subtotalUsd: number;
+  notes?: string[];
   isHost: boolean;
   completedAt: string | null;
 }
@@ -130,6 +132,8 @@ export default function ComboRoomPage({ params }: { params: { id: string } }) {
 
   // Adicionales (papas, bebidas…) que el invitado suma a su porción: clave `${grupo}:${code}` → cantidad
   const [addonCounts, setAddonCounts] = useState<Record<string, number>>({});
+  // Sugerencia para la cocina de las unidades del invitado (máx. 70 caracteres)
+  const [guestNote, setGuestNote] = useState('');
 
   const [deadRoomStoreSlug, setDeadRoomStoreSlug] = useState<string | null>(null);
 
@@ -308,6 +312,7 @@ export default function ComboRoomPage({ params }: { params: { id: string } }) {
           selectedVariants: addonItems.length > 0 ? { ...variants, addons: addonItems } : variants,
           exclusions,
           addonsUsd: getAddonsUsd(),
+          notes: cleanKitchenNote(guestNote) ? [cleanKitchenNote(guestNote)] : [],
         }),
       });
       const data = await res.json();
@@ -543,6 +548,9 @@ export default function ComboRoomPage({ params }: { params: { id: string } }) {
                   </div>
                 )}
 
+                {/* Sugerencia para la cocina (acordeón compacto, punto donde se permiten notas para el invitado) */}
+                <KitchenNote value={guestNote} onChange={setGuestNote} />
+
                 {/* Tu parte, Bs. protagonista (Pago Móvil) + referencia en USD y tasa BCV */}
                 <div className="rounded-2xl border border-orange-200 bg-orange-50/60 p-3.5 space-y-1">
                   <p className="text-[10px] font-black text-slate-500 uppercase tracking-wider">
@@ -630,6 +638,9 @@ export default function ComboRoomPage({ params }: { params: { id: string } }) {
                 <p className="text-xs text-red-500 font-bold mt-1.5">{myClaim.exclusions.map(e => e.toUpperCase().startsWith('SIN ') ? e : 'Sin ' + e).join(', ')}</p>
               ) : (
                 <p className="text-xs text-emerald-600 font-bold mt-1.5">Con Todo</p>
+              )}
+              {Array.isArray(myClaim.notes) && myClaim.notes.length > 0 && (
+                <p className="text-xs text-slate-600 font-bold mt-1">Nota para la cocina: {myClaim.notes.join(' / ')}</p>
               )}
               {Object.values(myClaim.selectedVariants || {}).flatMap((sel: any) => (Array.isArray(sel) ? sel : [])).filter((it: any) => (it?.count || 0) > 0).map((it: any, i: number) => (
                 <p key={i} className="text-xs text-slate-600 font-bold mt-1">+ {it.count > 1 ? `${it.count}x ` : ''}{it.name}</p>
