@@ -480,15 +480,15 @@ export default function OrderTrackingModal({ isOpen, onClose, orderId, orderSumm
                               if (/sale con todo/i.test(trimmed)) return;
                               if (/^---/.test(trimmed)) return;
 
-                              // ── Price extraction: (+$X.XX) anywhere in line ──
-                              const priceMatch = trimmed.match(/\(\+\$\s*([0-9]+(?:\.[0-9]{1,2})?)\)/);
+                              // ── Price extraction: (+5.10) or (+$5.10) anywhere in line ──
+                              const priceMatch = trimmed.match(/\(\+\s*\$?\s*([0-9]+(?:\.[0-9]{1,2})?)\)/);
                               if (priceMatch) {
                                 const extPrice = Number(priceMatch[1]);
                                 const cleanedName = trimmed
                                   .replace(/^-\s*/, '')
                                   .replace(/^>>\s*EXTRA:\s*/i, '')
                                   .replace(/\[[^\]]*\]\s*/g, '')
-                                  .replace(/\(\+\$[0-9.]+\)/g, '')
+                                  .replace(/\(\+\s*\$?\s*[0-9]+(?:\.[0-9]{1,2})?\)/g, '')
                                   .replace(/\s{2,}/g, ' ')
                                   .trim();
 
@@ -496,6 +496,7 @@ export default function OrderTrackingModal({ isOpen, onClose, orderId, orderSumm
                                   financialExtras.push({ name: cleanedName, participant: currentParticipant, price: extPrice });
                                 }
                               }
+
                             });
                             
                             // Fallback to item.variants if no string-based extras found
