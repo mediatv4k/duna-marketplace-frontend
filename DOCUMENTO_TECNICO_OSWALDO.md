@@ -1,146 +1,69 @@
-# DOCUMENTO TÉCNICO OSWALDO
+# CONTRATO TÉCNICO OFICIAL FRONTEND — BACKEND (ADONISJS 5)
+> **Repositorio Frontend:** carjos-marketplace-web (Next.js)
+> **Repositorio Backend:** carjos-marketplace-core (AdonisJS 5)
+> **Base URL (DEV):** [https://dev.carjos-marketplace.cloud](https://dev.carjos-marketplace.cloud)
+> **API Key (DEV):** bf8f1b64-6342-48c5-af05-501e4c15a6cb
 
-## Especificaciones del Backend de AdonisJS para el Marketplace
+---
 
-### Información General
-Este documento técnico define las especificaciones exactas para las llamadas al backend de AdonisJS que implementa el marketplace. El backend está desplegado en `https://dev.carjos-marketplace.cloud` y sigue un enfoque de API REST con validación estricta de payloads y manejo específico de errores de negocio.
+## 1. CONVENCIÓN GENERAL DE RESPUESTAS Y CÓDIGOS DE NEGOCIO
+- HTTP 200/201 con code: 1 -> Éxito.
+- HTTP 200 con code: 15 -> Error de validación de negocio (comercio cerrado, stock insuficiente, sin jornada).
+- HTTP 200 con code: 21 -> Inconsistencia de montos o cupón no aplicable (rollback automático).
 
-### Configuración Base
+---
 
-#### URL Base del API
-```
-https://dev.carjos-marketplace.cloud
-```
+## 2. CHECKOUT Y COMPRA WEB (CUSTOMER)
+Endpoint: POST /delivery/request/purchase/web (multipart/form-data)
+Headers: apiKey, timeZone: America/Caracas
+FormData:
+- orderData: JSON string
+- paymentFile: archivo binario opcional
 
-#### Headers Globales (Obligatorios)
-Todas las solicitudes al API deben incluir los siguientes headers exactos (SIN prefijo X-):
-
-```
-apiKey: bf8f1b64-6342-48c5-af05-501e4c15a6cb
-timeZone: America/Caracas
-```
-
-### Endpoint Principal: Solicitud de Compra
-
-#### Endpoint
-```
-POST /delivery/request/purchase/web
-```
-
-#### Tipo de Request
-**multipart/form-data** - Requiere tanto `orderData` (JSON string) como opcionalmente `paymentFile` (comprobante de pago)
-
-#### Headers del Request
-```
-apiKey: bf8f1b64-6342-48c5-af05-501e4c15a6cb
-timeZone: America/Caracas
-```
-
-#### Body del Request (multipart/form-data)
-
-**Campo 1: `orderData`**
-- **Tipo**: JSON string
-- **Descripción**: Payload principal que contiene toda la información del pedido
-
-**Campo 2: `paymentFile` (Opcional)**
-- **Tipo**: Archivo (image/png, image/jpeg, application/pdf)
-- **Descripción**: Comprobante de pago para validación
-
-### Estructura de Payload `orderData`
-
-```json
+### Estructura de orderData.data[] (Por ítem):
 {
-  "id": null,
-  "data": [
+  "id": 101,
+  "code": "P010",
+  "name": "Producto",
+  "image": "https://...",
+  "comments": "Sugerencias de cocina (poca salsa, sin cebolla, etc.)",
+  "cant": 1,
+  "pricing": {
+    "unitBasePrice": 10.00,
+    "addonsTotal": 2.50,
+    "unitFinalPrice": 12.50
+  },
+  "totalPrice": 12.50,
+  "variants": [
     {
-      "id": 101,
-      "code": "P001",
-      "name": "Producto Test",
-      "image": "",
-      "cant": 1,
-      "pricing": {
-        "unitBasePrice": 10.0,
-        "addonsTotal": 0,
-        "unitFinalPrice": 10.0
-      },
-      "totalPrice": 10.0,
-      "variants": [],
-      "promo": null
+      "name": "Adicionales",
+      "code": "ADDONS",
+      "type": "MULTIPLE",
+      "items": [
+        { "code": "PAPAS", "title": "Papas Fritas", "quantity": 1, "unitPrice": 2.50, "totalPrice": 2.50 }
+      ]
     }
   ],
-  "service": "DELIVERY",
-  "location": {
-    "lat": 10.3910,
-    "lng": -71.4423
-  },
-  "duration": "15",
-  "distance": "1.0",
-  "durationText": "15 mins",
-  "distanceText": "1.0 km",
-  "serviceAmount": "15.00",
-  "address": "Cabimas, Zulia",
-  "phone": "+584121234567",
-  "customerName": "Juan Pérez",
-  "customerDocument": "V-12345678",
-  "ftoken": "",
-  "paymentRef": "REF123456",
-  "totalPaidReferenceAmount": "150.00",
-  "totalPaidDefaultAmount": "12.50",
-  "totalWithoutDiscount": "15.00",
-  "paymentMethod": {
-    "code": "PAGO",
-    "value": "Banco"
-  },
-  "tip": "0.50",
-  "store": {
-    "id": 1,
-    "phone": "+584121111111"
-  },
-  "foodStoreId": "1",
-  "couponId": null,
-  "couponCode": null,
-  "discountAmount": "0"
+  "promo": null
 }
-```
 
-### Códigos de Error de Negocio
+### Reglas de Revalidación (Blindaje code: 21):
+- El backend recalcula el total de la orden en base de datos.
+- totalPaidDefaultAmount debe coincidir exactamente con la suma de precios base + pricing.addonsTotal + fees.
+- Las notas de cocina por ítem viajan exclusivamente en la propiedad `comments`.
 
-#### Error Code 1
-- **Significado**: Éxito - Pedido creado exitosamente
+---
 
-#### Error Code 15
-- **Significado**: Error de validación - Problema con stock, comercio cerrado o datos inválidos
+## 3. LOGÍSTICA Y TARIFAS DE ENVÍO
+- Endpoint: GET /delivery/request/purchase/deliveryRate?storeId=&lat=&lng=&distance=&duration=
+- Regla: El monto de entrega (serviceAmount) depende únicamente de distancia, duración y zonas. El peso y volumen no alteran la tarifa pagada por el cliente.
 
-#### Error Code 21
-- **Significado**: Error de inconsistencia - Desajuste en los montos calculados
-- **Causas**: Inconsistencia entre `totalPaidDefaultAmount` (USD) y `totalPaidReferenceAmount` (Bs), error en cálculo de cupón o descuento, desajuste entre subtotal + envío + propina vs total.
+---
 
-### Referencia cURL (Ejemplo de Oswaldo)
-
-```bash
-curl -X POST https://dev.carjos-marketplace.cloud/delivery/request/purchase/web \
-  -H "apiKey: bf8f1b64-6342-48c5-af05-501e4c15a6cb" \
-  -H "timeZone: America/Caracas" \
-  -F "orderData={...}" \
-  -F "paymentFile=@/path/to/comprobante.jpg"
-```
-
-### Observaciones Importantes
-
-#### Validación de Montos (Error Code 21)
-
-Para evitar **Error Code 21**, asegúrese que:
-
-1. **`totalPaidDefaultAmount`** = subtotalNeto + costoEnvio + propina (en USD)
-2. **`totalPaidReferenceAmount`** = totalFinalUSD * tasaBCV (en Bs)
-3. **`paymentMethod`**: `{ code: string, value: string }`
-
-### Resumen
-
-- **URL**: `https://dev.carjos-marketplace.cloud/delivery/request/purchase/web`
-- **Method**: POST
-- **Headers Requeridos**: `apiKey`, `timeZone` (NO usar X-API-Key)
-- **Campos**: `orderData` (obligatorio JSON string), `paymentFile` (opcional file)
-- **Error Codes**: 1 (éxito), 15 (validación/comercio cerrado), 21 (inconsistencia de montos)
-- **Key**: `bf8f1b64-6342-48c5-af05-501e4c15a6cb`
-- **Timezone**: `America/Caracas`
+## 4. PORTAL DE COMERCIO (STORE)
+- Token de sesión en localStorage: "iac_store"
+- Endpoints protegidos con Authorization: Bearer <iac_store> y apiKey:
+  - GET /store/:storeId/products/all
+  - POST /product y PUT /product/:id
+  - POST /store/:storeId/products/batch/v2 (Carga masiva Excel)
+  - GET /store/:storeId/products/download/v2 (Exportar Excel)

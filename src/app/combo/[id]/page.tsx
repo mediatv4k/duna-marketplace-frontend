@@ -291,7 +291,7 @@ export default function ComboRoomPage({ params }: { params: { id: string } }) {
     (room?.groups || []).forEach((g: any, gIdx: number) => {
       (g.options || []).forEach((o: any) => {
         const count = addonCounts[`${gIdx}:${o.code}`] || 0;
-        if (count > 0 && Number(o.price) > 0) items.push({ name: o.name, code: o.code, price: Number(o.price), count });
+        if (count > 0 && Number(o.price) > 0) items.push({ name: o.name, code: o.code, price: Number(o.price), count, groupName: g.name || g.title, groupCode: g.code, groupType: g.selectType });
       });
     });
     return items;

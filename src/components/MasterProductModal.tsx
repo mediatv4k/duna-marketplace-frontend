@@ -781,7 +781,36 @@ export default function MasterProductModal({
             if (clean) breakdown.push(`  >> NOTA: ${clean}`);
           });
         });
-      
+      // Estructura contractual (DOCUMENTO_TECNICO §2): los adicionales con precio viajan como `variants` + `pricing` y las
+      // sugerencias de cocina en `comments`. Las variantes son por unidad, así que solo se pueden representar con qty === 1;
+      // con más de un combo el ítem sigue viajando sin estructurar (mismo comportamiento de antes; ver AGENTS.md).
+      const roomGroups = new Map<string, any>();
+      let roomAddonsAll = 0;
+      comboRoomData.participants.forEach((p: any) => {
+        const list: any[] = Array.isArray(p.selectedVariants?.addons) ? p.selectedVariants.addons : [];
+        list.forEach((it: any) => {
+          const unitP = Number(it.price || 0);
+          const cnt = Number(it.count || 0);
+          if (!(unitP > 0) || !(cnt > 0)) return;
+          roomAddonsAll += unitP * cnt;
+          const gCode = String(it.groupCode ?? 'ADDONS');
+          const g = roomGroups.get(gCode) || { name: it.groupName || 'Adicionales', code: gCode, type: it.groupType || 'MULTIPLE', items: [] as any[] };
+          const ex = g.items.find((x: any) => x.code === it.code);
+          if (ex) { ex.quantity += cnt; ex.totalPrice += unitP * cnt; }
+          else g.items.push({ code: it.code, title: it.name, quantity: cnt, unitPrice: unitP, totalPrice: unitP * cnt });
+          roomGroups.set(gCode, g);
+        });
+      });
+      const roomComments = comboRoomData.participants
+        .map((p: any) => {
+          const ns = (Array.isArray(p.notes) ? p.notes : []).map((n: string) => cleanKitchenNote(n)).filter(Boolean);
+          return ns.length > 0 ? `${String(p.name || 'INVITADO')}: ${ns.join(' / ')}` : '';
+        })
+        .filter(Boolean)
+        .join(' | ');
+      const roomStructured = qty === 1 && roomGroups.size > 0;
+      const round2 = (n: number) => Math.round(n * 100) / 100;
+
       onAddToCart({
         // Código real del backend (igual que el flujo normal); el id solo como último recurso
         productCode: String(product.code || product.id),
@@ -792,6 +821,9 @@ export default function MasterProductModal({
         totalUSD: totalCartPrice,
         summaryText: breakdown.join(' | '),
         breakdown: breakdown,
+        variants: roomStructured ? Array.from(roomGroups.values()) : undefined,
+        pricing: roomStructured ? { unitBasePrice: round2(totalCartPrice - roomAddonsAll), addonsTotal: round2(roomAddonsAll), unitFinalPrice: round2(totalCartPrice) } : undefined,
+        notes: roomComments || undefined,
         proceedToCheckout: proceedToCheckout === true
       });
       if (typeof window !== 'undefined') window.localStorage.removeItem('duna_pedido_amigos_active');
@@ -886,6 +918,15 @@ export default function MasterProductModal({
     // Producto simple individual: la sugerencia viaja en el desglose (Comanda POS) y como `notes` del ítem
     const simpleNote = !isSlotMode ? cleanKitchenNote(productNote) : '';
     if (simpleNote) breakdown.push(`Nota: ${simpleNote}`);
+    // Personalización por unidad (sin sala): las notas de cada ranura se resumen en `comments`
+    const slotComments = isSlotMode
+      ? activeSlots.map((s, i) => {
+          const n = cleanKitchenNote(s.notes || '');
+          if (!n) return '';
+          const t = s.name?.trim();
+          return `#${i + 1}${t ? ` (${t})` : ''}: ${n}`;
+        }).filter(Boolean).join(' | ')
+      : '';
 
     // Estructura de variantes para el backend (pricingRole BASE reemplaza el precio, ADDON se suma)
     let unitBasePrice = product.price || 0;
@@ -940,7 +981,7 @@ export default function MasterProductModal({
       slots: isSlotMode ? slots : undefined,
       variants: isSlotMode ? undefined : variantsPayload,
       pricing: isSlotMode ? undefined : { unitBasePrice, addonsTotal, unitFinalPrice },
-      notes: simpleNote || undefined
+      notes: simpleNote || slotComments || undefined
     });
     // Marcar sala colaborativa como completada y limpiar barra flotante
     if (comboRoomId && typeof window !== 'undefined') {
@@ -993,7 +1034,8 @@ export default function MasterProductModal({
       const note = cleanKitchenNote(slot.notes || '');
       if (note) notes.push(units > 1 ? `U${i + 1}: ${note}` : note);
       (slot.exclusions || []).forEach((e: string) => { if (!exclusions.includes(e)) exclusions.push(e); });
-      Object.values(slot.selectedVariants || {}).forEach((sel: any) => {
+      Object.entries(slot.selectedVariants || {}).forEach(([gKey, sel]: [string, any]) => {
+        const grp: any = availableGroups[Number(gKey)];
         const list: any[] = Array.isArray(sel) ? sel : (sel && sel.name ? [{ ...sel, count: 1 }] : []);
         list.forEach((it: any) => {
           const count = it.count || 0;
@@ -1001,7 +1043,11 @@ export default function MasterProductModal({
           const price = Number(it.price || 0);
           const key = String(it.code ?? it.id ?? it.name);
           const prev = merged.get(key);
-          merged.set(key, { name: it.name, code: it.code ?? it.id, price, count: (prev?.count || 0) + count });
+          // Se conserva el grupo real del backend (nombre/código/tipo) para poder estructurar `variants` al pasar a caja
+          merged.set(key, {
+            name: it.name, code: it.code ?? it.id, price, count: (prev?.count || 0) + count,
+            groupName: grp?.name || grp?.title, groupCode: grp?.code, groupType: grp ? (isCheckinGroup(grp) ? "CHECKIN" : (grp.selectType || "MULTIPLE")) : undefined,
+          });
           addonsUsd += price * count;
         });
       });

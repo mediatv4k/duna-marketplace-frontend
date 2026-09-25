@@ -360,6 +360,8 @@ export default function CheckoutModal({
         code: String(item?.code),
         name: String(item.name || 'Producto'),
         image: String(item.image || item.img || ''),
+        // Contrato (§2): las sugerencias de cocina por ítem viajan SOLO en `comments`; se omite si el ítem no tiene nota
+        ...(typeof item.notes === 'string' && item.notes.trim() ? { comments: item.notes.trim() } : {}),
         cant: cantNum,
         pricing: {
           unitBasePrice: itemPricing?.unitBasePrice ?? basePrice,
