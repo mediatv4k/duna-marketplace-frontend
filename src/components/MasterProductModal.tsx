@@ -1180,6 +1180,77 @@ export default function MasterProductModal({
     ? `https://wa.me/?text=${encodeURIComponent(`¡Arma tu pedido conmigo! Elige tu opción aquí: ${comboLink}`)}`
     : '';
 
+  // ── Faro guiado reactivo (Visual Beacon Flow) ─────────────────────────────────────────────────────────────────────
+  // Resalta con un pulso breve (máx. 2.5 s, se apaga solo) el siguiente paso natural del flujo colaborativo y hace
+  // scroll suave hacia él. React nativo + Tailwind: sin librerías. IMPORTANTE: estos hooks van ANTES del return null.
+  const [activeBeacon, setActiveBeacon] = useState<"options" | "hostCustomize" | "shareWhatsApp" | "proceed" | null>(null);
+  const beaconTimerRef = React.useRef<ReturnType<typeof setTimeout> | null>(null);
+  const prevViewModeRef = React.useRef(viewMode);
+  const modeOptionsRef = React.useRef<HTMLDivElement>(null);
+  const hostCardRef = React.useRef<HTMLDivElement>(null);
+  const launchBtnRef = React.useRef<HTMLButtonElement>(null);
+  const proceedBtnRef = React.useRef<HTMLButtonElement>(null);
+
+  const fireBeacon = (beacon: "options" | "hostCustomize" | "shareWhatsApp" | "proceed", ms = 2500) => {
+    if (beaconTimerRef.current) clearTimeout(beaconTimerRef.current);
+    setActiveBeacon(beacon);
+    beaconTimerRef.current = setTimeout(() => setActiveBeacon(null), ms);
+  };
+  // Con "reducir movimiento" el scroll es instantáneo (sin animación) y el pulso no anima (motion-safe: en las clases)
+  const beaconScrollTo = (el: HTMLElement | null, block: ScrollLogicalPosition = "center") => {
+    if (!el) return;
+    const reduce = typeof window !== "undefined" && window.matchMedia?.("(prefers-reduced-motion: reduce)").matches;
+    el.scrollIntoView({ behavior: reduce ? "auto" : "smooth", block });
+  };
+  const BEACON_ORANGE = "ring-2 ring-[#FE6712] ring-offset-2 shadow-md shadow-[#FE6712]/20 motion-safe:animate-pulse";
+  const BEACON_GREEN = "ring-2 ring-emerald-500 ring-offset-2 motion-safe:animate-pulse";
+
+  // ¿El anfitrión ya personalizó alguna de sus unidades? (exclusión, nota o cualquier opción con cantidad)
+  const hostHasCustomized = slots.slice(0, hostSetupUnits).some((s) =>
+    (s.exclusions && s.exclusions.length > 0) || !!s.notes ||
+    Object.values(s.selectedVariants || {}).some((sel: any) => (Array.isArray(sel) ? sel.some((i: any) => (i.count || 0) > 0) : !!sel?.name))
+  );
+
+  // Hitos 1-3: al cambiar de vista (una espera corta deja que la vista nueva se pinte antes de medir/scrollear)
+  useEffect(() => {
+    const prev = prevViewModeRef.current;
+    prevViewModeRef.current = viewMode;
+    if (!isOpen || prev === viewMode) return;
+    const t = setTimeout(() => {
+      if (viewMode === "customize") {
+        // Hito 1: "Personalizar combo" -> las dos opciones
+        beaconScrollTo(modeOptionsRef.current);
+        fireBeacon("options", 2000);
+      } else if (viewMode === "host_setup") {
+        // Hito 2 (aún sin personalizar: pulso en "Personalizar mi …") / Hito 3 (ya personalizó o regresa de personalizar: pulso verde en lanzar)
+        beaconScrollTo(hostCardRef.current);
+        if (hostHasCustomized) {
+          beaconScrollTo(launchBtnRef.current, "nearest");
+          fireBeacon("shareWhatsApp");
+        } else {
+          fireBeacon("hostCustomize");
+        }
+      }
+    }, 80);
+    return () => clearTimeout(t);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [viewMode]);
+
+  // Hito 4: la sala se llenó (los panas ocuparon todas las ranuras) -> foco y pulso en "Proceder al Pago y Despacho"
+  const roomFull = viewMode === "comboRoom" && !!comboAllDone;
+  useEffect(() => {
+    if (!roomFull) return;
+    const t = setTimeout(() => {
+      beaconScrollTo(proceedBtnRef.current, "nearest");
+      proceedBtnRef.current?.focus({ preventScroll: true });
+      fireBeacon("proceed");
+    }, 80);
+    return () => clearTimeout(t);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [roomFull]);
+
+  useEffect(() => () => { if (beaconTimerRef.current) clearTimeout(beaconTimerRef.current); }, []);
+
   if (!isOpen || !product) return null;
 
 
@@ -1224,9 +1295,10 @@ export default function MasterProductModal({
               <h4 className="text-sm font-black text-slate-900 uppercase tracking-wider">Volver al producto</h4>
             </div>
             
+            <div ref={modeOptionsRef} className="space-y-4">
             <button
               onClick={() => { setSlotReturnView('options'); setViewMode('slots'); }}
-              className="w-full bg-white hover:bg-slate-50 border border-slate-200 text-slate-700 font-black py-4 px-4 rounded-xl text-sm transition text-left flex items-center justify-between group cursor-pointer"
+              className={`w-full bg-white hover:bg-slate-50 border border-slate-200 text-slate-700 font-black py-4 px-4 rounded-xl text-sm transition text-left flex items-center justify-between group cursor-pointer ${activeBeacon === 'options' ? BEACON_ORANGE : ''}`}
             >
               <div>
                 <span className="block text-sm">🎨 Personalizar aquí mismo</span>
@@ -1237,7 +1309,7 @@ export default function MasterProductModal({
 
             <button
               onClick={() => { setHostSetupUnits(1); setHostSetupExclusions([]); setViewMode('host_setup'); }}
-              className="w-full bg-[#25D366] hover:bg-[#20bd5a] text-white font-black py-4 px-4 rounded-xl text-sm transition text-left flex items-center justify-between shadow-md cursor-pointer"
+              className={`w-full bg-[#25D366] hover:bg-[#20bd5a] text-white font-black py-4 px-4 rounded-xl text-sm transition text-left flex items-center justify-between shadow-md cursor-pointer ${activeBeacon === 'options' ? BEACON_ORANGE : ''}`}
             >
               <div>
                 <span className="block text-sm">👥 Compartir entre panas por WhatsApp</span>
@@ -1245,6 +1317,7 @@ export default function MasterProductModal({
               </div>
               <svg className="w-5 h-5" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}><path strokeLinecap="round" strokeLinejoin="round" d="M17 20h5v-2a3 3 0 00-5.356-1.857M17 20H7m10 0v-2c0-.656-.126-1.283-.356-1.857M7 20H2v-2a3 3 0 015.356-1.857M7 20v-2c0-.656.126-1.283.356-1.857m0 0a5.002 5.002 0 019.288 0M15 7a3 3 0 11-6 0 3 3 0 016 0z" /></svg>
             </button>
+            </div>
           </div>
         )}
 
@@ -1274,7 +1347,7 @@ export default function MasterProductModal({
                 </div>
               </div>
               
-                              <div className="mt-3 space-y-2">
+                              <div ref={hostCardRef} className="mt-3 space-y-2">
                   <span className="text-[10px] font-bold text-slate-500 uppercase">Tus unidades</span>
                   {slots.slice(0, hostSetupUnits).map((slot, i) => {
                     const hasExclusions = slot.exclusions && slot.exclusions.length > 0;
@@ -1282,14 +1355,16 @@ export default function MasterProductModal({
                       if (Array.isArray(selection)) return selection.some(item => (item.count || 0) > 0 && (item.price || 0) > 0);
                       return selection?.price > 0;
                     });
-                    const hasModifications = hasExclusions || hasFinancialExtras;
+                    // Cualquier opción con cantidad (incluye las "SIN…" de precio 0) o una nota también cuenta como personalizado
+                    const hasAnyPick = Object.values(slot.selectedVariants).some((selection: any) => (Array.isArray(selection) ? selection.some((item: any) => (item.count || 0) > 0) : !!selection?.name));
+                    const hasModifications = hasExclusions || hasFinancialExtras || hasAnyPick || !!slot.notes;
                     return (
                       <div key={i} className="flex items-center justify-between bg-white p-3 rounded-xl border border-slate-200 shadow-xs">
                         <div>
                           <div className="text-xs font-bold text-slate-800">Tu {product?.name?.split(' ')[0] || 'Unidad'} {i + 1}</div>
                           <div className="text-[10px] text-slate-500">{hasModifications ? 'Personalizado' : 'Sale con todo (Estándar)'}</div>
                         </div>
-                        <button onClick={() => { setActiveSlotIndex(i); setSlotReturnView('host_setup'); setViewMode('slots'); }} className="text-[#fe6712] font-black text-[10px] bg-orange-50 px-2.5 py-1.5 rounded-lg border border-orange-100 hover:bg-orange-100 cursor-pointer">
+                        <button onClick={() => { setActiveSlotIndex(i); setSlotReturnView('host_setup'); setViewMode('slots'); }} className={`text-[#fe6712] font-black text-[10px] bg-orange-50 px-2.5 py-1.5 rounded-lg border border-orange-100 hover:bg-orange-100 cursor-pointer ${i === 0 && activeBeacon === 'hostCustomize' ? BEACON_ORANGE : ''}`}>
                           ⚙️ Personalizar mi {unitNoun}{hostSetupUnits > 1 ? ` ${i + 1}` : ''}
                         </button>
                       </div>
@@ -2250,8 +2325,9 @@ export default function MasterProductModal({
                     // Better to just let createComboRoom open whatsapp.
                   });
                 }}
+                ref={launchBtnRef}
                 disabled={comboCreating}
-                className="w-full bg-[#25D366] hover:bg-[#20bd5a] text-white font-black py-3.5 px-4 rounded-xl text-sm transition flex items-center justify-center gap-2 cursor-pointer shadow-md disabled:opacity-50"
+                className={`w-full bg-[#25D366] hover:bg-[#20bd5a] text-white font-black py-3.5 px-4 rounded-xl text-sm transition flex items-center justify-center gap-2 cursor-pointer shadow-md disabled:opacity-50 ${activeBeacon === 'shareWhatsApp' ? BEACON_GREEN : ''}`}
               >
                 {comboCreating ? (
                   <><div className="w-4 h-4 border-2 border-white border-t-transparent rounded-full animate-spin" /> Creando...</>
@@ -2272,8 +2348,9 @@ export default function MasterProductModal({
                 {comboAllDone ? (
                   <button
                     type="button"
+                    ref={proceedBtnRef}
                     onClick={() => handleAddToCart(true)}
-                    className="w-full bg-[#FE6712] hover:bg-[#E05509] text-white font-bold py-3.5 px-4 rounded-xl shadow-lg transition flex items-center justify-center gap-2 cursor-pointer active:scale-[0.98]"
+                    className={`w-full bg-[#FE6712] hover:bg-[#E05509] text-white font-bold py-3.5 px-4 rounded-xl shadow-lg transition flex items-center justify-center gap-2 cursor-pointer active:scale-[0.98] ${activeBeacon === 'proceed' ? BEACON_ORANGE : ''}`}
                   >
                     Proceder al Pago y Despacho ({comboRoomData.totalUnits}/{comboRoomData.totalUnits}) <ArrowRight className="w-4 h-4" />
                   </button>
