@@ -1120,7 +1120,7 @@ export default function MasterProductModal({
 
             <div className="pt-3 border-t border-slate-200">
               <p className="text-xs font-black text-slate-800 uppercase mb-2">2. Modalidad de Pago</p>
-              <div className="grid grid-cols-1 sm:grid-cols-2 gap-2">
+              <div className="flex flex-row overflow-x-auto gap-2.5 pb-1 pt-0.5 no-scrollbar snap-x">
                 <button
                   onClick={() => setHostPaymentMode('split')}
                   className={`p-2.5 rounded-xl border text-left transition cursor-pointer flex gap-2 ${hostPaymentMode === 'split' ? 'bg-orange-50 border-[#fe6712] ring-1 ring-[#fe6712]' : 'bg-white border-slate-200 hover:border-slate-300'}`}
@@ -1290,13 +1290,13 @@ export default function MasterProductModal({
           <div className="space-y-4">
             {/* 1. CABECERA 2 RENGLONES: NAVEGACIÓN + INPUT ANCHO COMPLETO */}
             <div className="sticky top-0 bg-white z-20 border-b border-slate-100 shadow-xs">
-              {/* Renglón 1: Atrás | Unidad X de Y | Cerrar */}
-              <div className="flex items-center justify-between px-3 sm:px-4 py-2.5 gap-2">
+              {/* Renglón 1: Atrás | Unidad X de Y */}
+              <div className="flex items-center justify-between px-3 sm:px-4 py-2 gap-2">
                 <button
                   type="button"
                   disabled={activeSlotIndex === 0}
                   onClick={() => setActiveSlotIndex(Math.max(0, activeSlotIndex - 1))}
-                  className="flex items-center gap-1.5 text-slate-600 disabled:opacity-30 disabled:cursor-not-allowed bg-slate-50 hover:bg-slate-100 px-3 py-2 rounded-lg border border-slate-200 shrink-0 transition cursor-pointer"
+                  className="flex items-center gap-1.5 text-slate-600 disabled:opacity-30 disabled:cursor-not-allowed bg-slate-50 hover:bg-slate-100 px-2.5 py-1.5 rounded-lg border border-slate-200 shrink-0 transition cursor-pointer"
                 >
                   <svg className="w-4 h-4" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2.5}><path strokeLinecap="round" strokeLinejoin="round" d="M15 19l-7-7 7-7" /></svg>
                   <span className="text-xs font-bold hidden sm:inline">Atrás</span>
@@ -1306,27 +1306,13 @@ export default function MasterProductModal({
                   Unidad {activeSlotIndex + 1} de {slots.length}
                 </span>
 
-                <button
-                  type="button"
-                  onClick={() => {
-                    const configuredCount = slots.filter(s => Object.keys(s.selectedVariants).length > 0 || s.exclusions?.length > 0).length;
-                    if (configuredCount > 0 && configuredCount < slots.length) {
-                      if (window.confirm(`Has configurado ${configuredCount} de ${slots.length} unidades. ¿Salir? Las restantes saldrán "Con Todo".`)) {
-                        setViewMode('options');
-                      }
-                    } else {
-                      setViewMode('options');
-                    }
-                  }}
-                  className="flex items-center justify-center w-8 h-8 rounded-full bg-slate-100 hover:bg-slate-200 text-slate-500 hover:text-slate-800 transition cursor-pointer shrink-0"
-                  aria-label="Cerrar personalización"
-                >
-                  <svg className="w-4 h-4" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2.5}><path strokeLinecap="round" strokeLinejoin="round" d="M6 18L18 6M6 6l12 12" /></svg>
-                </button>
+                {/* Spacer to keep text centered */}
+                <div className="w-8 shrink-0" />
               </div>
 
-              {/* Renglón 2: Input de nombre a ancho completo */}
-              <div className="px-3 sm:px-4 pb-3">
+
+              {/* Renglón 2: Input de nombre compacto */}
+              <div className="px-3 sm:px-4 pb-2">
                 <input
                   type="text"
                   value={slots[activeSlotIndex].name || ''}
@@ -1337,21 +1323,21 @@ export default function MasterProductModal({
                   }}
                   placeholder="¿Para quién es este? (Ej. Carlos, Mamá)"
                   maxLength={30}
-                  className="w-full h-11 text-sm px-3.5 py-2.5 rounded-xl border border-slate-200 bg-slate-50 font-medium text-slate-900 placeholder:text-slate-400 focus:bg-white focus:outline-none focus:border-[#FE6712] transition"
+                  className="w-full h-9 text-xs px-3 py-1 rounded-lg border border-slate-200 bg-slate-50 font-medium text-slate-900 placeholder:text-slate-400 focus:bg-white focus:outline-none focus:border-[#FE6712] transition"
                 />
               </div>
             </div>
 
 
             {/* Active Slot Content */}
-            <div className="p-4 sm:p-5 bg-white border border-slate-100 rounded-2xl space-y-6 shadow-sm">
+            <div className="p-3 sm:p-4 bg-white border border-slate-100 rounded-2xl space-y-4 shadow-sm">
               {/* 2. CUADRÍCULA COMPACTA DE EXCLUSIONES (2 COLUMNAS) */}
               {product.exclusions && product.exclusions.length > 0 && (
-                <div className="space-y-2.5 bg-slate-50 p-3 rounded-xl border border-slate-100">
+                <div className="space-y-1.5 bg-slate-50 px-3 py-2.5 rounded-xl border border-slate-100">
                   <p className="text-[10px] font-black text-slate-500 uppercase tracking-wider">
                     Ingredientes a excluir:
                   </p>
-                  <div className="grid grid-cols-2 gap-2">
+                  <div className="flex flex-wrap gap-1.5">
                     {product.exclusions.map((exc: string) => {
                       const isChecked = slots[activeSlotIndex].exclusions?.includes(exc);
                       const displayLabel = exc.toUpperCase().startsWith('SIN ') ? exc : 'Sin ' + exc;
@@ -1454,7 +1440,7 @@ export default function MasterProductModal({
                         <p className="text-[10px] font-black text-slate-500 uppercase tracking-wider">
                           ¿Acompañamos esta unidad?
                         </p>
-                        <div className="grid grid-cols-1 sm:grid-cols-2 gap-2">
+                        <div className="flex flex-row overflow-x-auto gap-2.5 pb-1 pt-0.5 no-scrollbar snap-x">
                           {realExtras.map((opt: any) => {
                             const matched = Array.isArray(currentSlotVars)
                               ? currentSlotVars.find((i: any) => (i.code === opt.id || i.id === opt.id))
@@ -1462,12 +1448,12 @@ export default function MasterProductModal({
                             const isSelected = !!matched && (matched.count > 0);
                             
                             return (
-                              <div key={opt.id} className={`flex items-center gap-2 p-2 rounded-xl border transition cursor-pointer ${isSelected ? 'border-[#FE6712]/50 bg-[#fff5ed]' : 'border-slate-200 bg-white hover:border-[#FE6712]/30'}`} onClick={() => {
+                              <div key={opt.id} className={`w-36 shrink-0 snap-start p-2 rounded-xl border border-slate-100 bg-white shadow-xs border flex flex-col justify-between transition cursor-pointer ${isSelected ? 'border-[#FE6712]/50 bg-[#fff5ed]' : 'border-slate-200 bg-white hover:border-[#FE6712]/30'}`} onClick={() => {
                                    const delta = isSelected ? -1 : 1;
                                    handleSlotOptionQuantityChange(fallbackGIdx, opt.id, delta, { id: opt.id, name: opt.name, price: Number(opt.price) || 0, sku: opt.sku || opt.code || '' });
                                 }}>
-                                <img src={opt.image || opt.imageUrl || 'https://placehold.co/100x100?text=Extra'} alt={opt.name} className="w-11 h-11 rounded-lg object-cover bg-white border border-slate-100 p-0.5 shrink-0" />
-                                <div className="flex-1 min-w-0">
+                                <img src={opt.image || opt.imageUrl || 'https://placehold.co/100x100?text=Extra'} alt={opt.name} className="w-full h-14 object-cover rounded-lg mb-1.5 bg-white" />
+                                <div>
                                   <p className="text-[11px] font-bold text-slate-900 truncate">{opt.name}</p>
                                   <div className="flex items-center gap-1.5 mt-0.5">
                                     {opt.sku || opt.code ? <span className="text-[9px] font-bold text-slate-400">{(opt.sku || opt.code || '').substring(0, 8)}</span> : null}
@@ -1476,7 +1462,7 @@ export default function MasterProductModal({
                                 </div>
                                 <button
                                   type="button"
-                                  className={`shrink-0 h-7 px-2.5 rounded-lg text-[10px] font-bold flex items-center transition ${isSelected ? 'bg-[#FE6712]/10 text-[#FE6712]' : 'bg-slate-100 text-slate-600 hover:bg-slate-200'}`}
+                                  className={`w-full mt-1.5 py-1 text-[11px] font-bold rounded-lg flex items-center justify-center transition ${isSelected ? 'bg-[#FE6712]/10 text-[#FE6712] border border-[#FE6712]/30' : 'bg-slate-100 text-slate-600 hover:bg-slate-200'}`}
                                 >
                                   {isSelected ? '✓ Agregado' : '+ Agregar'}
                                 </button>
