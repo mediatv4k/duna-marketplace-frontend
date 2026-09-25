@@ -193,7 +193,7 @@ export default function MasterProductModal({
   // ── Pedido Colaborativo ("Armar Combo con Amigos en Vivo") ─────────────────
   const [comboRoomId, setComboRoomId] = useState<string | null>(null);
   const [comboRoomData, setComboRoomData] = useState<any>(null);
-    const [viewMode, setViewMode] = useState<'options' | 'customize' | 'comboRoom' | 'host_setup'>('options');
+    const [viewMode, setViewMode] = useState<'options' | 'customize' | 'slots' | 'host_setup' | 'comboRoom'>('options');
     const [hostPaymentMode, setHostPaymentMode] = useState<'split' | 'host_pays'>('split');
     const [hostSetupUnits, setHostSetupUnits] = useState(1);
     const [hostSetupExclusions, setHostSetupExclusions] = useState<string[]>([]);
@@ -346,7 +346,7 @@ export default function MasterProductModal({
   );
 
   const [isSlotCustomizationActive, setIsSlotCustomizationActive] = useState<boolean>(false);
-  const isSlotMode = false;
+  const isSlotMode = isSlotCustomizationActive && (isCombo || qty > 1);
   // Nombre visible de cada unidad: el del producto ("Perro Sencillo #1"), nunca la palabra genérica "Ranura"
   const unitLabel = product?.name || 'Unidad';
 
@@ -1002,56 +1002,49 @@ export default function MasterProductModal({
       )}
 
       {/* Variantes Globales: selección única (SINGLE, ej. Tamaño) o contadores (MULTIPLE, ej. Sabores) */}
-            {viewMode === 'options' && (
-        <div className="space-y-3 pb-3 border-b border-gray-100">
-          <h4 className="text-xs font-black text-slate-900 uppercase tracking-wider">¿Cómo deseas pedir este combo?</h4>
-          
-          <button
-            onClick={() => {
-              availableGroups.forEach((g: any, gIndex: number) => {
-                const min = g.minItems ?? g.min ?? (g.required ? 1 : 0);
-                if (min > 0 && g.options?.length > 0) {
-                  if (g.selectType === 'SINGLE') {
-                    handleGlobalSingleSelect(gIndex, g.options[0].code || g.options[0].id);
-                  } else {
-                    handleGlobalOptionQuantityChange(gIndex, g.options[0].code || g.options[0].id, min);
-                  }
-                }
-              });
-              handleAddToCart();
-            }}
-            className="w-full bg-slate-100 hover:bg-slate-200 border border-slate-200 text-slate-800 font-black py-4 px-4 rounded-xl text-sm transition text-left flex items-center justify-between group cursor-pointer"
-          >
-            <div>
-              <span className="block">🚀 Pedir combo estándar</span>
-              <span className="text-[11px] text-slate-500 font-medium">Sale con todo, rápido y directo.</span>
+            {viewMode === 'options' && (isCombo || qty > 1) && (
+          <div className="pb-3 border-b border-gray-100 flex justify-center mt-3">
+            <button
+              onClick={() => { setIsSlotCustomizationActive(true); setViewMode('customize'); }}
+              className="border border-[#fe6712] text-[#fe6712] font-black py-2.5 px-6 rounded-full text-xs hover:bg-orange-50 transition cursor-pointer flex items-center gap-2 shadow-xs active:scale-95"
+            >
+              <span className="text-base">⚙️</span> {isCombo ? 'Personalizar combo' : 'Personalizar tu pedido'}
+            </button>
+          </div>
+        )}
+        {viewMode === 'customize' && (
+          <div className="space-y-4 pb-4 border-b border-gray-100 mt-2">
+            <div className="flex items-center gap-2 mb-4">
+              <button onClick={() => setViewMode('options')} className="p-1.5 bg-slate-100 text-slate-500 rounded-full hover:bg-slate-200 transition cursor-pointer">
+                <svg className="w-4 h-4" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={3}><path strokeLinecap="round" strokeLinejoin="round" d="M15 19l-7-7 7-7" /></svg>
+              </button>
+              <h4 className="text-sm font-black text-slate-900 uppercase tracking-wider">Volver al producto</h4>
             </div>
-            <ArrowRight className="w-4 h-4 text-slate-400 group-hover:text-slate-700" />
-          </button>
+            
+            <button
+              onClick={() => setViewMode('slots')}
+              className="w-full bg-white hover:bg-slate-50 border border-slate-200 text-slate-700 font-black py-4 px-4 rounded-xl text-sm transition text-left flex items-center justify-between group cursor-pointer"
+            >
+              <div>
+                <span className="block text-sm">🎨 Personalizar aquí mismo</span>
+                <span className="text-[11px] text-slate-500 font-medium mt-1 block">Ajusta ingredientes unidad por unidad.</span>
+              </div>
+              <svg className="w-5 h-5 text-slate-300 group-hover:text-slate-600 transition" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}><path strokeLinecap="round" strokeLinejoin="round" d="M9 5l7 7-7 7" /></svg>
+            </button>
 
-          <button
-            onClick={() => { setHostSetupUnits(1); setHostSetupExclusions([]); setViewMode('host_setup'); }}
-            className="w-full bg-[#FE6712] hover:bg-[#E05509] text-white font-black py-4 px-4 rounded-xl text-sm transition text-left flex items-center justify-between shadow-md cursor-pointer"
-          >
-            <div>
-              <span className="block">👥 Iniciar Pedido entre panas</span>
-              <span className="text-[11px] text-orange-100 font-medium">Arma el combo con tus amigos por WhatsApp.</span>
-            </div>
-            <svg className="w-5 h-5" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}><path strokeLinecap="round" strokeLinejoin="round" d="M17 20h5v-2a3 3 0 00-5.356-1.857M17 20H7m10 0v-2c0-.656-.126-1.283-.356-1.857M7 20H2v-2a3 3 0 015.356-1.857M7 20v-2c0-.656.126-1.283.356-1.857m0 0a5.002 5.002 0 019.288 0M15 7a3 3 0 11-6 0 3 3 0 016 0z" /></svg>
-          </button>
+            <button
+              onClick={() => { setHostSetupUnits(1); setHostSetupExclusions([]); setViewMode('host_setup'); }}
+              className="w-full bg-[#25D366] hover:bg-[#20bd5a] text-white font-black py-4 px-4 rounded-xl text-sm transition text-left flex items-center justify-between shadow-md cursor-pointer"
+            >
+              <div>
+                <span className="block text-sm">👥 Compartir entre panas por WhatsApp</span>
+                <span className="text-[11px] text-green-100 font-medium mt-1 block">Arma el pedido con tus amigos.</span>
+              </div>
+              <svg className="w-5 h-5" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}><path strokeLinecap="round" strokeLinejoin="round" d="M17 20h5v-2a3 3 0 00-5.356-1.857M17 20H7m10 0v-2c0-.656-.126-1.283-.356-1.857M7 20H2v-2a3 3 0 015.356-1.857M7 20v-2c0-.656.126-1.283.356-1.857m0 0a5.002 5.002 0 019.288 0M15 7a3 3 0 11-6 0 3 3 0 016 0z" /></svg>
+            </button>
+          </div>
+        )}
 
-          <button
-            onClick={() => setViewMode('customize')}
-            className="w-full bg-white hover:bg-slate-50 border border-slate-200 text-slate-700 font-black py-4 px-4 rounded-xl text-sm transition text-left flex items-center justify-between group cursor-pointer"
-          >
-            <div>
-              <span className="block">⚙️ Personalizar en esta pantalla</span>
-              <span className="text-[11px] text-slate-500 font-medium">Ajusta ingredientes y sabores a tu gusto.</span>
-            </div>
-            <ArrowRight className="w-4 h-4 text-slate-400 group-hover:text-slate-700" />
-          </button>
-        </div>
-      )}
 
       {viewMode === 'host_setup' && (
         <div className="space-y-5 pb-4 border-b border-gray-100">
@@ -1199,7 +1192,7 @@ export default function MasterProductModal({
         </div>
       )}
 
-      {(!isCombo || viewMode === 'customize') && availableGroups.map((group: any, gIdx: number) => (
+      {(!isCombo && viewMode === 'options' && qty === 1) && availableGroups.map((group: any, gIdx: number) => (
         <div key={gIdx} className="pb-3 border-b border-gray-100 space-y-2">
           <div>
             <h4 className="text-xs font-black text-slate-900 uppercase tracking-wider">{group.title}</h4>
@@ -1266,7 +1259,7 @@ export default function MasterProductModal({
       ))}
 
       {/* SELECTOR DE COMBOS POR RANURAS / MODO RANURAS */}
-      {isSlotMode ? (
+      {viewMode === 'slots' ? (
         <div className="pb-3 border-b border-gray-100 space-y-3">
           <div className="flex flex-col sm:flex-row justify-between items-start sm:items-center gap-2">
             <div>
@@ -1409,7 +1402,7 @@ export default function MasterProductModal({
               })}
 
               {/* Exclusiones de la Ranura Activa */}
-              {nicheEngine === 'FOOD_FAST' && product.exclusions && product.exclusions.length > 0 && (
+              {product.exclusions && product.exclusions.length > 0 && (
                 <div className="space-y-2 pt-2 border-t border-slate-100">
                   <div className="flex justify-between items-center">
                     <span className="text-[10px] font-black text-[#fe6712] uppercase tracking-wider flex items-center gap-1">
@@ -1488,7 +1481,7 @@ export default function MasterProductModal({
       ) : (
         /* Modo Estándar */
         <div className="space-y-4">
-          {nicheEngine === 'FOOD_FAST' && product.exclusions && product.exclusions.length > 0 && (
+          {product.exclusions && product.exclusions.length > 0 && (
             <div className="pb-3 border-b border-gray-100 space-y-2">
               <label className="text-xs font-black text-slate-900 uppercase tracking-wider flex items-center gap-1.5">
                 <Sparkles className="w-4 h-4 text-[#fe6712]" /> Firma D&apos;una (Exclusiones):
@@ -1539,10 +1532,10 @@ export default function MasterProductModal({
           {step === 1 && (
             hasVariants ? (
               /* LAYOUT SIMÉTRICO 50/50 BILATERAL PARA PRODUCTOS CON VARIANTES */
-              <div className="flex-1 overflow-y-auto md:overflow-hidden min-h-0">
-                <div className="grid grid-cols-1 md:grid-cols-2 gap-4 md:gap-6 p-4 md:p-6 items-start md:h-full">
+              <div className="flex-1 overflow-y-auto min-h-0">
+                <div className="grid grid-cols-1 md:grid-cols-2 gap-4 md:gap-6 p-4 md:p-6 items-start">
                   {/* Columna Izquierda (Mitad 50% - Anclada / Sin Scroll) */}
-                  <div className="w-full flex flex-col justify-between md:h-full overflow-hidden bg-slate-50/70 rounded-2xl p-4 border border-slate-200/80 gap-3">
+                  <div className="w-full flex flex-col justify-between overflow-hidden bg-slate-50/70 rounded-2xl p-4 border border-slate-200/80 gap-3 md:sticky md:top-6">
                     {/* Imagen del producto */}
                     <div className="relative flex items-center justify-center w-full rounded-2xl border border-slate-200/80 bg-white overflow-hidden p-4 h-36 sm:h-40 md:h-44 shrink-0 shadow-xs">
                       <img
@@ -1627,7 +1620,7 @@ export default function MasterProductModal({
                   </div>
 
                   {/* Columna Derecha (Mitad 50% - Vitrina de Opciones con Scroll) */}
-                  <div className="w-full flex flex-col flex-1 overflow-hidden min-h-0 bg-white md:h-full">
+                  <div className="w-full flex flex-col flex-1 bg-white">
                     {/* Cabecera */}
                     <div className="pb-3 border-b border-slate-100 shrink-0">
                       <div className="flex flex-wrap items-center gap-1.5 mb-1.5 pr-14 text-[10px] font-black uppercase tracking-wider text-slate-500">
@@ -1641,7 +1634,7 @@ export default function MasterProductModal({
                     </div>
 
                     {/* Vitrina de Sabores / Modificadores con Scroll Completo e Independiente */}
-                    <div className="w-full flex-1 max-h-[460px] md:max-h-[500px] overflow-y-auto pr-2 pt-3 space-y-3.5 scrollbar-thin scrollbar-thumb-slate-300 hover:scrollbar-thumb-slate-400">
+                    <div className="w-full flex-1 pb-32 pr-2 pt-3 space-y-3.5">
                       {renderVariantsAndSlots()}
                     </div>
                   </div>
@@ -1649,7 +1642,7 @@ export default function MasterProductModal({
               </div>
             ) : (
               /* LAYOUT ESTÁNDAR PARA PRODUCTOS SIMPLES / MEDICAMENTOS */
-              <div className="flex flex-col h-full overflow-y-auto md:overflow-hidden">
+              <div className="flex flex-col h-full overflow-y-auto">
                 {/* Cabecera Fija */}
                 <div className="shrink-0 p-3 sm:p-4 grid grid-cols-1 sm:grid-cols-2 gap-3 items-start bg-white z-20 shadow-sm border-b border-slate-100">
                   {/* Columna Izquierda: Imagen, Precio y Cantidad */}
