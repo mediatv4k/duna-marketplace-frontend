@@ -507,7 +507,7 @@ export default function CheckoutModal({
 
   return (
     <div className="fixed inset-0 z-[140] flex items-center justify-center bg-black/75 p-3 backdrop-blur-sm">
-      <div className="w-[95%] max-w-lg h-[610px] overflow-hidden rounded-[28px] bg-white shadow-2xl border border-slate-100 flex flex-col justify-between">
+      <div className="w-[94%] max-w-lg mx-auto h-[610px] overflow-hidden rounded-[28px] bg-white shadow-2xl border border-slate-100 flex flex-col justify-between transition-all duration-200">
 
         {pasoVista === 'exito' && pagoPendiente ? (
           <div className="bg-[#fe6712] px-5 py-3 text-white flex items-center justify-between shrink-0">
@@ -565,8 +565,8 @@ export default function CheckoutModal({
                   className="w-full rounded-xl border border-slate-200 bg-white px-3 py-1 text-sm font-bold text-slate-800 focus:border-[#fe6712] focus:outline-none"
                 />
               </div>
-              <div className="grid grid-cols-2 gap-2">
-                <div>
+              <div className="grid grid-cols-12 gap-2 w-full">
+                <div className="col-span-5">
                   <label className="text-[8px] font-black text-slate-400 uppercase block mb-0.5">Cédula</label>
                   <div className="flex gap-1">
                     <select
@@ -584,11 +584,11 @@ export default function CheckoutModal({
                       placeholder="12345678"
                       value={cedula}
                       onChange={(e) => setCedula(e.target.value)}
-                      className="w-full rounded-xl border border-slate-200 bg-white px-2 py-1 text-sm font-bold text-slate-800 focus:outline-none"
+                      className="w-full min-w-0 flex-1 rounded-xl border border-slate-200 bg-white px-2 py-1 text-sm font-bold text-slate-800 focus:outline-none"
                     />
                   </div>
                 </div>
-                <div>
+                <div className="col-span-7">
                   <label className="text-[8px] font-black text-slate-400 uppercase block mb-0.5">WhatsApp</label>
                   <div className="flex gap-1">
                     <select
@@ -606,7 +606,7 @@ export default function CheckoutModal({
                       placeholder="4121234567"
                       value={telefono}
                       onChange={(e) => setTelefono(e.target.value)}
-                      className="w-full rounded-xl border border-slate-200 bg-white px-2 py-1 text-sm font-bold text-slate-800 focus:outline-none"
+                      className="w-full min-w-0 flex-1 rounded-xl border border-slate-200 bg-white px-2 py-1 text-sm font-bold text-slate-800 focus:outline-none"
                     />
                   </div>
                 </div>
