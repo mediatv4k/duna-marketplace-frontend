@@ -103,7 +103,7 @@ export default function CartModal({
 
   return (
     <div className="fixed inset-0 z-[140] flex items-center justify-center bg-black/75 p-4 backdrop-blur-sm animate-in fade-in duration-150">
-      <div className="w-[94%] max-w-lg mx-auto h-[590px] bg-white rounded-[28px] shadow-2xl flex flex-col overflow-hidden animate-in zoom-in-95 duration-200">
+      <div className="w-full max-w-[420px] h-[590px] bg-white rounded-[28px] shadow-2xl flex flex-col overflow-hidden animate-in zoom-in-95 duration-200">
 
         <div className="h-[325px] flex flex-col border-b border-slate-100 bg-white shrink-0">
 
