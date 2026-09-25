@@ -117,12 +117,13 @@ export default function ComboRoomPage({ params }: { params: { id: string } }) {
 
   const [phase, setPhase] = useState<'pick' | 'customize' | 'done'>('pick');
   const [guestName, setGuestName] = useState('');
-  const [qty, setQty] = useState(1);
+  const [claimedUnits, setClaimedUnits] = useState(1);
   const [myClaim, setMyClaim] = useState<ParticipantClaim | null>(null);
   const [bcvRate, setBcvRate] = useState<number | null>(null);
 
   const [localVariants, setLocalVariants] = useState<Record<string, any[]>>({});
   const [localExclusions, setLocalExclusions] = useState<string[]>([]);
+  const [customizationType, setCustomizationType] = useState<'all' | 'custom'>('all');
 
   const [saving, setSaving] = useState(false);
   const [saveError, setSaveError] = useState<string | null>(null);
@@ -276,7 +277,7 @@ export default function ComboRoomPage({ params }: { params: { id: string } }) {
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
           name: guestName.trim(),
-          unitsCount: qty,
+          unitsCount: claimedUnits,
           selectedVariants: variants,
           exclusions,
         }),
@@ -284,7 +285,7 @@ export default function ComboRoomPage({ params }: { params: { id: string } }) {
       const data = await res.json();
       if (data.ok) {
         setRoom(data.room);
-        const addedClaim = data.room.participants.find((p: any) => p.name === guestName.trim() && p.unitsCount === qty);
+        const addedClaim = data.room.participants.find((p: any) => p.name === guestName.trim() && p.unitsCount === claimedUnits);
         setMyClaim(addedClaim);
         setPhase('done');
       } else {
@@ -396,17 +397,17 @@ export default function ComboRoomPage({ params }: { params: { id: string } }) {
               <div className="flex items-center justify-between bg-slate-50 border border-slate-200 rounded-xl px-4 py-2.5">
                 <button
                   type="button"
-                  onClick={() => setQty(Math.max(1, qty - 1))}
-                  disabled={qty <= 1}
+                  onClick={() => setClaimedUnits(Math.max(1, claimedUnits - 1))}
+                  disabled={claimedUnits <= 1}
                   className="w-8 h-8 rounded-full flex items-center justify-center text-slate-600 hover:bg-slate-200 disabled:opacity-30 transition cursor-pointer"
                 >
                   <svg className="w-4 h-4" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2.5}><path strokeLinecap="round" strokeLinejoin="round" d="M20 12H4" /></svg>
                 </button>
-                <span className="text-lg font-black text-slate-800">{qty}</span>
+                <span className="text-lg font-black text-slate-800">{claimedUnits}</span>
                 <button
                   type="button"
-                  onClick={() => setQty(Math.min(availableUnits, qty + 1))}
-                  disabled={qty >= availableUnits}
+                  onClick={() => setClaimedUnits(Math.min(availableUnits, claimedUnits + 1))}
+                  disabled={claimedUnits >= availableUnits}
                   className="w-8 h-8 rounded-full flex items-center justify-center text-[#fe6712] hover:bg-orange-100 disabled:opacity-30 transition cursor-pointer"
                 >
                   <svg className="w-4 h-4" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2.5}><path strokeLinecap="round" strokeLinejoin="round" d="M12 4v16m8-8H4" /></svg>
@@ -416,89 +417,91 @@ export default function ComboRoomPage({ params }: { params: { id: string } }) {
 
             {saveError && <p className="text-xs font-bold text-red-600 text-center">{saveError}</p>}
 
-            <div className="space-y-3 pt-2">
-              <button
-                type="button"
-                disabled={!guestName.trim() || saving || availableUnits < 1}
-                onClick={handleSaveStandard}
-                className="w-full bg-emerald-500 hover:bg-emerald-600 disabled:bg-slate-300 disabled:cursor-not-allowed text-white font-black py-3.5 rounded-xl text-sm flex items-center justify-center gap-2 transition active:scale-[0.98] shadow-md cursor-pointer"
-              >
-                {saving ? 'Guardando...' : '🟢 Salen con todo'}
-              </button>
-              
-              {hasSinGroups && (
+            
+              {/* Payment Mode Alert */}
+              {room.paymentMode === 'host_pays' && (
+                <div className="bg-emerald-50 border border-emerald-200 p-3 rounded-xl flex items-start gap-2">
+                  <span className="text-emerald-500 text-lg">🎁</span>
+                  <p className="text-[11px] font-bold text-emerald-800 leading-tight">
+                    ¡Estás invitado por el anfitrión! Solo elige tus porciones.
+                  </p>
+                </div>
+              )}
+
+              {saveError && <p className="text-xs font-bold text-red-600 text-center">{saveError}</p>}
+
+              <div className="space-y-4 pt-2">
+                {hasSinGroups && (
+                  <div className="space-y-2">
+                    <p className="text-[10px] font-black text-slate-400 uppercase tracking-wider">¿Cómo los prefieres?</p>
+                    <div className="grid grid-cols-2 gap-2">
+                      <button
+                        type="button"
+                        onClick={() => setCustomizationType('all')}
+                        className={`py-2.5 px-2 rounded-xl text-xs transition cursor-pointer border ${customizationType === 'all' ? 'bg-[#FE6712] text-white border-[#FE6712] font-black shadow-md' : 'bg-white text-slate-800 border-slate-300 font-bold hover:bg-slate-50'}`}
+                      >
+                        🥬 Salen con todo
+                      </button>
+                      <button
+                        type="button"
+                        onClick={() => { setCustomizationType('custom'); initVariants(); }}
+                        className={`py-2.5 px-2 rounded-xl text-xs transition cursor-pointer border ${customizationType === 'custom' ? 'bg-[#FE6712] text-white border-[#FE6712] font-black shadow-md' : 'bg-white text-slate-800 border-slate-300 font-bold hover:bg-slate-50'}`}
+                      >
+                        🛠️ Quitar ingredientes
+                      </button>
+                    </div>
+                  </div>
+                )}
+
+                {hasSinGroups && customizationType === 'custom' && (
+                  <div className="p-3 bg-slate-50 border border-slate-200 rounded-xl space-y-2">
+                    <p className="text-[10px] font-black text-slate-500 uppercase tracking-wider">Selecciona lo que NO quieres:</p>
+                    <div className="grid grid-cols-2 gap-2">
+                      {(room.groups || [])
+                        .filter((g: any) => /\bsin\b/i.test(String(g.name || g.title || '')))
+                        .flatMap((g: any) => g.options || g.items || [])
+                        .map((opt: any) => {
+                          const label = opt.name || opt.title || '';
+                          const selected = localExclusions.includes(label);
+                          // Prevent Sin SIN duplication
+                          const displayLabel = label.toUpperCase().startsWith('SIN ') ? label : 'Sin ' + label;
+                          return (
+                            <label key={label} className={`flex items-center gap-2 p-2 rounded-xl border text-[11px] font-bold cursor-pointer transition shadow-sm ${selected ? 'bg-red-50 border-red-200 text-red-700' : 'bg-white border-slate-300 text-slate-800 hover:border-[#FE6712]/50'}`}>
+                              <input
+                                type="checkbox"
+                                checked={selected}
+                                onChange={() => setLocalExclusions(prev => selected ? prev.filter(e => e !== label) : [...prev, label])}
+                                className="w-4 h-4 accent-[#FE6712] rounded cursor-pointer"
+                              />
+                              <span className={selected ? 'line-through opacity-70' : ''}>{displayLabel}</span>
+                            </label>
+                          );
+                        })}
+                    </div>
+                  </div>
+                )}
+
                 <button
                   type="button"
-                  disabled={!guestName.trim() || availableUnits < 1}
-                  onClick={() => { initVariants(); setPhase('customize'); }}
-                  className="w-full bg-white hover:bg-slate-50 border-2 border-slate-200 disabled:opacity-50 text-slate-700 font-black py-3 rounded-xl text-sm flex items-center justify-center gap-2 transition active:scale-[0.98] cursor-pointer"
+                  disabled={!guestName.trim() || saving || availableUnits < 1}
+                  onClick={() => {
+                     if (customizationType === 'all') {
+                        handleSaveStandard();
+                     } else {
+                        handleSaveCustom();
+                     }
+                  }}
+                  className="w-full bg-[#25D366] hover:bg-[#20bd5a] disabled:bg-slate-200 disabled:text-slate-400 disabled:border-slate-300 disabled:border disabled:cursor-not-allowed text-white font-black py-4 rounded-xl text-sm flex items-center justify-center gap-2 transition active:scale-[0.98] shadow-md cursor-pointer"
                 >
-                  ⚙️ Quitar ingredientes
+                  {saving ? 'Guardando...' : (customizationType === 'all' ? 'Confirmar mis porciones' : 'Guardar personalización')}
                 </button>
-              )}
-            </div>
-          </div>
-        </div>
-      </div>
-    );
-  }
-
-  if (phase === 'customize') {
-    const hasSinGroups = (room.groups || []).some((g: any) => /\bsin\b/i.test(String(g.name || g.title || '')));
-    return (
-      <div className="min-h-screen bg-slate-50 flex flex-col">
-        <div className="bg-white border-b border-slate-100 px-4 py-3 flex items-center gap-3 shadow-sm">
-          <button type="button" onClick={() => setPhase('pick')} className="w-8 h-8 rounded-full border border-slate-200 flex items-center justify-center text-slate-500 hover:bg-slate-50 cursor-pointer shrink-0">
-            <svg className="w-4 h-4" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}><path strokeLinecap="round" strokeLinejoin="round" d="M15 19l-7-7 7-7" /></svg>
-          </button>
-          <div className="min-w-0 flex-1">
-            <p className="text-[10px] font-bold text-[#fe6712] uppercase tracking-wider">{qty} {qty > 1 ? 'Unidades' : 'Unidad'} · {guestName}</p>
-            <h1 className="text-sm font-black text-slate-900 truncate">{room.productName}</h1>
-          </div>
-        </div>
-
-        <div className="flex-1 px-4 py-5 space-y-5 overflow-y-auto max-w-md mx-auto w-full pb-32">
-          {hasSinGroups && (
-            <div className="space-y-3">
-              <p className="text-xs font-black text-slate-900 uppercase tracking-wider">Quitar ingredientes</p>
-              <div className="grid grid-cols-2 gap-2">
-                {(room.groups || [])
-                  .filter((g: any) => /\bsin\b/i.test(String(g.name || g.title || '')))
-                  .flatMap((g: any) => g.options || g.items || [])
-                  .map((opt: any) => {
-                    const label = opt.name || opt.title || '';
-                    const selected = localExclusions.includes(label);
-                    return (
-                      <label key={label} className={`flex items-center gap-2 p-3 rounded-xl border text-xs font-bold cursor-pointer transition shadow-sm ${selected ? 'bg-red-50 border-red-200 text-red-700' : 'bg-white border-slate-200 text-slate-700 hover:border-orange-300'}`}>
-                        <input
-                          type="checkbox"
-                          checked={selected}
-                          onChange={() => setLocalExclusions(prev => selected ? prev.filter(e => e !== label) : [...prev, label])}
-                          className="w-4 h-4 accent-[#fe6712] rounded cursor-pointer"
-                        />
-                        <span className={selected ? 'line-through opacity-70' : ''}>{label}</span>
-                      </label>
-                    );
-                  })}
               </div>
             </div>
-          )}
+          </div>
         </div>
+      );
+    }
 
-        <div className="sticky bottom-0 bg-white border-t border-slate-100 px-4 py-3.5 shadow-md space-y-2 pb-[max(0.875rem,env(safe-area-inset-bottom))]">
-          {saveError && <p className="text-xs font-bold text-red-600 text-center">{saveError}</p>}
-          <button
-            type="button"
-            onClick={handleSaveCustom}
-            disabled={saving}
-            className="w-full bg-[#fe6712] hover:bg-[#e0580d] disabled:bg-slate-300 disabled:cursor-not-allowed text-white font-black py-3.5 rounded-2xl text-sm flex items-center justify-center gap-2 transition active:scale-[0.98] cursor-pointer"
-          >
-            {saving ? 'Guardando...' : 'Confirmar selección'}
-          </button>
-        </div>
-      </div>
-    );
-  }
 
   if (phase === 'done' && myClaim) {
     if (room.paymentMode === 'host_pays') {
@@ -532,7 +535,7 @@ export default function ComboRoomPage({ params }: { params: { id: string } }) {
 
           <div className="bg-slate-50 rounded-2xl p-4 space-y-3 border border-slate-200">
             <div>
-              <p className="text-[10px] font-black text-slate-400 uppercase tracking-wider mb-1">Tu Ticket</p>
+              <p className="text-[10px] font-black text-slate-400 uppercase tracking-wider mb-1">Resumen de tu pedido</p>
               <p className="text-sm font-black text-slate-800">{myClaim.unitsCount}x {room.productName}</p>
               {myClaim.exclusions.length > 0 ? (
                 <p className="text-xs text-red-500 font-bold mt-1.5">{myClaim.exclusions.map(e => e.toUpperCase().startsWith('SIN ') ? e : 'Sin ' + e).join(', ')}</p>
@@ -541,10 +544,17 @@ export default function ComboRoomPage({ params }: { params: { id: string } }) {
               )}
             </div>
             <div className="pt-3 border-t border-slate-200 flex items-center justify-between">
-              <span className="text-xs font-black text-slate-500 uppercase">Total a pagar:</span>
-              <div className="text-right">
-                <p className="text-lg font-black text-slate-900">${myClaim.subtotalUsd.toFixed(2)}</p>
-                {bcvRate && <p className="text-[10px] font-bold text-slate-500">Bs. {(myClaim.subtotalUsd * bcvRate).toLocaleString('es-VE', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}</p>}
+              <div className="flex flex-col gap-1 w-full">
+                <div className="flex justify-between items-baseline">
+                  <span className="text-xs font-black text-slate-500 uppercase">Tu parte:</span>
+                  <span className="text-lg font-black text-slate-900">${myClaim.subtotalUsd.toFixed(2)}</span>
+                </div>
+                {bcvRate && (
+                  <div className="flex justify-between items-baseline pt-1 border-t border-slate-100">
+                    <span className="text-[10px] font-bold text-slate-400 uppercase">En Bolívares (BCV):</span>
+                    <span className="text-xs font-bold text-slate-500">Bs. {(myClaim.subtotalUsd * bcvRate).toLocaleString('es-VE', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}</span>
+                  </div>
+                )}
               </div>
             </div>
           </div>
