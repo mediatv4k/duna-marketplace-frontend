@@ -725,29 +725,38 @@ export default function MasterProductModal({
     const breakdown: string[] = [];
 
     if (viewMode === 'comboRoom' && comboRoomData) {
-      let totalCartPrice = 0;
-      breakdown.push(`Pedido entre panas: ${comboRoomData.productName} (${comboRoomData.totalUnits} unidades)`);
-      comboRoomData.participants.forEach((p: any) => {
-        totalCartPrice += p.subtotalUsd;
-        const participantParts: string[] = [];
+        let totalCartPrice = 0;
+        breakdown.push(`------- PEDIDO ENTRE PANAS: ${comboRoomData.productName.toUpperCase()} -------`);
         
-        if (p.exclusions && p.exclusions.length > 0) {
-          participantParts.push(p.exclusions.map((e: string) => e.toUpperCase().startsWith('SIN ') ? e : `Sin ${e}`).join(', '));
-        } else {
-          participantParts.push('Con Todo');
-        }
-        Object.values(p.selectedVariants || {}).forEach((sel: any) => {
-           if (Array.isArray(sel)) {
-             sel.forEach((item: any) => {
-               if (item.count > 0) participantParts.push(`${item.count}x ${item.name}`);
-             });
-           } else if (sel.name) {
-             participantParts.push(sel.name);
-           }
+        comboRoomData.participants.forEach((p: any) => {
+          totalCartPrice += p.subtotalUsd;
+          breakdown.push(`• ${String(p.name || 'INVITADO').toUpperCase()} (${p.unitsCount} Unidades)`);
+          
+          if (p.exclusions && p.exclusions.length > 0) {
+            p.exclusions.forEach((e: string) => {
+              breakdown.push(`  - ${e.toUpperCase().startsWith('SIN ') ? e : `Sin ${e}`}`);
+            });
+          }
+          
+          let hasExtras = false;
+          Object.values(p.selectedVariants || {}).forEach((sel: any) => {
+             if (Array.isArray(sel)) {
+               sel.forEach((item: any) => {
+                 if ((item.count || 0) > 0) {
+                    breakdown.push(`  - ${item.count > 1 ? item.count + 'x ' : ''}${item.name}`);
+                    hasExtras = true;
+                 }
+               });
+             } else if (sel.name) {
+               breakdown.push(`  - ${sel.name}`);
+               hasExtras = true;
+             }
+          });
+          
+          if ((!p.exclusions || p.exclusions.length === 0) && !hasExtras) {
+            breakdown.push(`  - Sale con todo`);
+          }
         });
-        
-        breakdown.push(`${p.name} (${p.unitsCount}x): ${participantParts.join(', ')}`);
-      });
       
       onAddToCart({
         productCode: String(product.id || product.code),

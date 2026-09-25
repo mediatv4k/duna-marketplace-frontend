@@ -285,37 +285,37 @@ export default function OrderTrackingModal({ isOpen, onClose, orderId, orderSumm
                     {/* PRODUCTOS */}
                     <div className="space-y-1.5">
                       {currentItems.length > 0 ? (
-                        currentItems.map((item: any, idx: number) => {
-                          const qty = item.qty || item.quantity || 1;
-                          const price = item.price || 0;
-                          const total = price * qty;
-                          const variantRows = getItemBreakdownRows(item);
-
-                          if (variantRows.length > 0) {
-                            return (
-                              <div key={item.cartItemId || item.code || idx}>
-                                <p className="text-center text-slate-500 whitespace-pre-wrap break-words">-------- {String(item.name || '').toUpperCase()} --------</p>
-                                {variantRows.map((v, vIdx) => (
-                                  <div key={vIdx} className={`flex justify-between gap-2 ${v.isExclusion ? 'text-red-600 font-bold' : ''} ${v.isHeader ? 'font-bold mt-1' : ''}`}>
-                                    <span className="truncate">{v.qty ? `${v.qty} ` : ''}{v.name}</span>
-                                    <span className="shrink-0">{v.price > 0 && v.qty ? (v.price * v.qty).toFixed(2) : ''}</span>
-                                  </div>
-                                ))}
-                                <div className="flex justify-between font-bold">
-                                  <span>Subtotal</span>
-                                  <span>{total.toFixed(2)}</span>
+                          currentItems.map((item: any, idx: number) => {
+                            const qty = item.qty || item.quantity || 1;
+                            const rawLines = Array.isArray(item.breakdown) ? item.breakdown : [];
+                            
+                            if (rawLines.length > 0) {
+                              return (
+                                <div key={item.cartItemId || item.code || idx} className="flex flex-col gap-1 w-full text-left font-mono border-b border-dashed border-slate-300 pb-2 mb-2">
+                                  <p className="font-bold border-b border-dashed border-slate-200 pb-1 mb-1">
+                                    {qty}x {String(item.name || '').toUpperCase()}
+                                  </p>
+                                  {rawLines.map((line: string, lIdx: number) => {
+                                    const isParticipant = line.trim().startsWith('•');
+                                    const isHeader = line.includes('-------');
+                                    return (
+                                      <div key={lIdx} className={`w-full whitespace-pre-wrap break-words ${isParticipant ? 'font-bold mt-2 pt-2 border-t border-dotted border-slate-300' : 'pl-2'} ${isHeader ? 'text-center font-bold my-1' : ''}`}>
+                                        {line}
+                                      </div>
+                                    );
+                                  })}
                                 </div>
+                              );
+                            }
+                            return (
+                              <div key={item.cartItemId || item.code || idx} className="flex flex-col gap-1 w-full text-left font-mono border-b border-dashed border-slate-300 pb-2 mb-2">
+                                <p className="font-bold">
+                                  {qty}x {String(item.name || '').toUpperCase()}
+                                </p>
                               </div>
                             );
-                          }
-                          return (
-                            <div key={item.cartItemId || item.code || idx} className="flex justify-between gap-2 font-bold">
-                              <span className="truncate">{qty} {item.name}</span>
-                              <span className="shrink-0">{total.toFixed(2)}</span>
-                            </div>
-                          );
-                        })
-                      ) : (
+                          })
+                        ) : (
                         <p className="text-center text-slate-400 italic">No hay productos registrados en esta orden.</p>
                       )}
                     </div>
