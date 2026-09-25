@@ -1,6 +1,7 @@
 ﻿'use client';
 
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useRef } from 'react';
+import { useBeacon, BEACON_CLASS } from '@/lib/beacon';
 import {
   ArrowRight, ArrowLeft, X, HeartHandshake, Check, Copy, Upload,
   CheckCircle2, Info, Clock, FileText, Loader2, Gift, Bookmark, MessageCircle,
@@ -234,6 +235,38 @@ export default function CheckoutModal({
     }
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [isOpen]);
+
+  // ── Faro guiado (Pasos 2 y 3). Hooks SIEMPRE antes del `return null` (regla #300). ───────────────────────────────────
+  const { active: beacon, fire: fireBeacon, scrollTo: beaconScrollTo } = useBeacon<'continue' | 'bank' | 'reference' | 'confirm'>();
+  const bankCardRef = useRef<HTMLDivElement>(null);
+  const referenceRef = useRef<HTMLDivElement>(null);
+  const hasMethodConfig = !!selectedMethod && (selectedMethod.config || []).length > 0;
+  // Referencia con longitud creíble (≥ 4) o comprobante adjunto = el cliente ya pagó y tiene con qué confirmar
+  const paymentInfoReady = referenciaPago.trim().length >= 4 || !!archivoComprobante;
+
+  // Paso 2: al entrar a la Fase 3 con un método elegido -> tarjeta de datos bancarios + pulso en "Copiar Todos Los Datos"
+  useEffect(() => {
+    if (!isOpen || pasoVista !== 'instrucciones' || !hasMethodConfig) return;
+    const t = setTimeout(() => { beaconScrollTo(bankCardRef.current); fireBeacon('bank'); }, 250);
+    return () => clearTimeout(t);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [isOpen, pasoVista, hasMethodConfig]);
+
+  // Paso 3a: en cuanto copia los datos -> lleva el foco a la referencia / comprobante
+  useEffect(() => {
+    if (!copiadoTexto || pasoVista !== 'instrucciones') return;
+    const t = setTimeout(() => { beaconScrollTo(referenceRef.current); fireBeacon('reference'); }, 300);
+    return () => clearTimeout(t);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [copiadoTexto, pasoVista]);
+
+  // Paso 3b: con referencia o comprobante listos -> pulso en el botón principal (Completar pedido / Enviar comprobante)
+  useEffect(() => {
+    if (!isOpen || pasoVista !== 'instrucciones' || !paymentInfoReady) return;
+    const t = setTimeout(() => fireBeacon('confirm'), 700);
+    return () => clearTimeout(t);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [isOpen, pasoVista, paymentInfoReady]);
 
   if (!isOpen) return null;
 
@@ -658,7 +691,7 @@ export default function CheckoutModal({
                     return (
                       <div
                         key={`${metodo?.code}-${idx}`}
-                        onClick={() => setSelectedMethod(metodo)}
+                        onClick={() => { setSelectedMethod(metodo); fireBeacon('continue'); }}
                         className={`flex items-center gap-2 p-2 rounded-xl border transition cursor-pointer ${
                           isSelected ? 'border-[#fe6712] bg-orange-50/50 shadow-xs ring-1 ring-[#fe6712]/30' : 'border-slate-200 bg-white hover:bg-orange-50/20'
                         }`}
@@ -773,7 +806,7 @@ export default function CheckoutModal({
               </span>
             </div>
 
-            <div className="space-y-1 text-xs px-1 shrink-0 bg-slate-50 p-2.5 rounded-xl border border-slate-100">
+            <div ref={bankCardRef} className="space-y-1 text-xs px-1 shrink-0 bg-slate-50 p-2.5 rounded-xl border border-slate-100">
               {(selectedMethod.config || []).map((campo, cIdx) => (
                 <div key={cIdx} className="flex justify-between items-center pb-1 border-b border-slate-100 last:border-b-0 last:pb-0">
                   <div>
@@ -795,13 +828,13 @@ export default function CheckoutModal({
             <button
               type="button"
               onClick={handleCopyAll}
-              className="w-full py-1.5 rounded-xl border border-[#fe6712] bg-orange-50/40 hover:bg-orange-100/60 text-[#fe6712] text-[10.5px] font-black transition flex items-center justify-center gap-1.5 shrink-0"
+              className={`w-full py-1.5 rounded-xl border border-[#fe6712] bg-orange-50/40 hover:bg-orange-100/60 text-[#fe6712] text-[10.5px] font-black transition flex items-center justify-center gap-1.5 shrink-0 ${beacon === 'bank' ? BEACON_CLASS : ''}`}
             >
               <Copy className="h-3 w-3" />
               <span>{copiadoTexto === 'todo' ? '¡Datos copiados!' : 'Copiar Todos Los Datos'}</span>
             </button>
 
-            <div className="space-y-1 shrink-0">
+            <div ref={referenceRef} className={`space-y-1 shrink-0 rounded-xl transition ${beacon === 'reference' ? BEACON_CLASS : ''}`}>
               <input
                 type="text"
                 placeholder="Nro. De Referencia (Opcional)"
@@ -910,7 +943,7 @@ export default function CheckoutModal({
                   type="button"
                   onClick={handleProceedToInstructions}
                   disabled={loadingPaymentInfo || paymentMethods.length === 0 || orderSummary.isOpen === false}
-                  className="flex-1 flex items-center justify-center gap-2 rounded-2xl bg-[#fe6712] hover:bg-[#e0580d] disabled:opacity-50 py-2 text-xs font-black text-white shadow-md"
+                  className={`flex-1 flex items-center justify-center gap-2 rounded-2xl bg-[#fe6712] hover:bg-[#e0580d] disabled:opacity-50 py-2 text-xs font-black text-white shadow-md ${beacon === 'continue' ? BEACON_CLASS : ''}`}
                 >
                   <span>CONTINUAR AL PAGO</span>
                   <ArrowRight className="h-4 w-4" />
@@ -930,7 +963,7 @@ export default function CheckoutModal({
                     type="button"
                     onClick={handleUploadReference}
                     disabled={uploading}
-                    className="w-full flex items-center justify-center gap-2 rounded-full bg-[#fe6712] hover:bg-[#e0580d] disabled:opacity-50 py-2 text-xs font-black text-white shadow-md"
+                    className={`w-full flex items-center justify-center gap-2 rounded-full bg-[#fe6712] hover:bg-[#e0580d] disabled:opacity-50 py-2 text-xs font-black text-white shadow-md ${beacon === 'confirm' ? BEACON_CLASS : ''}`}
                   >
                     <span>{uploading ? 'Enviando comprobante...' : 'Enviar comprobante'}</span>
                     {!uploading && <Upload className="h-4 w-4" />}
@@ -941,7 +974,7 @@ export default function CheckoutModal({
                   type="button"
                   onClick={handleCompleteFinalOrder}
                   disabled={submitting}
-                  className="w-full flex items-center justify-center gap-2 rounded-full bg-[#fe6712] hover:bg-[#e0580d] disabled:opacity-50 py-2 text-xs font-black text-white shadow-md"
+                  className={`w-full flex items-center justify-center gap-2 rounded-full bg-[#fe6712] hover:bg-[#e0580d] disabled:opacity-50 py-2 text-xs font-black text-white shadow-md ${beacon === 'confirm' ? BEACON_CLASS : ''}`}
                 >
                   <span>{submitting ? 'Registrando tu pedido...' : 'Completar pedido'}</span>
                   {!submitting && <Check className="h-4 w-4 stroke-[3]" />}

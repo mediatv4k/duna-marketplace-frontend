@@ -10,7 +10,8 @@
 
 'use client';
 
-import React, { useState } from 'react';
+import React, { useState, useEffect, useRef } from 'react';
+import { useBeacon, BEACON_CLASS } from '@/lib/beacon';
 import {
   X, Bike, Store, Navigation, MapPin,
   Trash2, ArrowRight, Gift, Truck, PartyPopper, Flame, Package
@@ -93,6 +94,34 @@ export default function CartModal({
 
   const [selectedAgency, setSelectedAgency] = useState<'MRW' | 'ZOOM' | 'TEALCA'>('MRW');
   const costoNacionalFijo = 4.50;
+
+  // ── Faro guiado (Paso 1). Hooks SIEMPRE antes del `return null` (regla #300). ─────────────────────────────────────────
+  const { active: beacon, fire: fireBeacon, scrollTo: beaconScrollTo } = useBeacon<'location' | 'proceed'>();
+  const locationCardRef = useRef<HTMLDivElement>(null);
+  const prevQuoteRef = useRef(quoteStatus);
+  const hasLocation = !!customerLocation;
+
+  // Al abrir el carrito (o cambiar a delivery) sin dirección: pulso en la tarjeta de ubicación
+  useEffect(() => {
+    if (!isOpen || deliveryMode !== 'delivery' || hasLocation) return;
+    const t = setTimeout(() => { beaconScrollTo(locationCardRef.current); fireBeacon('location'); }, 250);
+    return () => clearTimeout(t);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [isOpen, deliveryMode, hasLocation]);
+
+  // Cotización: "bloqueada" (fuera de zona) -> vuelve a señalar la ubicación; recién lista -> señala "Proceder al pago"
+  useEffect(() => {
+    const prev = prevQuoteRef.current;
+    prevQuoteRef.current = quoteStatus;
+    if (!isOpen || deliveryMode !== 'delivery' || prev === quoteStatus) return;
+    if (quoteStatus === 'blocked') {
+      beaconScrollTo(locationCardRef.current);
+      fireBeacon('location');
+    } else if (quoteStatus === 'ok') {
+      fireBeacon('proceed');
+    }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [quoteStatus, isOpen, deliveryMode]);
 
   if (!isOpen) return null;
 
@@ -261,7 +290,7 @@ export default function CartModal({
                 </select>
               </div>
             ) : (
-              <>
+              <div ref={locationCardRef} className={`space-y-1 rounded-2xl transition ${beacon === 'location' ? BEACON_CLASS : ''}`}>
                 <div className="flex gap-1.5">
                   <button
                     type="button"
@@ -302,7 +331,7 @@ export default function CartModal({
                     <span className="text-[10px] font-bold text-slate-700 truncate">Retiro en la tienda</span>
                   )}
                 </div>
-              </>
+              </div>
             )}
 
             {deliveryMode === 'delivery' && (
@@ -389,7 +418,7 @@ export default function CartModal({
                 });
               }}
               disabled={deliveryBlocked}
-              className={`w-full text-white font-black py-1.5 mt-1 rounded-full transition shadow-md text-[12px] flex items-center justify-center gap-1.5 cursor-pointer active:scale-95 disabled:opacity-50 disabled:cursor-not-allowed disabled:active:scale-100 ${deliveryMode === 'national' ? 'bg-sky-600 hover:bg-sky-700' : 'bg-[#fe6712] hover:bg-[#e0580d]'}`}
+              className={`w-full text-white font-black py-1.5 mt-1 rounded-full transition shadow-md text-[12px] flex items-center justify-center gap-1.5 cursor-pointer active:scale-95 disabled:opacity-50 disabled:cursor-not-allowed disabled:active:scale-100 ${deliveryMode === 'national' ? 'bg-sky-600 hover:bg-sky-700' : 'bg-[#fe6712] hover:bg-[#e0580d]'} ${beacon === 'proceed' ? BEACON_CLASS : ''}`}
             >
               <span>PROCEDER AL PAGO</span>
               <ArrowRight className="w-3.5 h-3.5" />
