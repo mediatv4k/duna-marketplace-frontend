@@ -22,7 +22,7 @@ import {
 import { parseDescriptionTags } from '@/lib/productTags';
 import ProductTagBadges from './ProductTagBadges';
 import ShareButton from './ShareButton';
-import KitchenNote, { cleanKitchenNote } from './KitchenNote';
+import KitchenNote, { cleanKitchenNote, formatSin } from './KitchenNote';
 
 export interface ComboSlot {
   id: number;
@@ -752,10 +752,14 @@ export default function MasterProductModal({
           totalCartPrice += p.subtotalUsd;
           breakdown.push(`• ${String(p.name || 'INVITADO').toUpperCase()} (${p.unitsCount} Unidades)`);
           
-          if (Array.isArray(p.unitExclusions) && p.unitExclusions.length > 1) {
-            // Una línea por unidad para la cocina (personalización independiente)
-            p.unitExclusions.forEach((ex: string[], i: number) => {
-              breakdown.push(`  - #${i + 1}: ${ex.length > 0 ? ex.map((e) => (e.toUpperCase().startsWith('SIN ') ? e : `Sin ${e}`)).join(', ') : 'Sale con todo'}`);
+          // Invitado con varias unidades: una entrada por unidad para la cocina (alias, exclusiones, extras y nota propios)
+          const hasUnits = Array.isArray(p.units) && p.units.length > 1;
+          if (hasUnits) {
+            p.units.forEach((u: any, i: number) => {
+              breakdown.push(`  - #${i + 1}${u.unitName ? ` (${u.unitName})` : ''}: ${u.exclusions?.length > 0 ? u.exclusions.map(formatSin).join(', ') : 'Sale con todo'}`);
+              (u.addons || []).forEach((a: any) => breakdown.push(`    + ${a.count > 1 ? a.count + 'x ' : ''}${a.name}`));
+              const unitNote = cleanKitchenNote(u.note || '');
+              if (unitNote) breakdown.push(`    >> NOTA: ${unitNote}`);
             });
           } else if (p.exclusions && p.exclusions.length > 0) {
             p.exclusions.forEach((e: string) => {
@@ -763,8 +767,8 @@ export default function MasterProductModal({
             });
           }
           
-          let hasExtras = false;
-          Object.values(p.selectedVariants || {}).forEach((sel: any) => {
+          let hasExtras = hasUnits;
+          if (!hasUnits) Object.values(p.selectedVariants || {}).forEach((sel: any) => {
              if (Array.isArray(sel)) {
                sel.forEach((item: any) => {
                  if ((item.count || 0) > 0) {
@@ -811,7 +815,12 @@ export default function MasterProductModal({
       const roomComments = comboRoomData.participants
         .map((p: any) => {
           const ns = (Array.isArray(p.notes) ? p.notes : []).map((n: string) => cleanKitchenNote(n)).filter(Boolean);
-          return ns.length > 0 ? `${String(p.name || 'INVITADO')}: ${ns.join(' / ')}` : '';
+          // Invitado con varias unidades: "Nena: #1 (Nena): Con todo | #2 (Carlitos): Sin salsa roja, Sin papita"
+          const unitsStr = Array.isArray(p.units) && p.units.length > 1
+            ? p.units.map((u: any, i: number) => `#${i + 1}${u.unitName ? ` (${u.unitName})` : ''}: ${u.exclusions?.length > 0 ? u.exclusions.map(formatSin).join(', ') : 'Con todo'}${cleanKitchenNote(u.note || '') ? ` • Nota: ${cleanKitchenNote(u.note)}` : ''}`).join(' | ')
+            : '';
+          const joined = unitsStr || ns.join(' / ');
+          return joined ? `${String(p.name || 'INVITADO')}: ${joined}` : '';
         })
         .filter(Boolean)
         .join(' | ');
@@ -1497,13 +1506,17 @@ export default function MasterProductModal({
               {comboRoomData.participants.map((p: any) => {
                 const detailParts: string[] = [];
                 const sinLabel = (e: string) => (e.toUpperCase().startsWith('SIN ') ? e : 'Sin ' + e);
-                if (Array.isArray(p.unitExclusions) && p.unitExclusions.length > 1) {
-                  // Invitado con varias unidades personalizadas por separado: "#1 Sin cebolla · #2 Con todo"
-                  detailParts.push(p.unitExclusions.map((ex: string[], i: number) => `#${i + 1} ${ex.length > 0 ? ex.map(sinLabel).join(', ') : 'Con todo'}`).join(' · '));
+                const hasUnits = Array.isArray(p.units) && p.units.length > 1;
+                if (hasUnits) {
+                  // Invitado con varias unidades: "#1 (Nena) Con todo · #2 (Carlitos) Sin salsa roja + 1x Papas • Nota: …"
+                  detailParts.push(p.units.map((u: any, i: number) => {
+                    const bits = [u.exclusions?.length > 0 ? u.exclusions.map(formatSin).join(', ') : 'Con todo', ...(u.addons || []).map((a: any) => `${a.count > 1 ? a.count + 'x ' : ''}${a.name}`)];
+                    return `#${i + 1}${u.unitName ? ` (${u.unitName})` : ''} ${bits.join(' + ')}${u.note ? ` • Nota: ${u.note}` : ''}`;
+                  }).join(' · '));
                 } else {
                   (p.exclusions || []).forEach((e: string) => detailParts.push(sinLabel(e)));
                 }
-                Object.values(p.selectedVariants || {}).forEach((sel: any) => {
+                if (!hasUnits) Object.values(p.selectedVariants || {}).forEach((sel: any) => {
                   if (Array.isArray(sel)) sel.forEach((it: any) => { if ((it?.count || 0) > 0) detailParts.push(`${it.count > 1 ? it.count + 'x ' : ''}${it.name}`); });
                 });
                 const isReady = !!p.completedAt;

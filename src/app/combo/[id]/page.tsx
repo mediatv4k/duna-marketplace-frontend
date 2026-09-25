@@ -3,7 +3,24 @@
 import React, { useState, useEffect, useCallback, useRef } from 'react';
 import { getProduct, getProductsByStore } from '@/services/marketplaceService';
 import { getBCVRate } from '@/lib/bcvRate';
-import KitchenNote, { cleanKitchenNote } from '@/components/KitchenNote';
+import KitchenNote, { cleanKitchenNote, formatSin } from '@/components/KitchenNote';
+
+// Unidad ya guardada en la sala (todo mapas: Firestore no admite arreglos anidados)
+interface GuestUnit {
+  unitIndex: number;
+  unitName: string;
+  exclusions: string[];
+  addons: { name: string; code: string; price: number; count: number }[];
+  note: string;
+}
+
+// Borrador de una unidad mientras el invitado la personaliza
+interface UnitDraft {
+  name: string;
+  exclusions: string[];
+  addons: Record<string, number>;
+  note: string;
+}
 
 interface ParticipantClaim {
   id: string;
@@ -13,7 +30,7 @@ interface ParticipantClaim {
   selectedVariants: Record<string, any>;
   subtotalUsd: number;
   notes?: string[];
-  unitExclusions?: string[][];
+  units?: GuestUnit[];
   isHost: boolean;
   completedAt: string | null;
 }
@@ -125,19 +142,12 @@ export default function ComboRoomPage({ params }: { params: { id: string } }) {
   const [myClaim, setMyClaim] = useState<ParticipantClaim | null>(null);
   const [bcvRate, setBcvRate] = useState<number | null>(null);
 
-  const [localVariants, setLocalVariants] = useState<Record<string, any[]>>({});
-  const [localExclusions, setLocalExclusions] = useState<string[]>([]);
-  const [customizationType, setCustomizationType] = useState<'all' | 'custom'>('all');
-
   const [saving, setSaving] = useState(false);
   const [saveError, setSaveError] = useState<string | null>(null);
 
-  // Adicionales (papas, bebidas…) que el invitado suma a su porción: clave `${grupo}:${code}` → cantidad
-  const [addonCounts, setAddonCounts] = useState<Record<string, number>>({});
-  // Sugerencia para la cocina de las unidades del invitado (máx. 70 caracteres)
-  const [guestNote, setGuestNote] = useState('');
-  // Personalización por unidad (solo con más de 1 unidad): exclusiones de cada una y pestaña activa
-  const [unitEx, setUnitEx] = useState<string[][]>([]);
+  // Personalización por unidad (mismo modelo que "Personalizar aquí" de la tienda): cada unidad tiene su alias opcional,
+  // sus exclusiones ("SIN…"), sus adicionales (clave → 0/1) y su sugerencia para la cocina. `activeUnit` = pestaña activa.
+  const [unitsData, setUnitsData] = useState<UnitDraft[]>([]);
   const [activeUnit, setActiveUnit] = useState(0);
   // Catálogo real de la tienda (complementos: papas, bebidas, tequeños…) cuando el producto no trae adicionales con precio
   const [catalogExtras, setCatalogExtras] = useState<any[]>([]);
@@ -285,39 +295,36 @@ export default function ComboRoomPage({ params }: { params: { id: string } }) {
     return () => clearInterval(timer);
   }, [loadRoom]);
 
-  const initVariants = () => {
-    if (!room) return;
-    const vars: Record<string, any[]> = {};
-    room.groups?.forEach((g, gIdx) => {
-      const opts = g.options || g.items || [];
-      vars[String(gIdx)] = opts.map((o: any) => ({ ...o, count: 0 }));
+  // ── Borradores por unidad ──────────────────────────────────────────────────────────────────────────────────────────
+  const emptyUnit = (): UnitDraft => ({ name: '', exclusions: [], addons: {}, note: '' });
+  const getUnit = (i: number): UnitDraft => unitsData[i] || emptyUnit();
+  const updateUnit = (i: number, patch: Partial<UnitDraft>) =>
+    setUnitsData((prev) => {
+      const next = Array.from({ length: Math.max(prev.length, i + 1) }, (_, k) => prev[k] || emptyUnit());
+      next[i] = { ...next[i], ...patch };
+      return next;
     });
-    setLocalVariants(vars);
-    setLocalExclusions([]);
-    setUnitEx([]);
-    setActiveUnit(0);
+  const toggleExclusion = (i: number, label: string) => {
+    const cur = getUnit(i).exclusions;
+    updateUnit(i, { exclusions: cur.includes(label) ? cur.filter((e) => e !== label) : [...cur, label] });
   };
-
-  const handleSaveStandard = async () => {
-    if (!guestName.trim()) { setSaveError('Escribe tu nombre antes de guardar.'); return; }
-    await submitClaim({}, []);
+  const toggleAddon = (i: number, key: string) => {
+    const cur = getUnit(i).addons;
+    updateUnit(i, { addons: { ...cur, [key]: cur[key] ? 0 : 1 } });
   };
-
-  const handleSaveCustom = async () => {
-    if (!guestName.trim()) { setSaveError('Escribe tu nombre antes de guardar.'); return; }
-    if (claimedUnits > 1) {
-      // Una lista de exclusiones por unidad; `exclusions` conserva la unión para lo que ya la lee (monitor, desglose)
-      const perUnit = Array.from({ length: claimedUnits }, (_, i) => unitEx[i] || []);
-      const union = Array.from(new Set(perUnit.flat()));
-      await submitClaim(localVariants, union, perUnit);
-      return;
-    }
-    await submitClaim(localVariants, localExclusions);
+  // "Repetir en todos": copia exclusiones y adicionales (no el alias ni la nota) de la unidad `from` a las demás
+  const repeatInAll = (from: number) => {
+    const src = getUnit(from);
+    setUnitsData((prev) =>
+      Array.from({ length: Math.max(prev.length, claimedUnits) }, (_, k) =>
+        k === from ? (prev[k] || emptyUnit()) : { ...(prev[k] || emptyUnit()), exclusions: [...src.exclusions], addons: { ...src.addons } }
+      )
+    );
   };
 
   // Opciones extra que se ofrecen al invitado: (a) las del propio producto con precio real (grupos que no son "SIN" ni BASE);
-  // si el producto no trae ninguna, (b) complementos reales del catálogo de la tienda, con el mismo criterio que el modal del
-  // anfitrión (papas/tequeños/bebidas…, sin stock 0, sin el propio producto, máx. 4).
+  // si el producto no trae ninguna, (b) complementos reales del catálogo de la tienda (primera página), con el mismo criterio
+  // que el modal del anfitrión (papas/tequeños/bebidas…, sin stock 0, sin el propio producto, máx. 4).
   const buildAddonOptions = (): any[] => {
     const native = (room?.groups || []).flatMap((g: any, gIdx: number) =>
       /\bsin\b/i.test(String(g.name || g.title || '')) || g.pricingRole === 'BASE'
@@ -340,76 +347,70 @@ export default function ComboRoomPage({ params }: { params: { id: string } }) {
       .map((p: any) => ({ name: p.name, code: String(p.code || p.sku || p.id), price: Number(p.price), image: p.image || p.imageUrl, key: `cat:${p.id}`, group: null }));
   };
 
-  // Adicionales elegidos por el invitado y su monto en USD
-  const getAddonItems = () =>
+  // Adicionales de una unidad (cada uno cuenta 1) y adicionales consolidados de todas las unidades
+  const unitAddonItems = (i: number) =>
     buildAddonOptions()
-      .map((o: any) => ({ o, count: addonCounts[o.key] || 0 }))
-      .filter(({ count }) => count > 0)
-      .map(({ o, count }) => ({
-        name: o.name, code: o.code, price: Number(o.price), count,
+      .filter((o: any) => (getUnit(i).addons[o.key] || 0) > 0)
+      .map((o: any) => ({
+        name: o.name, code: o.code, price: Number(o.price), count: 1,
         ...(o.group ? { groupName: o.group.name || o.group.title, groupCode: o.group.code, groupType: o.group.selectType } : {}),
       }));
-  const getAddonsUsd = () => getAddonItems().reduce((sum, it) => sum + it.price * it.count, 0);
+  const allAddonItems = () => {
+    const merged = new Map<string, any>();
+    for (let i = 0; i < claimedUnits; i++) {
+      unitAddonItems(i).forEach((it) => {
+        const prev = merged.get(it.code);
+        merged.set(it.code, prev ? { ...prev, count: prev.count + it.count } : it);
+      });
+    }
+    return Array.from(merged.values());
+  };
+  const getAddonsUsd = () => allAddonItems().reduce((sum, it) => sum + it.price * it.count, 0);
 
-  const submitClaim = async (variants: Record<string, any>, exclusions: string[], unitExclusions?: string[][]) => {
+  // Confirma la selección: una entrada por unidad { unitIndex, unitName, exclusions, addons, note } (todo mapas: Firestore no
+  // admite arreglos anidados). Además viajan los agregados que ya consumen el monitor y el carrito (exclusions = unión,
+  // selectedVariants.addons consolidado, addonsUsd) para no alterar la estructura de precios/variants hacia Adonis.
+  const handleConfirm = async () => {
+    if (!guestName.trim()) { setSaveError('Escribe tu nombre antes de guardar.'); return; }
     setSaving(true);
     setSaveError(null);
     try {
-      const addonItems = getAddonItems();
+      const units = Array.from({ length: claimedUnits }, (_, i) => {
+        const u = getUnit(i);
+        return { unitIndex: i + 1, unitName: (u.name || '').trim().slice(0, 30), exclusions: u.exclusions, addons: unitAddonItems(i), note: cleanKitchenNote(u.note) };
+      });
+      const addons = allAddonItems();
       const res = await fetch(`/api/combo/${roomId}`, {
         method: 'PUT',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
           name: guestName.trim(),
           unitsCount: claimedUnits,
-          selectedVariants: addonItems.length > 0 ? { ...variants, addons: addonItems } : variants,
-          exclusions,
-          ...(unitExclusions ? { unitExclusions } : {}),
+          units,
+          exclusions: Array.from(new Set(units.flatMap((u) => u.exclusions))),
+          selectedVariants: addons.length > 0 ? { addons } : {},
           addonsUsd: getAddonsUsd(),
-          notes: cleanKitchenNote(guestNote) ? [cleanKitchenNote(guestNote)] : [],
+          // Con 1 unidad la nota viaja como siempre; con varias, cada nota vive en su unidad
+          notes: claimedUnits === 1 && units[0].note ? [units[0].note] : [],
         }),
       });
-      const data = await res.json();
-      if (data.ok) {
+      // Un 500 puede no traer JSON válido: nunca se muestra el error técnico crudo
+      const data = await res.json().catch(() => null);
+      if (res.ok && data?.ok) {
         setRoom(data.room);
-        const addedClaim = data.room.participants.find((p: any) => p.name === guestName.trim() && p.unitsCount === claimedUnits);
-        setMyClaim(addedClaim);
+        const mine = [...data.room.participants].reverse().find((p: any) => p.name === guestName.trim() && p.unitsCount === claimedUnits);
+        setMyClaim(mine || null);
         setPhase('done');
+      } else if (res.status >= 500 || !data) {
+        setSaveError('No pudimos guardar tu selección. Intenta de nuevo en unos segundos.');
       } else {
-        setSaveError(data.error || 'No se pudo guardar.');
+        setSaveError(data.error || 'No se pudo guardar. Intenta de nuevo.');
       }
     } catch {
-      setSaveError('Error de red. Intenta de nuevo.');
+      setSaveError('No hay conexión con el servidor. Revisa tu internet e intenta de nuevo.');
     } finally {
       setSaving(false);
     }
-  };
-
-  const handleOptionCount = (gIdx: number, code: string, delta: number) => {
-    setLocalVariants(prev => {
-      const list = [...(prev[String(gIdx)] || [])];
-      return {
-        ...prev,
-        [String(gIdx)]: list.map(item =>
-          (item.code || item.id) === code
-            ? { ...item, count: Math.max(0, (item.count || 0) + delta) }
-            : item
-        ),
-      };
-    });
-  };
-
-  const handleSingleSelect = (gIdx: number, code: string) => {
-    setLocalVariants(prev => {
-      const list = prev[String(gIdx)] || [];
-      return {
-        ...prev,
-        [String(gIdx)]: list.map(item => ({
-          ...item,
-          count: (item.code || item.id) === code ? 1 : 0,
-        })),
-      };
-    });
   };
 
   const handleCopyPayment = () => {
@@ -452,31 +453,18 @@ export default function ComboRoomPage({ params }: { params: { id: string } }) {
   }
 
   const availableUnits = room.totalUnits - room.claimedUnits;
-
-  // Opciones de pago extra reales del producto (excluye el grupo "SIN", que resta ingredientes, y los grupos BASE)
   const addonOptions = buildAddonOptions();
-  // Con más de 1 unidad y personalización, las exclusiones se eligen por unidad (pestañas #1, #2…)
-  const perUnitMode = claimedUnits > 1 && customizationType === 'custom';
+  const sinOptions = (room.groups || [])
+    .filter((g: any) => /\bsin\b/i.test(String(g.name || g.title || '')))
+    .flatMap((g: any) => g.options || g.items || []);
   const safeUnit = Math.min(activeUnit, Math.max(0, claimedUnits - 1));
-  const currentExclusions = perUnitMode ? (unitEx[safeUnit] || []) : localExclusions;
-  const toggleExclusion = (label: string) => {
-    if (perUnitMode) {
-      setUnitEx((prev) => {
-        const next = Array.from({ length: claimedUnits }, (_, i) => [...(prev[i] || [])]);
-        next[safeUnit] = next[safeUnit].includes(label) ? next[safeUnit].filter((e) => e !== label) : [...next[safeUnit], label];
-        return next;
-      });
-    } else {
-      setLocalExclusions((prev) => (prev.includes(label) ? prev.filter((e) => e !== label) : [...prev, label]));
-    }
-  };
+  const unit = getUnit(safeUnit);
   const myPartUsd = claimedUnits * room.unitPriceUsd + getAddonsUsd();
   const formatBs = (usd: number) => (bcvRate ? usd * bcvRate : 0).toLocaleString('es-VE', { minimumFractionDigits: 2, maximumFractionDigits: 2 });
 
   if (phase === 'pick') {
-    const hasSinGroups = (room.groups || []).some((g: any) => /\bsin\b/i.test(String(g.name || g.title || '')));
     return (
-      <div className="min-h-screen bg-slate-50 flex flex-col items-center pt-8 px-4">
+      <div className="min-h-screen bg-slate-50 flex flex-col items-center pt-8 pb-10 px-4">
         <div className="w-full max-w-sm space-y-6">
           <div className="text-center">
             <h1 className="text-xl font-black text-slate-900 leading-tight mb-2">{room.productName}</h1>
@@ -487,13 +475,14 @@ export default function ComboRoomPage({ params }: { params: { id: string } }) {
           </div>
 
           <div className="bg-white p-5 rounded-3xl shadow-sm border border-slate-100 space-y-5">
+            {/* Datos iniciales */}
             <div className="space-y-1.5">
               <label className="text-xs font-black text-slate-700 uppercase tracking-wider block">Tu nombre</label>
               <input
                 type="text"
                 value={guestName}
-                onChange={e => setGuestName(e.target.value)}
-                placeholder="Ej. María, Luis..."
+                onChange={(e) => setGuestName(e.target.value)}
+                placeholder="Ej: Carlos, Nena..."
                 maxLength={30}
                 className="w-full rounded-xl border border-slate-200 bg-slate-50 px-3.5 py-3 text-sm font-bold text-slate-800 focus:bg-white focus:outline-none focus:border-[#fe6712] focus:ring-2 focus:ring-[#fe6712]/20 placeholder-slate-400 transition"
               />
@@ -506,6 +495,7 @@ export default function ComboRoomPage({ params }: { params: { id: string } }) {
                   type="button"
                   onClick={() => setClaimedUnits(Math.max(1, claimedUnits - 1))}
                   disabled={claimedUnits <= 1}
+                  aria-label="Menos unidades"
                   className="w-8 h-8 rounded-full flex items-center justify-center text-slate-600 hover:bg-slate-200 disabled:opacity-30 transition cursor-pointer"
                 >
                   <svg className="w-4 h-4" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2.5}><path strokeLinecap="round" strokeLinejoin="round" d="M20 12H4" /></svg>
@@ -515,6 +505,7 @@ export default function ComboRoomPage({ params }: { params: { id: string } }) {
                   type="button"
                   onClick={() => setClaimedUnits(Math.min(availableUnits, claimedUnits + 1))}
                   disabled={claimedUnits >= availableUnits}
+                  aria-label="Más unidades"
                   className="w-8 h-8 rounded-full flex items-center justify-center text-[#fe6712] hover:bg-orange-100 disabled:opacity-30 transition cursor-pointer"
                 >
                   <svg className="w-4 h-4" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2.5}><path strokeLinecap="round" strokeLinejoin="round" d="M12 4v16m8-8H4" /></svg>
@@ -522,162 +513,153 @@ export default function ComboRoomPage({ params }: { params: { id: string } }) {
               </div>
             </div>
 
-            {saveError && <p className="text-xs font-bold text-red-600 text-center">{saveError}</p>}
+            {room.paymentMode === 'host_pays' && (
+              <div className="bg-emerald-50 border border-emerald-200 p-3 rounded-xl flex items-start gap-2">
+                <span className="text-emerald-500 text-lg">🎁</span>
+                <p className="text-[11px] font-bold text-emerald-800 leading-tight">
+                  ¡Estás invitado por el anfitrión! Solo elige tus porciones.
+                </p>
+              </div>
+            )}
 
-            
-              {/* Payment Mode Alert */}
-              {room.paymentMode === 'host_pays' && (
-                <div className="bg-emerald-50 border border-emerald-200 p-3 rounded-xl flex items-start gap-2">
-                  <span className="text-emerald-500 text-lg">🎁</span>
-                  <p className="text-[11px] font-bold text-emerald-800 leading-tight">
-                    ¡Estás invitado por el anfitrión! Solo elige tus porciones.
-                  </p>
+            {/* Selector por unidades (2 o más): pestañas #1…#n */}
+            {claimedUnits > 1 && (
+              <div className="flex items-center gap-1.5 overflow-x-auto no-scrollbar pb-1">
+                {Array.from({ length: claimedUnits }).map((_, i) => {
+                  const u = getUnit(i);
+                  return (
+                    <button
+                      key={i}
+                      type="button"
+                      onClick={() => setActiveUnit(i)}
+                      className={`shrink-0 px-3 py-1.5 rounded-lg text-xs font-black border transition cursor-pointer ${i === safeUnit ? 'bg-[#FE6712] text-white border-[#FE6712]' : 'bg-white text-slate-700 border-slate-300 hover:border-[#FE6712]/50'}`}
+                    >
+                      #{i + 1}{u.name.trim() ? ` ${u.name.trim().slice(0, 8)}` : ''}
+                    </button>
+                  );
+                })}
+                {(sinOptions.length > 0 || addonOptions.length > 0) && (
+                  <button
+                    type="button"
+                    onClick={() => repeatInAll(safeUnit)}
+                    className="shrink-0 ml-auto px-3 py-1.5 rounded-lg text-[11px] font-bold text-[#FE6712] bg-orange-50 border border-orange-200 hover:bg-orange-100 transition cursor-pointer"
+                  >
+                    Repetir en todos
+                  </button>
+                )}
+              </div>
+            )}
+
+            {/* Personalización de la unidad activa (misma estructura que "Personalizar aquí") */}
+            <div className="p-3 sm:p-4 bg-white border border-slate-100 rounded-2xl space-y-4 shadow-sm">
+              {claimedUnits > 1 && (
+                <div>
+                  <label className="text-[11px] font-bold text-slate-500 block mb-1">¿Para quién es? (Opcional)</label>
+                  <input
+                    type="text"
+                    value={unit.name}
+                    maxLength={30}
+                    onChange={(e) => updateUnit(safeUnit, { name: e.target.value.slice(0, 30) })}
+                    placeholder="Ej: Carlitos, Mamá"
+                    className="w-full h-9 text-xs px-3 rounded-lg border border-slate-200 bg-slate-50 font-medium text-slate-900 placeholder:text-slate-400 focus:bg-white focus:outline-none focus:border-[#FE6712] transition"
+                  />
                 </div>
               )}
 
-              {saveError && <p className="text-xs font-bold text-red-600 text-center">{saveError}</p>}
-
-              <div className="space-y-4 pt-2">
-                {hasSinGroups && (
-                  <div className="space-y-2">
-                    <p className="text-[10px] font-black text-slate-400 uppercase tracking-wider">¿Cómo los prefieres?</p>
-                    <div className="grid grid-cols-2 gap-2">
-                      <button
-                        type="button"
-                        onClick={() => setCustomizationType('all')}
-                        className={`py-2.5 px-2 rounded-xl text-xs transition cursor-pointer border ${customizationType === 'all' ? 'bg-[#FE6712] text-white border-[#FE6712] font-black shadow-md' : 'bg-white text-slate-800 border-slate-300 font-bold hover:bg-slate-50'}`}
-                      >
-                        🥬 Salen con todo
-                      </button>
-                      <button
-                        type="button"
-                        onClick={() => { setCustomizationType('custom'); initVariants(); }}
-                        className={`py-2.5 px-2 rounded-xl text-xs transition cursor-pointer border ${customizationType === 'custom' ? 'bg-[#FE6712] text-white border-[#FE6712] font-black shadow-md' : 'bg-white text-slate-800 border-slate-300 font-bold hover:bg-slate-50'}`}
-                      >
-                        🛠️ Quitar ingredientes
-                      </button>
-                    </div>
-                  </div>
-                )}
-
-                {hasSinGroups && customizationType === 'custom' && (
-                  <div className="p-3 bg-slate-50 border border-slate-200 rounded-xl space-y-2">
-                    {perUnitMode && (
-                      <div className="flex items-center gap-1.5 overflow-x-auto no-scrollbar pb-1">
-                        {Array.from({ length: claimedUnits }).map((_, i) => (
-                          <button
-                            key={i}
-                            type="button"
-                            onClick={() => setActiveUnit(i)}
-                            className={`shrink-0 px-3 py-1.5 rounded-lg text-xs font-black border transition cursor-pointer ${i === safeUnit ? 'bg-[#FE6712] text-white border-[#FE6712]' : 'bg-white text-slate-700 border-slate-300 hover:border-[#FE6712]/50'}`}
-                          >
-                            #{i + 1}{(unitEx[i] || []).length > 0 ? ' •' : ''}
-                          </button>
-                        ))}
+              {sinOptions.length > 0 && (
+                <div className="space-y-2">
+                  <p className="text-[10px] font-black text-slate-500 uppercase tracking-wider">Sin</p>
+                  <div className="flex flex-wrap gap-2">
+                    {sinOptions.map((opt: any) => {
+                      const label = opt.name || opt.title || '';
+                      const selected = unit.exclusions.includes(label);
+                      const displayLabel = label.toUpperCase().startsWith('SIN ') ? label : 'Sin ' + label;
+                      return (
                         <button
+                          key={label}
                           type="button"
-                          onClick={() => setUnitEx(Array.from({ length: claimedUnits }, () => [...(unitEx[safeUnit] || [])]))}
-                          className="shrink-0 ml-auto px-3 py-1.5 rounded-lg text-[11px] font-bold text-[#FE6712] bg-orange-50 border border-orange-200 hover:bg-orange-100 transition cursor-pointer"
+                          onClick={() => toggleExclusion(safeUnit, label)}
+                          className={`px-4 py-2 rounded-full border text-xs font-bold transition cursor-pointer ${selected ? 'border-[#FE6712] bg-orange-50 text-[#FE6712]' : 'border-slate-200 bg-white text-slate-700 hover:border-[#FE6712]/40'}`}
                         >
-                          Repetir en todos
+                          {selected ? '✓ ' : '+ '}{displayLabel}
                         </button>
-                      </div>
-                    )}
-                    <p className="text-[10px] font-black text-slate-500 uppercase tracking-wider">{perUnitMode ? `Unidad #${safeUnit + 1}: selecciona lo que NO quieres` : 'Selecciona lo que NO quieres:'}</p>
-                    <div className="grid grid-cols-2 gap-2">
-                      {(room.groups || [])
-                        .filter((g: any) => /\bsin\b/i.test(String(g.name || g.title || '')))
-                        .flatMap((g: any) => g.options || g.items || [])
-                        .map((opt: any) => {
-                          const label = opt.name || opt.title || '';
-                          const selected = currentExclusions.includes(label);
-                          // Prevent Sin SIN duplication
-                          const displayLabel = label.toUpperCase().startsWith('SIN ') ? label : 'Sin ' + label;
-                          return (
-                            <label key={label} className={`flex items-center gap-2 p-2 rounded-xl border text-[11px] font-bold cursor-pointer transition shadow-sm ${selected ? 'bg-red-50 border-red-200 text-red-700' : 'bg-white border-slate-300 text-slate-800 hover:border-[#FE6712]/50'}`}>
-                              <input
-                                type="checkbox"
-                                checked={selected}
-                                onChange={() => toggleExclusion(label)}
-                                className="w-4 h-4 accent-[#FE6712] rounded cursor-pointer"
-                              />
-                              <span className={selected ? 'line-through opacity-70' : ''}>{displayLabel}</span>
-                            </label>
-                          );
-                        })}
-                    </div>
+                      );
+                    })}
                   </div>
-                )}
-
-                {/* Adicionales (upselling): carrusel horizontal, solo con opciones con precio real del producto */}
-                {addonOptions.length > 0 && (
-                  <div className="space-y-2">
-                    <p className="text-[10px] font-black text-slate-400 uppercase tracking-wider">¿Le sumas algo? (opcional)</p>
-                    <div className="flex gap-2 overflow-x-auto no-scrollbar pb-1 -mx-1 px-1">
-                      {addonOptions.map((opt: any) => {
-                        const count = addonCounts[opt.key] || 0;
-                        return (
-                          <div key={opt.key} className="w-60 shrink-0">
-                            <OptionCapsule
-                              name={opt.name}
-                              image={opt.image || opt.imageUrl}
-                              priceLabel={`+$${Number(opt.price).toFixed(2)}`}
-                              count={count}
-                              mode="counter"
-                              onIncrement={() => setAddonCounts(prev => ({ ...prev, [opt.key]: (prev[opt.key] || 0) + 1 }))}
-                              onDecrement={() => setAddonCounts(prev => ({ ...prev, [opt.key]: Math.max(0, (prev[opt.key] || 0) - 1) }))}
-                            />
-                          </div>
-                        );
-                      })}
-                    </div>
-                  </div>
-                )}
-
-                {/* Sugerencia para la cocina (acordeón compacto, punto donde se permiten notas para el invitado) */}
-                <KitchenNote value={guestNote} onChange={setGuestNote} />
-
-                {/* Tu parte, Bs. protagonista (Pago Móvil) + referencia en USD y tasa BCV */}
-                <div className="rounded-2xl border border-orange-200 bg-orange-50/60 p-3.5 space-y-1">
-                  <p className="text-[10px] font-black text-slate-500 uppercase tracking-wider">
-                    {room.paymentMode === 'host_pays' ? 'Invita el anfitrión' : 'Tu parte a pagar'}
-                  </p>
-                  {room.paymentMode === 'host_pays' ? (
-                    <p className="text-sm font-black text-emerald-700">No pagas nada, solo elige.</p>
-                  ) : bcvRate ? (
-                    <>
-                      <p className="text-2xl font-black text-slate-900 leading-tight">Bs. {formatBs(myPartUsd)}</p>
-                      <p className="text-[11px] font-bold text-slate-500">(${myPartUsd.toFixed(2)} USD • Tasa BCV: Bs. {bcvRate.toLocaleString('es-VE', { minimumFractionDigits: 2, maximumFractionDigits: 2 })})</p>
-                    </>
-                  ) : (
-                    <>
-                      <p className="text-2xl font-black text-slate-900 leading-tight">${myPartUsd.toFixed(2)}</p>
-                      <p className="text-[11px] font-bold text-slate-400">Tasa BCV no disponible por ahora.</p>
-                    </>
-                  )}
                 </div>
+              )}
 
-                <button
-                  type="button"
-                  disabled={!guestName.trim() || saving || availableUnits < 1}
-                  onClick={() => {
-                     if (customizationType === 'all') {
-                        handleSaveStandard();
-                     } else {
-                        handleSaveCustom();
-                     }
-                  }}
-                  className="w-full bg-[#25D366] hover:bg-[#20bd5a] disabled:bg-slate-200 disabled:text-slate-400 disabled:border-slate-300 disabled:border disabled:cursor-not-allowed text-white font-black py-4 rounded-xl text-sm flex items-center justify-center gap-2 transition active:scale-[0.98] shadow-md cursor-pointer"
-                >
-                  {saving ? 'Guardando...' : (customizationType === 'all' ? 'Confirmar mis porciones' : 'Guardar personalización')}
-                </button>
-              </div>
+              {addonOptions.length > 0 && (
+                <div className="space-y-2 pt-3 border-t border-slate-100">
+                  <p className="text-[10px] font-black text-slate-500 uppercase tracking-wider">¿Acompañamos esta unidad?</p>
+                  <div className="flex flex-row overflow-x-auto gap-2.5 pb-1 pt-0.5 no-scrollbar snap-x">
+                    {addonOptions.map((opt: any) => {
+                      const selected = (unit.addons[opt.key] || 0) > 0;
+                      return (
+                        <div
+                          key={opt.key}
+                          onClick={() => toggleAddon(safeUnit, opt.key)}
+                          className={`w-36 shrink-0 snap-start p-2 rounded-xl border flex flex-col justify-between transition cursor-pointer ${selected ? 'border-[#FE6712]/50 bg-[#fff5ed]' : 'border-slate-200 bg-white hover:border-[#FE6712]/30'}`}
+                        >
+                          {(opt.image || opt.imageUrl) && (
+                            <img src={opt.image || opt.imageUrl} alt={opt.name} className="w-full h-14 object-cover rounded-lg mb-1.5 bg-white" />
+                          )}
+                          <div>
+                            <p className="text-[11px] font-bold text-slate-900 truncate">{opt.name}</p>
+                            <span className="text-[10px] font-black text-orange-700">+${Number(opt.price).toFixed(2)}</span>
+                          </div>
+                          <button
+                            type="button"
+                            className={`w-full mt-1.5 py-1 text-[11px] font-bold rounded-lg flex items-center justify-center transition ${selected ? 'bg-[#FE6712]/10 text-[#FE6712] border border-[#FE6712]/30' : 'bg-slate-100 text-slate-600 hover:bg-slate-200'}`}
+                          >
+                            {selected ? '✓ Agregado' : '+ Agregar'}
+                          </button>
+                        </div>
+                      );
+                    })}
+                  </div>
+                </div>
+              )}
+
+              {/* Sugerencia para la cocina de esta unidad (mismo componente que la tienda) */}
+              <KitchenNote key={safeUnit} value={unit.note} onChange={(v) => updateUnit(safeUnit, { note: v })} />
             </div>
+
+            {/* Tu parte, Bs. protagonista (Pago Móvil) + referencia en USD y tasa BCV */}
+            <div className="rounded-2xl border border-orange-200 bg-orange-50/60 p-3.5 space-y-1">
+              <p className="text-[10px] font-black text-slate-500 uppercase tracking-wider">
+                {room.paymentMode === 'host_pays' ? 'Invita el anfitrión' : 'Tu parte a pagar'}
+              </p>
+              {room.paymentMode === 'host_pays' ? (
+                <p className="text-sm font-black text-emerald-700">No pagas nada, solo elige.</p>
+              ) : bcvRate ? (
+                <>
+                  <p className="text-2xl font-black text-slate-900 leading-tight">Bs. {formatBs(myPartUsd)}</p>
+                  <p className="text-[11px] font-bold text-slate-500">(${myPartUsd.toFixed(2)} USD • Tasa BCV: Bs. {bcvRate.toLocaleString('es-VE', { minimumFractionDigits: 2, maximumFractionDigits: 2 })})</p>
+                </>
+              ) : (
+                <>
+                  <p className="text-2xl font-black text-slate-900 leading-tight">${myPartUsd.toFixed(2)}</p>
+                  <p className="text-[11px] font-bold text-slate-400">Tasa BCV no disponible por ahora.</p>
+                </>
+              )}
+            </div>
+
+            {saveError && <p role="alert" className="text-xs font-bold text-red-600 text-center">{saveError}</p>}
+
+            <button
+              type="button"
+              disabled={!guestName.trim() || saving || availableUnits < 1}
+              onClick={handleConfirm}
+              className="w-full bg-[#25D366] hover:bg-[#20bd5a] disabled:bg-slate-200 disabled:text-slate-400 disabled:border-slate-300 disabled:border disabled:cursor-not-allowed text-white font-black py-4 rounded-xl text-sm flex items-center justify-center gap-2 transition active:scale-[0.98] shadow-md cursor-pointer"
+            >
+              {saving ? 'Guardando...' : 'Confirmar mi selección'}
+            </button>
           </div>
         </div>
-      );
-    }
-
+      </div>
+    );
+  }
 
   if (phase === 'done' && myClaim) {
     if (room.paymentMode === 'host_pays') {
@@ -720,23 +702,29 @@ export default function ComboRoomPage({ params }: { params: { id: string } }) {
             <div>
               <p className="text-[10px] font-black text-slate-400 uppercase tracking-wider mb-1">Resumen de tu pedido</p>
               <p className="text-sm font-black text-slate-800">{myClaim.unitsCount}x {room.productName}</p>
-              {Array.isArray(myClaim.unitExclusions) && myClaim.unitExclusions.length > 1 ? (
-                <div className="mt-1.5 space-y-0.5">
-                  {myClaim.unitExclusions.map((ex, i) => (
-                    <p key={i} className={`text-xs font-bold ${ex.length > 0 ? 'text-red-500' : 'text-emerald-600'}`}>
-                      #{i + 1}: {ex.length > 0 ? ex.map(e => e.toUpperCase().startsWith('SIN ') ? e : 'Sin ' + e).join(', ') : 'Con Todo'}
-                    </p>
+              {Array.isArray(myClaim.units) && myClaim.units.length > 1 ? (
+                <div className="mt-1.5 space-y-1">
+                  {myClaim.units.map((u, i) => (
+                    <div key={i}>
+                      <p className={`text-xs font-bold ${u.exclusions.length > 0 ? 'text-red-500' : 'text-emerald-600'}`}>
+                        #{i + 1}{u.unitName ? ` (${u.unitName})` : ''}: {u.exclusions.length > 0 ? u.exclusions.map(formatSin).join(', ') : 'Con todo'}
+                      </p>
+                      {u.addons.map((a, k) => (
+                        <p key={k} className="text-[11px] text-slate-600 font-bold pl-3">+ {a.count > 1 ? `${a.count}x ` : ''}{a.name}</p>
+                      ))}
+                      {u.note && <p className="text-[11px] text-slate-500 font-medium pl-3">Nota: {u.note}</p>}
+                    </div>
                   ))}
                 </div>
               ) : myClaim.exclusions.length > 0 ? (
-                <p className="text-xs text-red-500 font-bold mt-1.5">{myClaim.exclusions.map(e => e.toUpperCase().startsWith('SIN ') ? e : 'Sin ' + e).join(', ')}</p>
+                <p className="text-xs text-red-500 font-bold mt-1.5">{myClaim.exclusions.map(formatSin).join(', ')}</p>
               ) : (
-                <p className="text-xs text-emerald-600 font-bold mt-1.5">Con Todo</p>
+                <p className="text-xs text-emerald-600 font-bold mt-1.5">Con todo</p>
               )}
-              {Array.isArray(myClaim.notes) && myClaim.notes.length > 0 && (
+              {(!Array.isArray(myClaim.units) || myClaim.units.length <= 1) && Array.isArray(myClaim.notes) && myClaim.notes.length > 0 && (
                 <p className="text-xs text-slate-600 font-bold mt-1">Nota para la cocina: {myClaim.notes.join(' / ')}</p>
               )}
-              {Object.values(myClaim.selectedVariants || {}).flatMap((sel: any) => (Array.isArray(sel) ? sel : [])).filter((it: any) => (it?.count || 0) > 0).map((it: any, i: number) => (
+              {(!Array.isArray(myClaim.units) || myClaim.units.length <= 1) && Object.values(myClaim.selectedVariants || {}).flatMap((sel: any) => (Array.isArray(sel) ? sel : [])).filter((it: any) => (it?.count || 0) > 0).map((it: any, i: number) => (
                 <p key={i} className="text-xs text-slate-600 font-bold mt-1">+ {it.count > 1 ? `${it.count}x ` : ''}{it.name}</p>
               ))}
             </div>

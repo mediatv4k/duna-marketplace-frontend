@@ -9,6 +9,12 @@ export const KITCHEN_NOTE_MAX = 70;
 export const cleanKitchenNote = (raw: string) =>
   String(raw || '').replace(/[()]/g, (c) => (c === '(' ? '[' : ']')).replace(/\s+/g, ' ').trim().slice(0, KITCHEN_NOTE_MAX);
 
+// "SIN SALSA ROJA" / "salsa roja" -> "Sin salsa roja" (formato uniforme para monitor, comanda y `comments`)
+export const formatSin = (e: string) => {
+  const body = String(e || '').trim().replace(/^sin\s+/i, '');
+  return body ? `Sin ${body.toLowerCase()}` : '';
+};
+
 interface KitchenNoteProps {
   value: string;
   onChange: (next: string) => void;

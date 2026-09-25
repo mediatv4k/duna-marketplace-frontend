@@ -9,7 +9,15 @@ export interface ParticipantClaim {
   exclusions: string[];
   selectedVariants: Record<string, any>;
   subtotalUsd: number;
-  unitExclusions?: string[][]; // exclusiones por unidad (solo si el invitado personalizó varias unidades por separado)
+  // Una entrada por unidad. Firestore NO admite arreglos anidados (fue la causa del 500 al unirse con varias unidades),
+  // por eso cada unidad es un mapa y sus listas (exclusions, addons) son arreglos de valores o de mapas.
+  units?: {
+    unitIndex: number;
+    unitName: string;
+    exclusions: string[];
+    addons: { name: string; code: string; price: number; count: number; groupName?: string; groupCode?: string; groupType?: string }[];
+    note: string;
+  }[];
   notes?: string[]; // sugerencias para la cocina (una por unidad, máx. 80 caracteres c/u)
   isHost: boolean;
   completedAt: string | null;
@@ -37,10 +45,36 @@ function cleanNotes(raw: unknown): string[] {
   return list.map((n) => String(n).replace(/s+/g, " ").trim().slice(0, 80)).filter(Boolean).slice(0, 12);
 }
 
-// Exclusiones por unidad: lista de listas de textos cortos (máx. `units` listas, 20 por lista, 60 car. c/u)
-function cleanUnitExclusions(raw: unknown, units: number): string[][] {
+// Unidades de un participante: máx. `count`; alias 30 car.; 20 exclusiones de 60 car.; 20 adicionales; nota 70 car.
+function cleanUnits(raw: unknown, count: number): NonNullable<ParticipantClaim['units']> {
   if (!Array.isArray(raw)) return [];
-  return raw.slice(0, units).map((l) => (Array.isArray(l) ? l.map((e) => String(e).trim().slice(0, 60)).filter(Boolean).slice(0, 20) : []));
+  return raw.slice(0, count).map((u: any, i: number) => ({
+    unitIndex: i + 1,
+    unitName: String(u?.unitName ?? u?.name ?? '').replace(/\s+/g, ' ').trim().slice(0, 30),
+    exclusions: Array.isArray(u?.exclusions) ? u.exclusions.map((e: unknown) => String(e).trim().slice(0, 60)).filter(Boolean).slice(0, 20) : [],
+    addons: (Array.isArray(u?.addons) ? u.addons : []).slice(0, 20).map((a: any) => ({
+      name: String(a?.name ?? '').slice(0, 80),
+      code: String(a?.code ?? '').slice(0, 60),
+      price: Number.isFinite(Number(a?.price)) && Number(a?.price) > 0 ? Math.round(Number(a.price) * 100) / 100 : 0,
+      count: Number.isFinite(Number(a?.count)) && Number(a?.count) > 0 ? Math.min(99, Math.floor(Number(a.count))) : 1,
+      ...(a?.groupName ? { groupName: String(a.groupName).slice(0, 80) } : {}),
+      ...(a?.groupCode ? { groupCode: String(a.groupCode).slice(0, 60) } : {}),
+      ...(a?.groupType ? { groupType: String(a.groupType).slice(0, 20) } : {}),
+    })),
+    note: String(u?.note ?? '').replace(/\s+/g, ' ').trim().slice(0, 80),
+  }));
+}
+
+// Firestore rechaza `undefined` y los arreglos directamente anidados. Todo lo que llega del cliente se limpia antes de
+// guardarlo: sin undefined y, si un arreglo contiene otro arreglo, este se envuelve en un mapa { items }.
+function toFirestoreSafe(value: any): any {
+  if (Array.isArray(value)) return value.map((v) => (Array.isArray(v) ? { items: toFirestoreSafe(v) } : toFirestoreSafe(v)));
+  if (value && typeof value === 'object') {
+    const out: Record<string, any> = {};
+    for (const [k, v] of Object.entries(value)) if (v !== undefined) out[k] = toFirestoreSafe(v);
+    return out;
+  }
+  return value;
 }
 
 function generateRoomId(): string {
@@ -102,7 +136,7 @@ export async function POST(
       name: hostName || 'Anfitrión',
       unitsCount: hostUnitsCount || 0,
       exclusions: Array.isArray(hostExclusions) ? hostExclusions : [],
-      selectedVariants: hostSelectedVariants || {},
+      selectedVariants: toFirestoreSafe(hostSelectedVariants || {}),
       notes: cleanNotes(hostNotes),
       subtotalUsd: (hostUnitsCount || 0) * (unitPriceUsd || 0) + hostAddons,
       isHost: true,
@@ -158,7 +192,9 @@ export async function PUT(
 
     const room = docSnap.data() as ComboRoomData;
     const body = await req.json();
-    const { name, unitsCount, selectedVariants, exclusions } = body;
+    const { name, selectedVariants, exclusions } = body;
+    // La cantidad puede venir en `unitsCount` o deducirse de `units` (una entrada por unidad)
+    const unitsCount: number | undefined = typeof body.unitsCount === 'number' ? body.unitsCount : Array.isArray(body.units) ? body.units.length : undefined;
     // Adicionales (papas, bebidas…) que el invitado suma a su porción: monto ya calculado en cliente con los precios
     // reales del producto; aquí solo se sanea (número finito, no negativo, 2 decimales).
     const rawAddons = Number(body.addonsUsd);
@@ -181,9 +217,9 @@ export async function PUT(
       name: String(name).trim(),
       unitsCount,
       exclusions: Array.isArray(exclusions) ? exclusions : [],
-      selectedVariants: selectedVariants || {},
+      selectedVariants: toFirestoreSafe(selectedVariants || {}),
       notes: cleanNotes(body.notes),
-      ...(unitsCount > 1 && Array.isArray(body.unitExclusions) ? { unitExclusions: cleanUnitExclusions(body.unitExclusions, unitsCount) } : {}),
+      ...(Array.isArray(body.units) ? { units: cleanUnits(body.units, unitsCount) } : {}),
       subtotalUsd: unitsCount * room.unitPriceUsd + addonsUsd,
       isHost: false,
       completedAt: new Date().toISOString(),
@@ -196,6 +232,7 @@ export async function PUT(
 
     return NextResponse.json({ ok: true, room });
   } catch (error) {
+    console.error('[api/combo PUT] error al unirse a la sala:', error);
     return NextResponse.json({ ok: false, error: 'Error al unirse a la sala' }, { status: 500 });
   }
 }
@@ -232,7 +269,7 @@ export async function PATCH(
       ...host,
       exclusions: Array.isArray(body.exclusions) ? body.exclusions.map(String) : [],
       notes: cleanNotes(body.notes),
-      selectedVariants: body.selectedVariants && typeof body.selectedVariants === 'object' ? body.selectedVariants : {},
+      selectedVariants: body.selectedVariants && typeof body.selectedVariants === 'object' ? toFirestoreSafe(body.selectedVariants) : {},
       subtotalUsd: host.unitsCount * room.unitPriceUsd + addonsUsd,
     };
 
