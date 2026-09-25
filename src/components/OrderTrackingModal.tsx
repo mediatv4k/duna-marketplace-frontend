@@ -45,10 +45,11 @@ export default function OrderTrackingModal({ isOpen, onClose, orderId, orderSumm
   const [orderData, setOrderData] = useState<any>(null);
   const [remote, setRemote] = useState<any>(null);
   const [trackingError, setTrackingError] = useState<string | null>(null);
-  const [activeTab, setActiveTab] = useState<'TRACKING' | 'KITCHEN' | 'RECEIPT'>('KITCHEN');
+  const [activeTab, setActiveTab] = useState<'TRACKING' | 'KITCHEN' | 'RECEIPT'>('TRACKING');
 
   useEffect(() => {
     if (!isOpen) return;
+    setActiveTab('TRACKING');
 
     let isMounted = true;
     let timer: ReturnType<typeof setTimeout> | null = null;
