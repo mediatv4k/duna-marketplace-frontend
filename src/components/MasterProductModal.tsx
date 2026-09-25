@@ -46,6 +46,8 @@ export interface VariantSelectionPayload {
   pricing?: { unitBasePrice: number; addonsTotal: number; unitFinalPrice: number };
   proceedToCheckout?: boolean; // solo la sala colaborativa completa: la tienda abre el carrito al recibirlo
   notes?: string; // sugerencia para la cocina del producto simple (las de combo/ranura viajan dentro de breakdown)
+  // Solo local (Recibo del seguimiento): quién pidió cada adicional con costo. NO viaja a Adonis (CheckoutModal mapea campos explícitos).
+  extrasByPerson?: { name: string; participant: string; price: number }[];
 }
 
 // Etiquetas de precio extra para una cápsula. Solo presentación: no participa en ningún cálculo.
@@ -824,6 +826,24 @@ export default function MasterProductModal({
         })
         .filter(Boolean)
         .join(' | ');
+      // Beneficiario de cada adicional con costo, para el Recibo: unidad con alias > nombre del invitado > "Anfitrión".
+      // Un invitado con varias unidades aporta sus adicionales por unidad; los demás, su lista consolidada (mismos
+      // adicionales que ya suman en `roomAddonsAll`, así que el desglose cuadra con `pricing.addonsTotal`).
+      const roomExtras: { name: string; participant: string; price: number }[] = [];
+      const pushExtra = (a: any, who: string) => {
+        const unit = Number(a?.price || 0);
+        const cnt = Number(a?.count || 0);
+        if (!(unit > 0) || !(cnt > 0)) return;
+        roomExtras.push({ name: `${cnt > 1 ? cnt + 'x ' : ''}${String(a.name || 'Adicional')}`, participant: who, price: Math.round(unit * cnt * 100) / 100 });
+      };
+      comboRoomData.participants.forEach((p: any) => {
+        const owner = p.isHost ? 'Anfitrión' : String(p.name || 'Invitado');
+        if (Array.isArray(p.units) && p.units.length > 1) {
+          p.units.forEach((u: any) => (u.addons || []).forEach((a: any) => pushExtra(a, String(u.unitName || '').trim() || owner)));
+        } else {
+          (Array.isArray(p.selectedVariants?.addons) ? p.selectedVariants.addons : []).forEach((a: any) => pushExtra(a, owner));
+        }
+      });
       const roomStructured = qty === 1 && roomGroups.size > 0;
       const round2 = (n: number) => Math.round(n * 100) / 100;
 
@@ -840,6 +860,7 @@ export default function MasterProductModal({
         variants: roomStructured ? Array.from(roomGroups.values()) : undefined,
         pricing: roomStructured ? { unitBasePrice: round2(totalCartPrice - roomAddonsAll), addonsTotal: round2(roomAddonsAll), unitFinalPrice: round2(totalCartPrice) } : undefined,
         notes: roomComments || undefined,
+        extrasByPerson: roomExtras.length > 0 ? roomExtras : undefined,
         proceedToCheckout: proceedToCheckout === true
       });
       if (typeof window !== 'undefined') window.localStorage.removeItem('duna_pedido_amigos_active');

@@ -520,21 +520,25 @@ export default function OrderTrackingModal({ isOpen, onClose, orderId, orderSumm
                               });
                             }
   
+                            // Pedido de sala: el carrito trae `extrasByPerson` (quién pidió cada adicional, ya con su costo);
+                            // si existe manda sobre lo deducido del desglose/variantes. Sin él, todo funciona como antes.
+                            const structuredExtras: { name: string; participant: string; price: number }[] = Array.isArray(item.extrasByPerson)
+                              ? item.extrasByPerson.filter((e: any) => e && Number(e.price) > 0).map((e: any) => ({ name: String(e.name || ''), participant: String(e.participant || ''), price: Number(e.price) }))
+                              : [];
+                            const shownExtras = structuredExtras.length > 0 ? structuredExtras : financialExtras;
+
                             return (
                               <div key={item.cartItemId || item.code || idx} className="w-full">
                                 <div className="flex justify-between items-start font-bold">
                                   <span>{qty}x {String(item.name || '').toUpperCase()}</span>
                                   <span className="shrink-0">{itemTotal.toFixed(2)}</span>
                                 </div>
-                                {financialExtras.length > 0 && (
+                                {shownExtras.length > 0 && (
                                   <div className="mt-1 space-y-1">
-                                    {financialExtras.map((ext, eIdx) => (
+                                    {shownExtras.map((ext, eIdx) => (
                                       <div key={eIdx} className="flex items-center justify-between text-xs font-mono py-0.5 text-slate-600 pl-4">
-                                        <span className="text-left flex-1 truncate pr-2">
-                                          {ext.name}
-                                        </span>
-                                        <span className="text-center shrink-0 w-24 text-slate-400 italic">
-                                          {ext.participant ? `(${ext.participant})` : ''}
+                                        <span className="text-left flex-1 min-w-0 pr-2 break-words">
+                                          {ext.name}{ext.participant ? ` (${ext.participant})` : ''}
                                         </span>
                                         <span className="text-right shrink-0 min-w-[70px] font-medium text-slate-700 tabular-nums">
                                           {ext.price > 0 ? `+${ext.price.toFixed(2)}` : ''}

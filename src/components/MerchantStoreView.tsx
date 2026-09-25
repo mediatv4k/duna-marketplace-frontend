@@ -485,6 +485,7 @@ export default function MerchantStoreView({
         variants: configuredItem.variants || [],
         pricing: configuredItem.pricing || null,
         notes: configuredItem.notes || undefined,
+        extrasByPerson: configuredItem.extrasByPerson || undefined,
         image: selectedProductDetail?.image || '',
         category: selectedProductDetail?.category || 'General'
       };
