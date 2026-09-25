@@ -929,6 +929,7 @@ export default function MerchantStoreView({
 
         {!templateNiche && isMasterModalOpen && selectedProductDetail && (
           <MasterProductModal
+            storeCatalog={products}
             product={selectedProductDetail}
             isOpen={isMasterModalOpen}
             onClose={() => setIsMasterModalOpen(false)}

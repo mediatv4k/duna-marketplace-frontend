@@ -183,9 +183,9 @@ export default function CartModal({
                       {item.breakdown && item.breakdown.length > 0 && (
                         <div className="flex flex-wrap gap-x-2 mt-0.5">
                           {item.breakdown.map((b, bIdx) => (
-                            <p key={bIdx} className="text-[8.5px] font-semibold text-slate-400 flex items-center gap-0.5 leading-none">
+                            <p key={bIdx} className="text-[9px] font-semibold text-slate-500 whitespace-pre-wrap break-words leading-tight">
                               <span className="text-[#fe6712]">•</span>
-                              <span className="truncate max-w-[120px]">{b}</span>
+                              <span className="whitespace-normal break-words">{b}</span>
                             </p>
                           ))}
                         </div>

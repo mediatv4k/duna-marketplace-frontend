@@ -166,7 +166,8 @@ interface MasterProductModalProps {
   nicheEngine: string;
   bcvRate: number | null;
   onAddToCart: (payload: VariantSelectionPayload) => void;
-  initialQty?: number; // unidades con las que arranca el contador al abrir (p. ej. el pedido del asistente); por defecto 1
+  initialQty?: number;
+  storeCatalog?: any[]; // unidades con las que arranca el contador al abrir (p. ej. el pedido del asistente); por defecto 1
   store?: { name: string; code: string } | null; // para el botón "Compartir" (nombre y slug reales de la tienda)
 }
 
@@ -178,6 +179,7 @@ export default function MasterProductModal({
   bcvRate,
   onAddToCart,
   initialQty = 1,
+  storeCatalog = [],
   store
 }: MasterProductModalProps) {
   // Cantidad válida: entero entre 1 y 99
@@ -771,48 +773,53 @@ export default function MasterProductModal({
         breakdown.push(`Personalización por unidad (${activeSlots.length} unidades)`);
       }
 
-      breakdown.push(`------- ${(product.name || 'PEDIDO').toUpperCase()} -------`);
+      const comboSku = product.sku || product.code ? ` (${product.sku || product.code})` : '';
+        breakdown.push(`------- ${(product.name || 'PEDIDO').toUpperCase()}${comboSku} -------`);
         activeSlots.forEach((slot, idx) => {
-          const slotTitle = slot.name?.trim() || '';
-          // Format: • Perro #1 (Nombre): Sin papita, Sin salsa roja [+ Ración Papas]
-          const slotHeader = `• ${unitLabel} #${idx + 1}${slotTitle ? ` (${slotTitle})` : ''}`;
-          const exclusionsParts: string[] = [];
-          const extrasParts: string[] = [];
-
-          if (slot.exclusions && slot.exclusions.length > 0) {
-            slot.exclusions.forEach((ex: string) => {
-              exclusionsParts.push(ex.toUpperCase().startsWith('SIN ') ? ex : `Sin ${ex}`);
-            });
-          }
-
-          Object.values(slot.selectedVariants).forEach((sel: any) => {
-            if (!sel) return;
-            if (Array.isArray(sel)) {
-              sel.forEach(item => {
-                if ((item.count || 0) > 0) {
-                  const modLabel = /^sin\b/i.test(String(item.name || '').trim()) ? String(item.name).trim() : `${item.count > 1 ? item.count + 'x ' : ''}${item.name}`;
-                  extrasParts.push(`+ ${modLabel}`);
-                }
+            const slotTitle = slot.name?.trim() || '';
+            const slotHeader = `• #${idx + 1}${slotTitle ? ` (${slotTitle})` : ''}`;
+            const exclusionsParts: string[] = [];
+            const extrasParts: string[] = [];
+  
+            if (slot.exclusions && slot.exclusions.length > 0) {
+              slot.exclusions.forEach((ex: string) => {
+                exclusionsParts.push(ex.toUpperCase().startsWith('SIN ') ? ex : `Sin ${ex}`);
               });
-            } else if (sel.name) {
-              extrasParts.push(`+ ${sel.name}`);
             }
-          });
-
-          let line = slotHeader + ': ';
-          if (exclusionsParts.length === 0 && extrasParts.length === 0) {
-            line += 'Con todo';
-          } else {
-            const allParts = [];
-            if (exclusionsParts.length > 0) allParts.push(exclusionsParts.join(', '));
-            if (extrasParts.length > 0) allParts.push(`[${extrasParts.join(', ')}]`);
-            if (exclusionsParts.length === 0 && extrasParts.length > 0) {
-               line += 'Con todo ' + allParts.join(' ');
+  
+            Object.values(slot.selectedVariants).forEach((sel: any) => {
+              if (!sel) return;
+              if (Array.isArray(sel)) {
+                sel.forEach(item => {
+                  if ((item.count || 0) > 0) {
+                    if (/^sin\b/i.test(String(item.name || '').trim())) {
+                      exclusionsParts.push(String(item.name).trim());
+                    } else {
+                      const qtyPrefix = item.count > 1 ? `${item.count}x ` : '';
+                      const skuPart = item.sku || item.code ? `[${item.sku || item.code}] ` : '';
+                      const pricePart = item.price > 0 ? ` (+${item.price.toFixed(2)})` : '';
+                      extrasParts.push(`>> EXTRA: ${skuPart}${qtyPrefix}${item.name}${pricePart}`);
+                    }
+                  }
+                });
+              } else if (sel.name) {
+                 const skuPart = sel.sku || sel.code ? `[${sel.sku || sel.code}] ` : '';
+                 const pricePart = sel.price > 0 ? ` (+${sel.price.toFixed(2)})` : '';
+                 extrasParts.push(`>> EXTRA: ${skuPart}${sel.name}${pricePart}`);
+              }
+            });
+  
+            let line = slotHeader + ': ';
+            if (exclusionsParts.length === 0) {
+              line += 'Con todo';
             } else {
-               line += allParts.join(' ');
+              line += exclusionsParts.join(', ');
             }
-          }
-          breakdown.push(line);
+            breakdown.push(line);
+            
+            if (extrasParts.length > 0) {
+               extrasParts.forEach(extraLine => breakdown.push(`  ${extraLine}`));
+            }
         });
       } else {
         Object.keys(selectedVariants).forEach(key => {
@@ -1272,54 +1279,22 @@ export default function MasterProductModal({
       {/* SELECTOR DE COMBOS POR RANURAS / MODO RANURAS */}
       {viewMode === 'slots' ? (
           <div className="space-y-4">
-            {/* 1. CABECERA SUPERIOR FIJA PARA NAVEGACIÓN DE RANURAS */}
-            <div className="sticky top-0 bg-white z-20 p-3 sm:p-4 border-b border-slate-100 flex items-center justify-between shadow-xs">
+            {/* 1. CABECERA ERGONÓMICA: NOMBRE COMPACTO + BOTÓN INTEGRADO */}
+            <div className="sticky top-0 bg-white z-20 py-3 px-3 sm:px-4 border-b border-slate-100 flex items-center justify-between gap-2 shadow-xs">
               <button
                 type="button"
                 disabled={activeSlotIndex === 0}
                 onClick={() => setActiveSlotIndex(Math.max(0, activeSlotIndex - 1))}
-                className="text-[11px] font-black text-slate-600 disabled:opacity-30 disabled:cursor-not-allowed flex items-center gap-1.5 transition cursor-pointer bg-white hover:bg-slate-50 px-3 py-2 rounded-xl border border-slate-200 shadow-sm"
+                className="text-[11px] font-black text-slate-600 disabled:opacity-30 disabled:cursor-not-allowed flex items-center gap-1 transition cursor-pointer bg-slate-50 hover:bg-slate-100 px-3 py-2 rounded-lg border border-slate-200 shrink-0"
               >
                 <svg className="w-4 h-4" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2.5}><path strokeLinecap="round" strokeLinejoin="round" d="M15 19l-7-7 7-7" /></svg>
                 <span className="hidden sm:inline">Anterior</span>
               </button>
               
-              <div className="flex flex-col items-center flex-1 mx-2">
-                <span className="text-[10px] font-black text-slate-400 uppercase tracking-wider">Unidad {activeSlotIndex + 1} de {slots.length}</span>
-                {slots[activeSlotIndex].name ? (
-                   <span className="text-[12px] font-black text-slate-800 mt-0.5 truncate max-w-[120px] sm:max-w-[180px] text-center">{slots[activeSlotIndex].name}</span>
-                ) : (
-                   <span className="text-[12px] font-black text-slate-800 mt-0.5">{unitLabel} {activeSlotIndex + 1}</span>
-                )}
-              </div>
-
-              {activeSlotIndex < slots.length - 1 ? (
-                <button
-                  type="button"
-                  onClick={() => setActiveSlotIndex(Math.min(slots.length - 1, activeSlotIndex + 1))}
-                  className="text-[11px] font-black text-slate-600 flex items-center gap-1.5 transition cursor-pointer bg-white hover:bg-slate-50 px-3 py-2 rounded-xl border border-slate-200 shadow-sm"
-                >
-                  <span className="hidden sm:inline">Siguiente</span>
-                  <svg className="w-4 h-4" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2.5}><path strokeLinecap="round" strokeLinejoin="round" d="M9 5l7 7-7 7" /></svg>
-                </button>
-              ) : (
-                <button
-                  type="button"
-                  onClick={() => setViewMode('options')}
-                  className="text-[11px] font-black text-white flex items-center gap-1 transition cursor-pointer bg-[#FE6712] hover:bg-[#e0580d] px-3 py-2 rounded-xl shadow-md active:scale-95"
-                >
-                  <span className="hidden sm:inline">Listo, confirmar</span>
-                  <span className="sm:hidden">Confirmar</span>
-                  <svg className="w-4 h-4" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2.5}><path strokeLinecap="round" strokeLinejoin="round" d="M5 13l4 4L19 7" /></svg>
-                </button>
-              )}
-            </div>
-
-            {/* Active Slot Content */}
-            <div className="p-4 sm:p-5 bg-white border border-slate-100 rounded-2xl space-y-6 shadow-sm">
-              {/* Name Input */}
-              <div className="space-y-2">
-                <label className="text-[10px] font-black text-slate-400 uppercase tracking-wider">Nombre (opcional):</label>
+              <div className="flex items-center gap-2 flex-1 justify-end">
+                <span className="text-[10px] font-black text-slate-400 uppercase tracking-wider hidden sm:inline-block pt-0.5">Unidad {activeSlotIndex + 1} de {slots.length}</span>
+                <span className="text-[10px] font-black text-slate-400 uppercase tracking-wider sm:hidden pt-0.5">{activeSlotIndex + 1}/{slots.length}</span>
+                
                 <input
                   type="text"
                   value={slots[activeSlotIndex].name || ''}
@@ -1328,12 +1303,36 @@ export default function MasterProductModal({
                     newSlots[activeSlotIndex].name = e.target.value;
                     setSlots(newSlots);
                   }}
-                  placeholder="Ej. Juan, María..."
-                  maxLength={30}
-                  className="w-full rounded-xl border border-slate-300 bg-slate-50 px-3.5 py-2.5 text-xs font-bold text-slate-900 focus:bg-white focus:outline-none focus:border-[#fe6712] transition shadow-xs"
+                  placeholder="Nombre (opcional)"
+                  maxLength={20}
+                  className="w-24 sm:w-36 max-w-[180px] h-9 text-xs px-2.5 rounded-lg border border-slate-200 bg-slate-50 font-bold text-slate-900 focus:bg-white focus:outline-none focus:border-[#fe6712] transition"
                 />
-              </div>
 
+                {activeSlotIndex < slots.length - 1 ? (
+                  <button
+                    type="button"
+                    onClick={() => setActiveSlotIndex(Math.min(slots.length - 1, activeSlotIndex + 1))}
+                    className="h-9 px-3 sm:px-4 rounded-lg bg-slate-900 hover:bg-slate-800 text-white text-xs font-bold flex items-center gap-1 transition cursor-pointer shrink-0"
+                  >
+                    <span className="hidden sm:inline">Siguiente</span>
+                    <svg className="w-4 h-4" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2.5}><path strokeLinecap="round" strokeLinejoin="round" d="M9 5l7 7-7 7" /></svg>
+                  </button>
+                ) : (
+                  <button
+                    type="button"
+                    onClick={() => setViewMode('options')}
+                    className="h-9 px-3 sm:px-4 rounded-lg bg-[#FE6712] hover:bg-[#e0580d] text-white text-xs font-black shadow-md flex items-center gap-1 transition cursor-pointer shrink-0 active:scale-95"
+                  >
+                    <span className="hidden sm:inline">Listo, confirmar</span>
+                    <span className="sm:hidden">Confirmar</span>
+                    <svg className="w-4 h-4" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2.5}><path strokeLinecap="round" strokeLinejoin="round" d="M5 13l4 4L19 7" /></svg>
+                  </button>
+                )}
+              </div>
+            </div>
+
+            {/* Active Slot Content */}
+            <div className="p-4 sm:p-5 bg-white border border-slate-100 rounded-2xl space-y-6 shadow-sm">
               {/* 2. CUADRÍCULA COMPACTA DE EXCLUSIONES (2 COLUMNAS) */}
               {product.exclusions && product.exclusions.length > 0 && (
                 <div className="space-y-2.5 bg-slate-50 p-3 rounded-xl border border-slate-100">
@@ -1422,51 +1421,60 @@ export default function MasterProductModal({
                   );
                 });
                 
-                // Si no hay un grupo nativo de extras, inyectamos los estándar (Fallback)
-                if (!hasExtrasGroup) {
-                   const fallbackExtras = [
-                     { id: 'f_papas', name: '🍟 Ración Papas', price: 2.00 },
-                     { id: 'f_tequenos', name: '🧀 Tequeños 6 uds', price: 3.50 },
-                     { id: 'f_refresco', name: '🥤 Refresco / Bebida', price: 1.50 }
-                   ];
-                   const fallbackGIdx = 'fallback_extras';
-                   const currentSlotVars = slots[activeSlotIndex]?.selectedVariants[fallbackGIdx] || [];
+                // Si no hay un grupo nativo de extras, inyectamos productos reales del catálogo
+                if (!hasExtrasGroup && storeCatalog && storeCatalog.length > 0) {
+                   const keywords = ['papa', 'tequeño', 'tequeno', 'bebida', 'refresco', 'extra', 'adicional', 'acompañante'];
+                   const realExtras = storeCatalog.filter((p: any) => {
+                     if (p.id === product.id) return false; // anti-canibalismo
+                     if (p.stock === 0 || p.outOfStock) return false;
+                     const n = String(p.name || '').toLowerCase();
+                     const c = String(p.category || '').toLowerCase();
+                     const sub = String(p.internalCategory || p.subCategory || '').toLowerCase();
+                     return keywords.some(k => n.includes(k) || c.includes(k) || sub.includes(k));
+                   }).slice(0, 4); // Max 4
                    
-                   groupsRendered.push(
-                     <div key="fallback_extras" className="space-y-2.5 pt-4 border-t border-slate-100">
-                      <p className="text-[10px] font-black text-slate-500 uppercase tracking-wider">
-                        ¿Acompañamos esta unidad?
-                      </p>
-                      <div className="flex flex-wrap gap-2">
-                        {fallbackExtras.map((opt: any) => {
-                          const matched = Array.isArray(currentSlotVars)
-                            ? currentSlotVars.find((i: any) => (i.code === opt.id || i.id === opt.id))
-                            : null;
-                          const isSelected = !!matched && (matched.count > 0);
-                          
-                          return (
-                            <button
-                              key={opt.id}
-                              type="button"
-                              onClick={() => {
-                                 const delta = isSelected ? -1 : 1;
-                                 handleSlotOptionQuantityChange(fallbackGIdx, opt.id, delta, opt);
-                              }}
-                              className={`h-9 px-3.5 rounded-full border text-[11px] font-bold flex items-center gap-1.5 transition cursor-pointer shadow-xs active:scale-95 ${
-                                isSelected 
-                                  ? 'bg-[#fff5ed] border-[#FE6712] text-[#FE6712]' 
-                                  : 'bg-white border-slate-200 text-slate-700 hover:border-orange-300'
-                              }`}
-                            >
-                              <span className={isSelected ? 'text-[#FE6712]' : 'text-slate-400 font-black'}>{isSelected ? '✓' : '+'}</span>
-                              <span className="truncate max-w-[150px]">{opt.name}</span>
-                              <span className={isSelected ? 'text-orange-700 font-black' : 'text-slate-500'}>(+$${opt.price.toFixed(2)})</span>
-                            </button>
-                          );
-                        })}
+                   if (realExtras.length > 0) {
+                     const fallbackGIdx = 'fallback_extras';
+                     const currentSlotVars = slots[activeSlotIndex]?.selectedVariants[fallbackGIdx] || [];
+                     
+                     groupsRendered.push(
+                       <div key="fallback_extras" className="space-y-3 pt-4 border-t border-slate-100">
+                        <p className="text-[10px] font-black text-slate-500 uppercase tracking-wider">
+                          ¿Acompañamos esta unidad?
+                        </p>
+                        <div className="grid grid-cols-1 sm:grid-cols-2 gap-2">
+                          {realExtras.map((opt: any) => {
+                            const matched = Array.isArray(currentSlotVars)
+                              ? currentSlotVars.find((i: any) => (i.code === opt.id || i.id === opt.id))
+                              : null;
+                            const isSelected = !!matched && (matched.count > 0);
+                            
+                            return (
+                              <div key={opt.id} className={`flex items-center gap-2 p-2 rounded-xl border transition cursor-pointer ${isSelected ? 'border-[#FE6712]/50 bg-[#fff5ed]' : 'border-slate-200 bg-white hover:border-[#FE6712]/30'}`} onClick={() => {
+                                   const delta = isSelected ? -1 : 1;
+                                   handleSlotOptionQuantityChange(fallbackGIdx, opt.id, delta, { id: opt.id, name: opt.name, price: Number(opt.price) || 0, sku: opt.sku || opt.code || '' });
+                                }}>
+                                <img src={opt.image || opt.imageUrl || 'https://placehold.co/100x100?text=Extra'} alt={opt.name} className="w-11 h-11 rounded-lg object-cover bg-white border border-slate-100 p-0.5 shrink-0" />
+                                <div className="flex-1 min-w-0">
+                                  <p className="text-[11px] font-bold text-slate-900 truncate">{opt.name}</p>
+                                  <div className="flex items-center gap-1.5 mt-0.5">
+                                    {opt.sku || opt.code ? <span className="text-[9px] font-bold text-slate-400">{(opt.sku || opt.code || '').substring(0, 8)}</span> : null}
+                                    <span className="text-[10px] font-black text-orange-700">+$${(Number(opt.price) || 0).toFixed(2)}</span>
+                                  </div>
+                                </div>
+                                <button
+                                  type="button"
+                                  className={`shrink-0 h-7 px-2.5 rounded-lg text-[10px] font-bold flex items-center transition ${isSelected ? 'bg-[#FE6712]/10 text-[#FE6712]' : 'bg-slate-100 text-slate-600 hover:bg-slate-200'}`}
+                                >
+                                  {isSelected ? '✓ Agregado' : '+ Agregar'}
+                                </button>
+                              </div>
+                            );
+                          })}
+                        </div>
                       </div>
-                    </div>
-                   );
+                     );
+                   }
                 }
                 
                 return groupsRendered;
@@ -1569,21 +1577,8 @@ export default function MasterProductModal({
 
                     {/* Bloque de Precio Base + Selector de cantidad */}
                     <div className="bg-white rounded-2xl p-3 sm:p-3.5 border border-slate-200/80 shadow-xs flex flex-col gap-2.5 shrink-0">
-                      <div className="flex justify-between items-baseline">
-                        <div>
-                          <span className="text-[10px] font-black text-slate-400 uppercase tracking-wider block">'Precio Base'</span>
-                          <div className="flex items-baseline gap-2">
-                            <span className="text-xl font-black text-slate-900">
-                              ${unitPrice.toFixed(2)}
-                            </span>
-                            {bcvRate && (
-                              <span className="text-xs font-bold text-slate-500">
-                                ~ Bs. {((isSlotMode ? (unitPrice * qty + totalSlotVariantsPrice) : ((unitPrice + totalVariantsPrice) * qty)) * bcvRate).toFixed(2)}
-                              </span>
-                            )}
-                          </div>
-                        </div>
-                        <span className="inline-flex items-center gap-1 rounded-full bg-emerald-50 px-2 py-0.5 text-[10px] font-bold text-emerald-700 border border-emerald-200">
+                      <div className="flex justify-between items-center pb-2">
+                          <span className="inline-flex items-center gap-1 rounded-full bg-emerald-50 px-2 py-0.5 text-[10px] font-bold text-emerald-700 border border-emerald-200">
                           <span className="h-1.5 w-1.5 rounded-full bg-emerald-500 animate-pulse"></span>
                           Despacho Inmediato
                         </span>
@@ -1671,19 +1666,8 @@ export default function MasterProductModal({
                     </div>
                     
                     <div className="bg-slate-50 rounded-xl border border-slate-100 flex flex-col p-3 gap-3">
-                      <div className="flex justify-between items-baseline">
-                        <div>
-                          <span className="text-[10px] font-black text-slate-400 uppercase tracking-wider block">Precio Base</span>
-                          <div className="flex items-baseline gap-2">
-                            <span className="text-xl font-black text-slate-900">
-                              ${(unitPrice * qty).toFixed(2)}
-                            </span>
-                            {bcvRate ? <span className="text-xs font-bold text-slate-500">
-                              ~ Bs. {((unitPrice * qty) * bcvRate).toFixed(2)}
-                            </span> : null}
-                          </div>
-                        </div>
-                        <span className="inline-flex items-center gap-1 rounded-full bg-emerald-50 px-2 py-0.5 text-[10px] font-bold text-emerald-700 border border-emerald-200">
+                      <div className="flex justify-between items-center pb-2">
+                          <span className="inline-flex items-center gap-1 rounded-full bg-emerald-50 px-2 py-0.5 text-[10px] font-bold text-emerald-700 border border-emerald-200">
                           <span className="h-1.5 w-1.5 rounded-full bg-emerald-500 animate-pulse"></span>
                           Despacho Inmediato
                         </span>

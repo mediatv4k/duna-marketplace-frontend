@@ -357,7 +357,7 @@ export default function MerchantTemplateEngine({
                     <div key={id} className="flex items-start gap-2 pb-2 border-b border-gray-100 last:border-b-0">
                       <div className="min-w-0 flex-1">
                         <p className="truncate text-xs font-black text-slate-900">{qty} × {item.name}</p>
-                        {item.breakdown?.[0] && <p className="truncate text-[10px] font-medium text-slate-400">{item.breakdown[0]}</p>}
+                        {item.breakdown?.[0] && <p className="text-[10px] font-medium text-slate-400 whitespace-pre-wrap break-words">{item.breakdown.join('\n')}</p>}
                       </div>
                       <span className="shrink-0 text-xs font-black text-[#fe6712]">${line.toFixed(2)}</span>
                       {onRemoveCartItem && (
@@ -398,7 +398,8 @@ export default function MerchantTemplateEngine({
       {/* ── Núcleo universal: modal maestro de producto (aplanado) ── */}
       {isProductModalOpen && selectedProduct && (
         <MasterProductModal
-          isOpen={isProductModalOpen}
+            storeCatalog={products || []}
+            isOpen={isProductModalOpen}
           onClose={onCloseProductModal}
           product={selectedProduct}
           nicheEngine={getModalEngine(storeNiche)}

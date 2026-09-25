@@ -294,7 +294,7 @@ export default function OrderTrackingModal({ isOpen, onClose, orderId, orderSumm
                           if (variantRows.length > 0) {
                             return (
                               <div key={item.cartItemId || item.code || idx}>
-                                <p className="text-center text-slate-500 truncate">-------- {String(item.name || '').toUpperCase()} --------</p>
+                                <p className="text-center text-slate-500 whitespace-pre-wrap break-words">-------- {String(item.name || '').toUpperCase()} --------</p>
                                 {variantRows.map((v, vIdx) => (
                                   <div key={vIdx} className={`flex justify-between gap-2 ${v.isExclusion ? 'text-red-600 font-bold' : ''} ${v.isHeader ? 'font-bold mt-1' : ''}`}>
                                     <span className="truncate">{v.qty ? `${v.qty} ` : ''}{v.name}</span>
@@ -452,7 +452,7 @@ export default function OrderTrackingModal({ isOpen, onClose, orderId, orderSumm
                           if (variantRows.length > 0) {
                             return (
                               <div key={item.cartItemId || item.code || idx}>
-                                <p className="text-center text-slate-500 truncate">-------- {String(item.name || '').toUpperCase()} --------</p>
+                                <p className="text-center text-slate-500 whitespace-pre-wrap break-words">-------- {String(item.name || '').toUpperCase()} --------</p>
                                 {variantRows.map((v, vIdx) => (
                                   <div key={vIdx} className={`flex justify-between gap-2 ${v.isExclusion ? 'text-red-600 font-bold' : ''} ${v.isHeader ? 'font-bold mt-1' : ''}`}>
                                     <span className="truncate">{v.qty ? `${v.qty} ` : ''}{v.name}</span>
