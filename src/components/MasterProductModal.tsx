@@ -470,7 +470,7 @@ export default function MasterProductModal({
     });
   };
 
-  const handleSlotOptionQuantityChange = (groupIdx: number | string, optionCode: string, delta: number) => {
+  const handleSlotOptionQuantityChange = (groupIdx: number | string, optionCode: string, delta: number, syntheticOpt?: any) => {
     setSlots(prev => {
       const copy = [...prev];
       if (!copy[activeSlotIndex]) return prev;
@@ -480,11 +480,13 @@ export default function MasterProductModal({
 
       // Si la lista está vacía, la poblamos desde availableGroups
       if (updatedList.length === 0) {
-        const grp = availableGroups[Number(groupIdx)];
-        if (grp && grp.options) {
-          updatedList = grp.options.map((o: any) => ({ ...o, count: o.code === optionCode ? Math.max(0, delta) : 0 }));
-        }
-      } else {
+          const grp = typeof groupIdx === 'number' ? availableGroups[groupIdx] : null;
+          if (grp && grp.options) {
+            updatedList = grp.options.map((o: any) => ({ ...o, count: o.code === optionCode || o.id === optionCode ? Math.max(0, delta) : 0 }));
+          } else if (syntheticOpt) {
+            updatedList = [{ ...syntheticOpt, count: Math.max(0, delta) }];
+          }
+        } else {
         updatedList = updatedList.map(item => {
           if (item.code === optionCode || item.id === optionCode) {
             const newCount = Math.max(0, (item.count || 0) + delta);
@@ -774,8 +776,8 @@ export default function MasterProductModal({
           const slotTitle = slot.name?.trim() || '';
           // Format: • Perro #1 (Nombre): Sin papita, Sin salsa roja [+ Ración Papas]
           const slotHeader = `• ${unitLabel} #${idx + 1}${slotTitle ? ` (${slotTitle})` : ''}`;
-          const exclusionsParts = [];
-          const extrasParts = [];
+          const exclusionsParts: string[] = [];
+          const extrasParts: string[] = [];
 
           if (slot.exclusions && slot.exclusions.length > 0) {
             slot.exclusions.forEach((ex: string) => {
@@ -1017,7 +1019,7 @@ export default function MasterProductModal({
               onClick={() => { setIsSlotCustomizationActive(true); setViewMode('customize'); }}
               className="border border-[#fe6712] text-[#fe6712] font-black py-2.5 px-6 rounded-full text-xs hover:bg-orange-50 transition cursor-pointer flex items-center gap-2 shadow-xs active:scale-95"
             >
-              <span className="text-base">⚙️</span> {isCombo ? 'Personalizar combo' : 'Personalizar tu pedido'}
+              {isSlotCustomizationActive ? `✏️ Editar personalización (${slots.filter(s => Object.keys(s.selectedVariants).length > 0 || s.exclusions?.length > 0).length}/${qty} listas)` : (isCombo ? 'Personalizar combo' : 'Personalizar tu pedido')}
             </button>
           </div>
         )}
@@ -1339,7 +1341,7 @@ export default function MasterProductModal({
                     Ingredientes a excluir:
                   </p>
                   <div className="grid grid-cols-2 gap-2">
-                    {product.exclusions.map((exc) => {
+                    {product.exclusions.map((exc: string) => {
                       const isChecked = slots[activeSlotIndex].exclusions?.includes(exc);
                       const displayLabel = exc.toUpperCase().startsWith('SIN ') ? exc : 'Sin ' + exc;
                       return (
@@ -1374,10 +1376,13 @@ export default function MasterProductModal({
               )}
               
               {/* 3. EXTRAS / VENTA CRUZADA INTEGRADA EN LÍNEA (OPCIÓN B) */}
-              {availableGroups.length > 0 && availableGroups.map((group, gIdx) => {
+              {(() => {
+                let hasExtrasGroup = false;
+                const groupsRendered = availableGroups.map((group, gIdx) => {
                   const currentSlotVars = slots[activeSlotIndex].selectedVariants[gIdx] || [];
                   const groupTitle = group.title || '';
                   const isExtra = groupTitle.toLowerCase().includes('extra') || groupTitle.toLowerCase().includes('acompaña') || groupTitle.toLowerCase().includes('adicional');
+                  if (isExtra) hasExtrasGroup = true;
                   
                   return (
                     <div key={gIdx} className="space-y-2.5 pt-4 border-t border-slate-100">
@@ -1385,9 +1390,9 @@ export default function MasterProductModal({
                         {isExtra ? '¿Acompañamos esta unidad?' : groupTitle}
                       </p>
                       <div className="flex flex-wrap gap-2">
-                        {group.options.map((opt) => {
+                        {group.options.map((opt: any) => {
                           const matched = Array.isArray(currentSlotVars)
-                            ? currentSlotVars.find((i) => (i.code === opt.code || i.id === opt.id))
+                            ? currentSlotVars.find((i: any) => (i.code === opt.code || i.id === opt.id))
                             : (currentSlotVars?.id === opt.id || currentSlotVars?.code === opt.code ? currentSlotVars : null);
                           
                           const isSelected = !!matched && (matched.count === undefined || matched.count > 0);
@@ -1397,7 +1402,6 @@ export default function MasterProductModal({
                               key={opt.code || opt.id}
                               type="button"
                               onClick={() => {
-                                 // Chips type behavior: Toggle on/off.
                                  const delta = isSelected ? -1 : 1;
                                  handleSlotOptionQuantityChange(gIdx, opt.code || opt.id, delta);
                               }}
@@ -1416,12 +1420,71 @@ export default function MasterProductModal({
                       </div>
                     </div>
                   );
-                })}
+                });
+                
+                // Si no hay un grupo nativo de extras, inyectamos los estándar (Fallback)
+                if (!hasExtrasGroup) {
+                   const fallbackExtras = [
+                     { id: 'f_papas', name: '🍟 Ración Papas', price: 2.00 },
+                     { id: 'f_tequenos', name: '🧀 Tequeños 6 uds', price: 3.50 },
+                     { id: 'f_refresco', name: '🥤 Refresco / Bebida', price: 1.50 }
+                   ];
+                   const fallbackGIdx = 'fallback_extras';
+                   const currentSlotVars = slots[activeSlotIndex]?.selectedVariants[fallbackGIdx] || [];
+                   
+                   groupsRendered.push(
+                     <div key="fallback_extras" className="space-y-2.5 pt-4 border-t border-slate-100">
+                      <p className="text-[10px] font-black text-slate-500 uppercase tracking-wider">
+                        ¿Acompañamos esta unidad?
+                      </p>
+                      <div className="flex flex-wrap gap-2">
+                        {fallbackExtras.map((opt: any) => {
+                          const matched = Array.isArray(currentSlotVars)
+                            ? currentSlotVars.find((i: any) => (i.code === opt.id || i.id === opt.id))
+                            : null;
+                          const isSelected = !!matched && (matched.count > 0);
+                          
+                          return (
+                            <button
+                              key={opt.id}
+                              type="button"
+                              onClick={() => {
+                                 const delta = isSelected ? -1 : 1;
+                                 handleSlotOptionQuantityChange(fallbackGIdx, opt.id, delta, opt);
+                              }}
+                              className={`h-9 px-3.5 rounded-full border text-[11px] font-bold flex items-center gap-1.5 transition cursor-pointer shadow-xs active:scale-95 ${
+                                isSelected 
+                                  ? 'bg-[#fff5ed] border-[#FE6712] text-[#FE6712]' 
+                                  : 'bg-white border-slate-200 text-slate-700 hover:border-orange-300'
+                              }`}
+                            >
+                              <span className={isSelected ? 'text-[#FE6712]' : 'text-slate-400 font-black'}>{isSelected ? '✓' : '+'}</span>
+                              <span className="truncate max-w-[150px]">{opt.name}</span>
+                              <span className={isSelected ? 'text-orange-700 font-black' : 'text-slate-500'}>(+$${opt.price.toFixed(2)})</span>
+                            </button>
+                          );
+                        })}
+                      </div>
+                    </div>
+                   );
+                }
+                
+                return groupsRendered;
+              })()}
             </div>
             {/* Quick exit button just in case */}
             <div className="flex justify-center pb-4">
               <button
-                onClick={() => setViewMode('options')}
+                onClick={() => {
+                  const configuredCount = slots.filter(s => Object.keys(s.selectedVariants).length > 0 || s.exclusions?.length > 0).length;
+                  if (configuredCount > 0 && configuredCount < slots.length) {
+                     if (window.confirm(`Has configurado ${configuredCount} de ${slots.length} unidades. ¿Deseas continuar configurando o salir y que las restantes salgan Con Todo?`)) {
+                        setViewMode('options');
+                     }
+                  } else {
+                     setViewMode('options');
+                  }
+                }}
                 className="text-[11px] font-black text-slate-400 hover:text-slate-600 underline cursor-pointer"
               >
                 Salir al menú sin confirmar
@@ -1508,10 +1571,10 @@ export default function MasterProductModal({
                     <div className="bg-white rounded-2xl p-3 sm:p-3.5 border border-slate-200/80 shadow-xs flex flex-col gap-2.5 shrink-0">
                       <div className="flex justify-between items-baseline">
                         <div>
-                          <span className="text-[10px] font-black text-slate-400 uppercase tracking-wider block">{isSlotMode ? 'Precio Configurado' : 'Precio Base'}</span>
+                          <span className="text-[10px] font-black text-slate-400 uppercase tracking-wider block">'Precio Base'</span>
                           <div className="flex items-baseline gap-2">
                             <span className="text-xl font-black text-slate-900">
-                              ${(isSlotMode ? (unitPrice * qty + totalSlotVariantsPrice) : ((unitPrice + totalVariantsPrice) * qty)).toFixed(2)}
+                              ${unitPrice.toFixed(2)}
                             </span>
                             {bcvRate && (
                               <span className="text-xs font-bold text-slate-500">
@@ -1888,7 +1951,7 @@ export default function MasterProductModal({
           )}
         </div>
 
-        <div className="sticky bottom-0 bg-white border-t border-slate-100 z-30 shrink-0 shadow-md pb-[max(0.75rem,env(safe-area-inset-bottom))]">
+        <div className={`sticky bottom-0 bg-white border-t border-slate-100 z-30 shrink-0 shadow-md pb-[max(0.75rem,env(safe-area-inset-bottom))] ${viewMode === 'slots' ? 'hidden' : ''}`}>
 
           {/* ── Panel Colaborativo (visible cuando la sala está activa) ───── */}
           {(false) && (
@@ -2059,9 +2122,9 @@ export default function MasterProductModal({
                         {viewMode === 'comboRoom' && !comboAllDone
                           ? 'Esperando amigos…'
                           : (viewMode === 'comboRoom' && comboAllDone)
-                          ? `Agregar combo al carrito ($${totalCalculated.toFixed(2)})`
+                          ? 'Agregar combo al carrito'
                           : isMinimumsMet
-                          ? `Comprar • $${totalCalculated.toFixed(2)}`
+                          ? 'Agregar al carrito'
                           : 'Selecciona opciones'}
                       </span>
                     </button>
