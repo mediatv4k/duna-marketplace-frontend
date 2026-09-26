@@ -16,6 +16,6 @@ export function getOptimizedImageUrl(
     return `https://res.cloudinary.com/${CLOUD_NAME}/image/fetch/f_auto,q_auto/${encodeURIComponent(url)}`;
   }
 
-  // REGLA: Productos se transforman estrictamente en cuadrado 512x512 con fondo extendido continuo
-  return `https://res.cloudinary.com/${CLOUD_NAME}/image/fetch/c_pad,w_512,h_512,b_auto:predominant_gradient,f_auto,q_auto/${encodeURIComponent(url)}`;
+  // Productos: Outpainting con IA Generativa (b_gen_fill) a 512x512 exactos
+  return `https://res.cloudinary.com/${CLOUD_NAME}/image/fetch/c_pad,w_512,h_512,b_gen_fill,f_auto,q_auto/${encodeURIComponent(url)}`;
 }
