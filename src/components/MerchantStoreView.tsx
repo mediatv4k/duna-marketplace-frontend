@@ -717,17 +717,17 @@ export default function MerchantStoreView({
                   <div
                     key={product.id || product.code}
                     onClick={() => handleProductClick(product)}
-                    className="relative bg-white rounded-2xl p-3 border border-slate-100 shadow-sm flex flex-col justify-between cursor-pointer"
+                    className="group relative bg-white rounded-2xl p-3 border border-slate-100 shadow-sm flex flex-col justify-between cursor-pointer"
                   >
                     <div>
                       {badge && (
                         <span className={`absolute top-2 left-2 px-2 py-0.5 rounded-md text-[8px] font-bold ${badge.className}`}>{badge.label}</span>
                       )}
-                      <div className="relative w-full aspect-square mb-2 mt-4 p-2 bg-white rounded-xl border border-slate-100 overflow-hidden flex items-center justify-center">
+                      <div className="relative aspect-square w-full overflow-hidden rounded-t-xl bg-white p-2 flex items-center justify-center">
                         <img
                           src={product.image || 'https://images.unsplash.com/photo-1560008511-11c63416e52d'}
                           alt={product.name}
-                          className="max-w-full max-h-full object-contain rounded-lg"
+                          className="h-full w-full object-contain transition-transform duration-300 group-hover:scale-105"
                         />
                         {/* Lightbox: solo la lupa lo abre (stopPropagation); tocar el resto de la foto abre la ficha del producto como el resto de la tarjeta */}
                         <button
