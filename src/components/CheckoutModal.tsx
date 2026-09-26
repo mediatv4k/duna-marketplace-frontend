@@ -383,9 +383,38 @@ export default function CheckoutModal({
       ? crypto.randomUUID()
       : `ord_${Date.now()}`;
 
+    // Sanitización numérica estricta: ningún monto/cantidad viaja como string (el contrato de Adonis espera number)
+    const money = (v: unknown) => {
+      const n = Number(v || 0);
+      return Number.isFinite(n) ? parseFloat(n.toFixed(2)) : 0;
+    };
+    // Dentro de `variants[]`: cantidades enteras y montos con 2 decimales. Se conservan las demás propiedades tal cual
+    // (nombres y estructura del contrato); solo se tipan `quantity`, `unitPrice` y `totalPrice` (y `selected.unitPrice`).
+    const sanitizeVariantNumbers = (group: any) => {
+      if (!group || typeof group !== 'object') return group;
+      const out = { ...group };
+      if (Array.isArray(group.items)) {
+        out.items = group.items.map((vItem: any) => {
+          if (!vItem || typeof vItem !== 'object') return vItem;
+          const quantity = parseInt(String(vItem.quantity || 1), 10) || 1;
+          const unitPrice = money(vItem.unitPrice);
+          return {
+            ...vItem,
+            quantity,
+            unitPrice,
+            // Sin `totalPrice` de origen se deriva de unitario × cantidad (nunca un 0 que descuadre el recálculo)
+            totalPrice: vItem.totalPrice == null ? money(unitPrice * quantity) : money(vItem.totalPrice)
+          };
+        });
+      }
+      if (group.selected && typeof group.selected === 'object') {
+        out.selected = { ...group.selected };
+        if (group.selected.unitPrice != null) out.selected.unitPrice = money(group.selected.unitPrice);
+      }
+      return out;
+    };
+
     const itemsAdonis = (orderSummary.items || []).map((item: CartItemOption) => {
-      // Sanitización numérica estricta: ningún monto/cantidad viaja como string (el contrato de Adonis espera number)
-      const money = (v: unknown) => parseFloat(Number(v || 0).toFixed(2));
       const basePrice = money(item.price);
       const cantNum = parseInt(String(item.qty || item.quantity || item.cant || 1), 10) || 1;
       const itemPricing = item.pricing as { unitBasePrice?: number; addonsTotal?: number; unitFinalPrice?: number } | undefined;
@@ -410,9 +439,9 @@ export default function CheckoutModal({
               if ((v?.type === 'SINGLE' || v?.type === 'SIMPLE') && Array.isArray(v?.items) && v.items.length > 0) {
                 const rest = { ...v };
                 delete rest.items;
-                return { ...rest, selected: { code: v.items[0]?.code, title: v.items[0]?.title, unitPrice: v.items[0]?.unitPrice } };
+                return sanitizeVariantNumbers({ ...rest, selected: { code: v.items[0]?.code, title: v.items[0]?.title, unitPrice: v.items[0]?.unitPrice } });
               }
-              return v;
+              return sanitizeVariantNumbers(v);
             })
           : [],
         promo: null
