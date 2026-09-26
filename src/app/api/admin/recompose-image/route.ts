@@ -2,6 +2,13 @@ import { NextResponse } from 'next/server';
 
 export async function POST(req: Request) {
   try {
+    if (!process.env.PHOTOROOM_API_KEY) {
+      return NextResponse.json(
+        { error: "PHOTOROOM_API_KEY no configurada en el entorno" },
+        { status: 400 }
+      );
+    }
+
     const body = await req.json();
     let { imageUrl, productId } = body;
 
@@ -19,12 +26,32 @@ export async function POST(req: Request) {
       imageUrl = `${protocol}://${host}${imageUrl}`;
     }
 
-    // 2. Construir la URL de transformación encadenada de Cloudinary
-    // Paso 1: Crop con IA al sujeto principal dejándolo a 400x400
-    // Paso 2: Pad a 512x512 con Generative Fill para reconstruir el fondo
-    const recomposedUrl = `https://res.cloudinary.com/rukjbnry/image/fetch/c_fill,w_400,h_400,g_auto:subject/c_pad,w_512,h_512,b_gen_fill/${encodeURIComponent(imageUrl)}`;
+    // 2. Construir la URL de la API de Photoroom
+    // Parámetros: remover fondo, fondo blanco, padding 10% (0.1), tamaño 512x512
+    const photoroomApiUrl = `https://image-api.photoroom.com/v2/edit?imageUrl=${encodeURIComponent(imageUrl)}&removeBackground=true&background.color=FFFFFF&padding=0.1&outputSize=512x512`;
 
-    // 3. Responder con JSON válido
+    // 3. Hacer el fetch a Photoroom
+    const response = await fetch(photoroomApiUrl, {
+      method: 'GET',
+      headers: {
+        'x-api-key': process.env.PHOTOROOM_API_KEY,
+        'Accept': 'image/png, image/jpeg'
+      }
+    });
+
+    if (!response.ok) {
+      const errorText = await response.text();
+      console.error('[PHOTOROOM ERROR]:', response.status, errorText);
+      throw new Error(`Error de Photoroom: ${response.statusText}`);
+    }
+
+    // 4. Convertir la respuesta a buffer y base64
+    const arrayBuffer = await response.arrayBuffer();
+    const buffer = Buffer.from(arrayBuffer);
+    const mimeType = response.headers.get('content-type') || 'image/png';
+    const recomposedUrl = `data:${mimeType};base64,${buffer.toString('base64')}`;
+
+    // 5. Responder con JSON válido
     return NextResponse.json({
       success: true,
       productId,
