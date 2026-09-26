@@ -16,6 +16,7 @@ import { detectStoreNiche, getModalEngine, getNicheConfig } from '@/lib/nicheCon
 import { getNicheIcon, getBadgeColorClasses } from '@/lib/nicheIcons';
 import MerchantTemplateEngine, { templateNicheFromStoreNiche } from './MerchantTemplateEngine';
 import { toWhatsAppNumber } from '@/lib/orderTracking';
+import { readCart, writeCart } from '@/lib/cartStorage';
 import SalesRecoveryAssistant from './SalesRecoveryAssistant';
 
 // Regla del contrato: el backend no presta servicio de delivery a más de 12 km
@@ -50,17 +51,9 @@ export default function MerchantStoreView({
   userLocation,
   isLoadingMore = false,
 }: MerchantStoreViewProps) {
-  const [cartItems, setCartItems] = useState<any[]>(() => {
-    if (typeof window !== 'undefined') {
-      try {
-        const saved = localStorage.getItem('cart_data');
-        return saved ? JSON.parse(saved) : [];
-      } catch {
-        return [];
-      }
-    }
-    return [];
-  });
+  // El carrito guardado solo se carga si pertenece EXACTAMENTE a esta tienda (`cart_data` = { storeId, items }): un carrito de otro
+  // comercio, o en el formato viejo sin tienda, se ignora (auditoría C1: antes ítems de una tienda aparecían en otra).
+  const [cartItems, setCartItems] = useState<any[]>(() => readCart(merchant?.id));
 
   const [isCartOpen, setIsCartOpen] = useState(false);
   // Rescate de sesión del anfitrión: `?resumeRoom=&resumeProduct=` (lo arma la barra flotante) reabre el Monitor en Vivo
@@ -295,9 +288,7 @@ export default function MerchantStoreView({
 
   const updateCartStorage = (newItems: any[]) => {
     setCartItems(newItems);
-    if (typeof window !== 'undefined') {
-      localStorage.setItem('cart_data', JSON.stringify(newItems));
-    }
+    writeCart(merchant?.id, newItems); // siempre asociado a la tienda ({ storeId, items }); vacío = se elimina la clave
   };
 
   // CheckoutModal emite 'duna:cart-cleared' al registrar la compra (code 1): la bolsa queda en 0 y la barra flotante se oculta

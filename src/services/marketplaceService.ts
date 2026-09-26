@@ -8,7 +8,12 @@ export interface ApiResponse<T> {
   message?: string;
 }
 
-async function apiFetch<T>(endpoint: string, options: RequestInit = {}): Promise<ApiResponse<T>> {
+// Tiempo máximo razonable para las lecturas críticas (Home, catálogo): 15 s. Pasado ese tiempo la petición se aborta de verdad
+// (AbortController) y el llamador recibe un error claro; nunca se sustituye por datos de respaldo.
+export const REQUEST_TIMEOUT_MS = 15000;
+
+// `timeoutMs` es opcional: sin él la petición no tiene límite (comportamiento anterior de los demás llamadores).
+async function apiFetch<T>(endpoint: string, options: RequestInit = {}, timeoutMs?: number): Promise<ApiResponse<T>> {
   const defaultHeaders: Record<string, string> = {
     'Content-Type': 'application/json',
     'apiKey': API_KEY,
@@ -21,6 +26,9 @@ async function apiFetch<T>(endpoint: string, options: RequestInit = {}): Promise
       ...(options.headers || {}),
     },
   };
+  const controller = timeoutMs ? new AbortController() : null;
+  const timer = controller ? setTimeout(() => controller.abort(), timeoutMs) : null;
+  if (controller) config.signal = controller.signal;
   try {
     const res = await fetch(`${API_BASE}${endpoint}`, config);
     const text = await res.text();
@@ -30,8 +38,25 @@ async function apiFetch<T>(endpoint: string, options: RequestInit = {}): Promise
       return { code: res.status || 500, data: null as unknown as T, message: text || 'Error en el servidor' };
     }
   } catch (e: any) {
-    return { code: 500, data: null as unknown as T, message: e?.message || 'Error de conexión con la API' };
+    const timedOut = e?.name === 'AbortError';
+    return {
+      code: 500,
+      data: null as unknown as T,
+      message: timedOut ? 'La solicitud tardó demasiado. Revisa tu conexión e inténtalo de nuevo.' : (e?.message || 'Error de conexión con la API'),
+    };
+  } finally {
+    if (timer) clearTimeout(timer);
   }
+}
+
+// GET /product/categories — categorías del Home (sin categorías sin productos activos)
+export async function getProductCategories(): Promise<ApiResponse<any>> {
+  return await apiFetch<any>('/product/categories?unused=false', {}, REQUEST_TIMEOUT_MS);
+}
+
+// GET /store/find — listado de tiendas del Home
+export async function findStores(): Promise<ApiResponse<any>> {
+  return await apiFetch<any>('/store/find?category=&keywords=', {}, REQUEST_TIMEOUT_MS);
 }
 
 export async function getStorePaymentInfo(storeId: number | string): Promise<ApiResponse<any>> {
@@ -55,13 +80,22 @@ export async function submitPurchaseOrder(orderDataPayload: any, file?: File | n
       body: formData,
     });
     const text = await res.text();
+    let json: unknown;
     try {
-      return JSON.parse(text);
+      json = JSON.parse(text);
     } catch {
-      return { code: res.status || 500, data: null, message: text || 'Error en el servidor' };
+      json = undefined;
     }
-  } catch (err: any) {
-    return { code: 500, data: null, message: err?.message || 'Fallo de red al enviar la orden' };
+    // Solo vale un sobre JSON { code, data, message }. Texto plano, HTML o cuerpo vacío NO son una respuesta válida aunque el
+    // HTTP sea 200/201: el estado HTTP ya NO se convierte en `code` (antes un "200 OK" sin JSON se leía como compra exitosa).
+    if (!json || typeof json !== 'object' || Array.isArray(json)) {
+      console.warn('[purchase/web] Respuesta no válida (HTTP', res.status, '):', text.slice(0, 200));
+      return { code: 0, data: null, message: 'No recibimos una respuesta válida del servidor, así que tu pedido no fue confirmado. Inténtalo de nuevo.' };
+    }
+    const envelope = json as Partial<ApiResponse<any>>;
+    return { ...(envelope as ApiResponse<any>), code: typeof envelope.code === 'number' ? envelope.code : 0 };
+  } catch {
+    return { code: 500, data: null, message: 'No pudimos conectar con el servidor. Revisa tu conexión e inténtalo de nuevo.' };
   }
 }
 
@@ -69,7 +103,7 @@ export async function submitPurchaseOrder(orderDataPayload: any, file?: File | n
 // GET /products/store/{id}?page=N — el backend pagina de a 30 productos (data.meta.{total,per_page,current_page,last_page}, data.hasMore).
 // Verificado en DEV: Proseco Bodegón = 255 productos en 9 páginas; Papá Helado = 38 en 2. Sin `page` devuelve la página 1.
 export async function getProductsByStore(storeId: number | string, page: number = 1): Promise<ApiResponse<any>> {
-  return await apiFetch<any>(`/products/store/${storeId}${page > 1 ? `?page=${page}` : ''}`);
+  return await apiFetch<any>(`/products/store/${storeId}${page > 1 ? `?page=${page}` : ''}`, {}, REQUEST_TIMEOUT_MS);
 }
 
 export async function getProduct(productId: number | string): Promise<ApiResponse<any>> {
@@ -155,5 +189,5 @@ export async function getOrderPublic(orderId: number | string): Promise<ApiRespo
 // GET /promotion?store={code} — el backend filtra por el CÓDIGO/slug de la tienda (ej. "papa-helado"),
 // no por el id numérico. Verificado contra el backend real de DEV el 2026-09-16.
 export async function getStorePromotions(storeCode: string): Promise<ApiResponse<any>> {
-  return await apiFetch<any>(`/promotion?store=${encodeURIComponent(storeCode || '')}`);
+  return await apiFetch<any>(`/promotion?store=${encodeURIComponent(storeCode || '')}`, {}, REQUEST_TIMEOUT_MS);
 }

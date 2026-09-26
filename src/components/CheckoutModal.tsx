@@ -18,6 +18,7 @@ function VehicleIcon({ vehicleId, className }: { vehicleId: string; className?: 
 
 import { submitPurchaseOrder, getStorePaymentInfo, uploadPaymentReference, getOrderPublic } from '@/services/marketplaceService';
 import { calculateLogistics, PhysicalItem } from '@/lib/logisticsEngine';
+import { clearCart } from '@/lib/cartStorage';
 
 export interface PaymentConfigItem {
   code: string;
@@ -291,6 +292,28 @@ export default function CheckoutModal({
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [isOpen, pasoVista, paymentInfoReady]);
 
+  // Al abrir el modal con el estado de un pedido YA creado (la tienda sigue abierta y el cliente arma otro pedido) se empieza un
+  // checkout nuevo: sin esto reaparecía la confirmación vieja y `ordenCreada` impedía enviar el pedido nuevo (auditoría C2). El padre
+  // además remonta este componente con una `key` por pedido; este reinicio es la red de seguridad. Los datos del cliente
+  // (nombre, cédula, teléfono) se conservan. Hook ANTES del `return null` (regla #300).
+  useEffect(() => {
+    if (!isOpen || !ordenCreada) return;
+    setPasoVista('formulario');
+    setOrdenCreada(false);
+    setOrdenId('');
+    setNumeroOrden('');
+    setPagoPendiente(false);
+    setSubmitting(false);
+    setSubmitError(null);
+    setUploading(false);
+    setReferenciaPago('');
+    setArchivoComprobante(null);
+    setNombreArchivo(null);
+    setUsarRecompensa(false);
+    latestOrderIdRef.current = '';
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [isOpen]);
+
   if (!isOpen) return null;
 
   const subtotalNeto = Number(orderSummary.subtotalUSD || 0);
@@ -402,9 +425,6 @@ export default function CheckoutModal({
 
     const numeroLimpio = telefono.replace(/\D/g, '').replace(/^0+/, '');
     const telefonoCompleto = `${codigoPais}${numeroLimpio}`;
-    const generatedOrderId = typeof crypto !== 'undefined' && crypto.randomUUID
-      ? crypto.randomUUID()
-      : `ord_${Date.now()}`;
 
     // Sanitización numérica estricta: ningún monto/cantidad viaja como string (el contrato de Adonis espera number)
     const money = (v: unknown) => {
@@ -513,11 +533,13 @@ export default function CheckoutModal({
     try {
       const response = await submitPurchaseOrder(osvaldoPayload, archivoComprobante);
 
-      if (response && (response?.code === 1 || response?.code === 200 || response?.code === 201)) {
-        const resolvedId = (response?.data as { id?: string | number } | undefined)?.id
-          ? String((response?.data as { id?: string | number }).id)
-          : generatedOrderId;
-        const created = response?.data as { id?: string | number; order_number?: string | number; orderNumber?: string | number } | undefined;
+      const created = response?.data as { id?: string | number; order_number?: string | number; orderNumber?: string | number } | undefined;
+      const createdId = created?.id !== undefined && created?.id !== null ? String(created.id).trim() : '';
+
+      // ÉXITO ÚNICAMENTE con `code === 1` Y el `data.id` real del backend. Nunca se inventa un id en el cliente (antes: UUID de
+      // respaldo) y ya no se aceptan `code` 200/201 (eran estados HTTP convertidos a `code` por el servicio, no confirmaciones).
+      if (response && response.code === 1 && createdId && createdId !== '0') {
+        const resolvedId = createdId;
         // La respuesta de compra solo trae { id, url }: si algún día trae el correlativo `order_number` se usa; si no, se resuelve más
         // abajo desde el seguimiento público. El id primario NUNCA se muestra como número de pedido.
         const commercialNumber = String(created?.order_number || created?.orderNumber || '');
@@ -551,18 +573,18 @@ export default function CheckoutModal({
         setOrdenCreada(true);
         // Compra registrada: la bolsa se vacía de inmediato (localStorage + estado de la tienda vía evento)
         try {
-          localStorage.removeItem('cart_data');
+          clearCart();
           localStorage.removeItem('current_order');
           localStorage.removeItem('current_cart_store_id');
         } catch {
           /* sin localStorage */
         }
         window.dispatchEvent(new Event('duna:cart-cleared'));
-        setOrdenId(created?.id !== undefined && created?.id !== null ? String(created.id) : '');
+        setOrdenId(createdId);
         // Correlativo comercial en segundo plano (la confirmación ya está visible): al llegar se muestra en la cabecera y se guarda en
         // `last_active_order` para que el seguimiento lo tenga desde el primer instante
-        latestOrderIdRef.current = created?.id !== undefined && created?.id !== null ? String(created.id) : '';
-        if (!commercialNumber && latestOrderIdRef.current) {
+        latestOrderIdRef.current = createdId;
+        if (!commercialNumber) {
           const idToResolve = latestOrderIdRef.current;
           void fetchCommercialNumber(idToResolve).then((n) => {
             if (!n || latestOrderIdRef.current !== idToResolve) return; // sin dato, o ya se creó otro pedido
@@ -586,6 +608,10 @@ export default function CheckoutModal({
         }
         setPagoPendiente(!archivoComprobante && !referenciaPago.trim());
         setPasoVista('exito');
+      } else if (response && response.code === 1) {
+        // El backend dijo "ok" pero sin `data.id`: no se puede confirmar ni rastrear el pedido. Se trata como fallo y se evita que
+        // el cliente lo repita a ciegas (podría haberse registrado).
+        setSubmitError(`Recibimos una respuesta incompleta del servidor y no pudimos confirmar tu pedido. Antes de intentarlo de nuevo, comunícate con ${merchantName || 'el comercio'} para verificar si se registró.`);
       } else {
         const errorMsg = response?.message || 'No pudimos registrar tu pedido. Revisa tus datos e inténtalo de nuevo.';
         setSubmitError(errorMsg);

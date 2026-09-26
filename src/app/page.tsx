@@ -7,19 +7,16 @@ import OrderTrackingModal from '@/components/OrderTrackingModal';
 import PromotionsCarousel from '@/components/PromotionsCarousel';
 import StoreScheduleModal from '@/components/StoreScheduleModal';
 
-import { submitPurchaseOrder, getProductsByStore, getStorePromotions, getOrderPublic } from '@/services/marketplaceService';
+import { getProductsByStore, getStorePromotions, getOrderPublic, getProductCategories, findStores } from '@/services/marketplaceService';
 import { isFinalStatus } from '@/lib/orderTracking';
 import { getBCVRate } from '@/lib/bcvRate';
+import { purgeCartIfOtherStore, clearCart } from '@/lib/cartStorage';
 
 import {
   Clock, ChevronLeft, ChevronRight, Sparkles, MapPin, X, Navigation,
   Loader2, Home, Compass, ShoppingBag, Coins, Truck, Bike, ClipboardList, Search, Tag, Star,
   Pizza, UtensilsCrossed, Coffee, Cake, IceCream, Sandwich, Pill, Wine, Beef, Store
 } from 'lucide-react';
-
-const API_BASE = process.env.NEXT_PUBLIC_API_URL || 'https://dev.carjos-marketplace.cloud';
-const API_KEY = process.env.NEXT_PUBLIC_SERVER_API_KEY || 'bf8f1b64-6342-48c5-af05-501e4c15a6cb';
-const TIMEZONE = process.env.NEXT_PUBLIC_TIMEZONE || 'America/Caracas';
 
 // Coordenadas de referencia de Cabimas (centro geométrico de la ciudad).
 // Usadas únicamente como fallback de distancia cuando el usuario aún no ha compartido su GPS.
@@ -65,12 +62,19 @@ export default function MultitiendaHub() {
   const [realCategories, setRealCategories] = useState<any[]>([]);
   const [homePromotions, setHomePromotions] = useState<any[]>([]);
   const [loadingHome, setLoadingHome] = useState(true);
+  const [homeError, setHomeError] = useState<string | null>(null);
 
   const [activeMerchantInfo, setActiveMerchantInfo] = useState<any>(null);
   const [activeMerchantProducts, setActiveMerchantProducts] = useState<any[]>([]);
   const [activeMerchantId, setActiveMerchantId] = useState<string | null>(null);
   const [isLoadingMoreProducts, setIsLoadingMoreProducts] = useState(false);
   const activeStoreRef = useRef<string | null>(null);
+  // Apertura de tienda en curso (evita abrir dos a la vez) y su error con reintento. Hooks al nivel superior, antes de los `return`.
+  const openingStoreRef = useRef<string | null>(null);
+  const [openingStoreName, setOpeningStoreName] = useState<string | null>(null);
+  const [storeLoadError, setStoreLoadError] = useState<{ store: any; message: string } | null>(null);
+  // Una `key` por pedido para CheckoutModal: cada checkout nuevo se monta limpio (auditoría C2)
+  const [checkoutKey, setCheckoutKey] = useState(0);
   const storeHistoryRef = useRef(false); // hay una entrada de historial propia ('merchant-store') mientras se ve una tienda
 
   // Botón "Atrás" (navegador/teléfono): al entrar a una tienda se registra un punto de retorno en el historial; "Atrás" lo consume
@@ -80,6 +84,7 @@ export default function MultitiendaHub() {
       if (!storeHistoryRef.current) return;
       storeHistoryRef.current = false;
       setActiveMerchantId(null);
+      setIsCheckoutOpen(false); // salir de la tienda con "Atrás" no deja el checkout abierto para la siguiente tienda
       try { localStorage.removeItem('current_cart_store_id'); } catch { /* sin storage */ }
     };
     window.addEventListener('popstate', onPopState);
@@ -184,54 +189,31 @@ export default function MultitiendaHub() {
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [realStores]);
 
-  useEffect(() => {
-    async function loadRealData() {
-      const controller = new AbortController();
-      const timeoutId = setTimeout(() => controller.abort(), 3000); // 3 segundos de timeout
-
-      try {
-        const headers = { 'apiKey': API_KEY, 'timeZone': TIMEZONE, 'Content-Type': 'application/json' };
-        
-        const catRes = await fetch(`${API_BASE}/product/categories?unused=false`, { headers, signal: controller.signal });
-        const catData = await catRes.json();
-        if (catData.code === 1) setRealCategories(catData.data || []);
-
-        const storeRes = await fetch(`${API_BASE}/store/find?category=&keywords=`, { headers, signal: controller.signal });
-        const storeData = await storeRes.json();
-        if (storeData.code === 1) setRealStores(storeData.data || []);
-
-        const promoRes = await getStorePromotions('');
+  // Carga inicial del Home. SIN datos de respaldo: si las tiendas no cargan (red caída, API lenta más de 15 s) se muestra un error con
+  // "Reintentar", nunca tiendas ficticias (auditoría C3). Las categorías degradan a "Todos" y las promociones no bloquean nada.
+  const loadHomeData = React.useCallback(async () => {
+    setLoadingHome(true);
+    setHomeError(null);
+    // Las categorías arrancan en paralelo pero NO bloquean el Home: las tiendas son lo crítico y se muestran en cuanto llegan
+    const categoriesPromise = getProductCategories();
+    const storeRes = await findStores();
+    if (storeRes.code === 1 && Array.isArray(storeRes.data)) {
+      setRealStores(storeRes.data);
+      getStorePromotions('').then((promoRes) => {
         if (promoRes.code === 1 && Array.isArray(promoRes.data)) setHomePromotions(promoRes.data);
-
-      } catch (error) {
-        console.warn("Backend inalcanzable. Cargando datos de respaldo (Mock)...", error);
-        
-        // Data Mock de Respaldo
-        setRealCategories([
-          { code: "FOOD", name: "Comida Rápida" },
-          { code: "SWEET", name: "Helados y Postres" },
-          { code: "MARKET", name: "Bodegón y Abasto" }
-        ]);
-
-        setRealStores([
-          { 
-            id: 991, code: "MOSTAZA", name: "Mostaza Food Truck", category: "Comida Rápida", 
-            banner: "https://images.unsplash.com/photo-1555939594-58d7cb561ad1?w=800&auto=format&fit=crop", 
-            isOpen: true, isDemo: true, location: "{\"lat\": 10.3950, \"lng\": -71.4450}" 
-          },
-          { 
-            id: 992, code: "PAPA_HELADO", name: "Papá Helado", category: "Helados y Postres", 
-            banner: "https://images.unsplash.com/photo-1563805042-7684c8e9e5cb?w=800&auto=format&fit=crop", 
-            isOpen: true, isDemo: true, location: "{\"lat\": 10.3950, \"lng\": -71.4450}" 
-          }
-        ]);
-      } finally {
-        clearTimeout(timeoutId);
-        setLoadingHome(false);
-      }
+      });
+    } else {
+      setRealStores([]);
+      setHomeError('No pudimos cargar las tiendas. Revisa tu conexión e inténtalo de nuevo.');
     }
-    loadRealData();
+    setLoadingHome(false);
+    const catRes = await categoriesPromise;
+    setRealCategories(storeRes.code === 1 && catRes.code === 1 && Array.isArray(catRes.data) ? catRes.data : []);
   }, []);
+
+  useEffect(() => {
+    loadHomeData();
+  }, [loadHomeData]);
 
   const formatPriceBimonetary = (amountUSD: number): string => {
     if (currencyMode === 'USD' || !bcvRate) return `$${amountUSD.toFixed(2)}`;
@@ -240,51 +222,36 @@ export default function MultitiendaHub() {
     return `$${amountUSD.toFixed(2)} (Bs. ${amountVES.toFixed(2)})`;
   };
 
-  // 🛡️ CONTROLADOR DE APERTURA DE TIENDA Y PURGA DE CARRITO CRUZADO
+  // CONTROLADOR DE APERTURA DE TIENDA. Sin catálogo real la tienda NO se abre (jamás productos ficticios: auditoría C3) y el error ofrece
+  // reintento. Solo al abrirla con éxito se purga cualquier carrito que no sea de esa tienda (C1) y se arranca con un checkout limpio (C2).
   const handleStoreClick = async (store: any) => {
+    const storeIdStr = String(store.id);
+    if (openingStoreRef.current) return; // ya se está abriendo una tienda (doble clic / promoción + tarjeta)
+    openingStoreRef.current = storeIdStr;
+    setOpeningStoreName(store.name || 'la tienda');
+    setStoreLoadError(null);
+    const loadErrorMessage = `No pudimos cargar el catálogo de ${store.name || 'la tienda'}. Revisa tu conexión e inténtalo de nuevo.`;
     try {
-      const storeIdStr = String(store.id);
-      
-      if (typeof window !== 'undefined') {
-        const savedCartStore = localStorage.getItem('current_cart_store_id');
-        if (savedCartStore && savedCartStore !== storeIdStr) {
-          localStorage.removeItem('cart_data');
-        }
-        localStorage.setItem('current_cart_store_id', storeIdStr);
+      // Timeout de 15 s dentro del servicio (antes: Promise.race de 3 s que caía a productos de prueba)
+      const res = await getProductsByStore(store.id);
+      if (!(res.code === 1 && res.data)) {
+        setStoreLoadError({ store, message: loadErrorMessage });
+        return;
       }
 
-      const timeoutPromise = new Promise<any>((_, reject) => setTimeout(() => reject(new Error("Timeout")), 3000));
-      const res = await Promise.race([
-        getProductsByStore(store.id),
-        timeoutPromise
-      ]).catch(() => ({ code: 500, data: null }));
-      
       let flatProducts: any[] = [];
-      if (res.code === 1 && res.data) {
-        if (Array.isArray(res.data)) {
-          flatProducts = res.data;
-        } else if (res.data.products && Array.isArray(res.data.products)) {
-          flatProducts = res.data.products.flatMap((cat: any) => cat.data || cat);
-        } else if (res.data.data && Array.isArray(res.data.data)) {
-          flatProducts = res.data.data;
-        }
-      } else {
-        console.warn("Cargando productos Mock para", store.name);
-        if (store.code === 'MOSTAZA') {
-          flatProducts = [
-            { id: 101, code: "MF001", name: "Perro Sifrino", price: 3.10, desc: "Pan, salchicha, ensalada y full queso.", category: "PERROS CALIENTES", image: "https://images.unsplash.com/photo-1594212691516-74724655b412?w=500&auto=format&fit=crop", hasVariants: true, modifiers: [{ title: "Exclusiones", selectType: "MULTIPLE", items: [{ name: "Sin Papitas", price: 0 }, { name: "Sin Queso", price: 0 }] }] },
-            { id: 102, code: "MF002", name: "Hamburguesa Doble", price: 6.50, desc: "Doble carne, queso cheddar, vegetales.", category: "HAMBURGUESAS", image: "https://images.unsplash.com/photo-1568901346375-23c9450c58cd?w=500&auto=format&fit=crop", hasVariants: false }
-          ];
-        } else if (store.code === 'PAPA_HELADO') {
-          flatProducts = [
-            { id: 201, code: "PH001", name: "Helado de Chocolate 1L", price: 5.00, desc: "Puro cacao artesanal.", category: "HELADOS", image: "https://images.unsplash.com/photo-1570197571499-166b36435e9f?w=500&auto=format&fit=crop", hasVariants: false },
-            { id: 202, code: "PH002", name: "Barquilla Doble", price: 2.50, desc: "Dos sabores a elección.", category: "BARQUILLAS", image: "https://images.unsplash.com/photo-1559703248-dcaaec9fab78?w=500&auto=format&fit=crop", hasVariants: true, modifiers: [{ title: "Sabores", selectType: "MULTIPLE", items: [{ name: "Mantecado", price: 0 }, { name: "Fresa", price: 0 }] }] }
-          ];
-        } else {
-          flatProducts = [
-            { id: 301, code: "DEMO01", name: "Combo de Prueba", price: 10.00, desc: "Producto generado en modo desarrollo.", category: "GENERAL", image: "https://images.unsplash.com/photo-1560008511-11c63416e52d?w=500&auto=format&fit=crop", hasVariants: false }
-          ];
-        }
+      if (Array.isArray(res.data)) {
+        flatProducts = res.data;
+      } else if (res.data.products && Array.isArray(res.data.products)) {
+        flatProducts = res.data.products.flatMap((cat: any) => cat.data || cat);
+      } else if (res.data.data && Array.isArray(res.data.data)) {
+        flatProducts = res.data.data;
+      }
+
+      // Recién ahora que la tienda va a abrirse: se purga el carrito de OTRO comercio (o de formato viejo sin tienda) y se marca la actual
+      if (typeof window !== 'undefined') {
+        purgeCartIfOtherStore(storeIdStr);
+        localStorage.setItem('current_cart_store_id', storeIdStr);
       }
 
       const mappedInfo = {
@@ -308,6 +275,10 @@ export default function MultitiendaHub() {
         weeklyHours: [{ day: 'Horario', hours: store.scheduleInfo || 'Ver disponibilidad' }]
       };
 
+      // Cada tienda arranca con un checkout limpio: sin restos de un pedido anterior ni la bandera de "compra completada"
+      setHasCompletedOrder(false);
+      setIsCheckoutOpen(false);
+      setCheckoutKey((k) => k + 1);
       setActiveMerchantInfo(mappedInfo);
       setActiveMerchantProducts(flatProducts);
       setActiveMerchantId(storeIdStr);
@@ -338,9 +309,12 @@ export default function MultitiendaHub() {
       } else {
         setIsLoadingMoreProducts(false);
       }
-
     } catch (e) {
-      console.error("Error al cargar productos", e);
+      console.error('Error al cargar productos', e);
+      setStoreLoadError({ store, message: loadErrorMessage });
+    } finally {
+      openingStoreRef.current = null;
+      setOpeningStoreName(null);
     }
   };
 
@@ -349,16 +323,21 @@ export default function MultitiendaHub() {
     esEnvioNacional: false, agenciaNacional: 'MRW' as any, costoEnvioNacional: 4.50, merchantId: '', merchantPhone: ''
   });
 
+  // Cerrar el checkout ("X" / "Continuar"). Solo si ESTE checkout creó un pedido (`hasCompletedOrder`) se da por terminada la compra:
+  // se limpia la bolsa, se sale de la tienda y el siguiente checkout se monta limpio (key nueva). La bandera se apaga siempre al
+  // terminar el ciclo (aquí, en `onViewTracking` y al abrir otra tienda), así que un pedido NUEVO posterior nunca hereda un
+  // `hasCompletedOrder` viejo que le borre el carrito (auditoría C2).
   const handleCloseCheckout = () => {
     setIsCheckoutOpen(false);
     if (hasCompletedOrder) {
-      if (typeof window !== 'undefined') { 
-        localStorage.removeItem('cart_data'); 
-        localStorage.removeItem('current_order'); 
+      if (typeof window !== 'undefined') {
+        clearCart();
+        localStorage.removeItem('current_order');
         localStorage.removeItem('current_cart_store_id');
       }
       setActiveMerchantId(null);
       setHasCompletedOrder(false);
+      setCheckoutKey((k) => k + 1);
     }
   };
 
@@ -397,6 +376,7 @@ export default function MultitiendaHub() {
           isLoadingMore={isLoadingMoreProducts}
           onBack={() => {
             setActiveMerchantId(null);
+            setIsCheckoutOpen(false);
             if (typeof window !== 'undefined') localStorage.removeItem('current_cart_store_id');
           }}
           onOpenCheckout={(summary) => {
@@ -419,6 +399,7 @@ export default function MultitiendaHub() {
         />
 
         <CheckoutModal
+          key={checkoutKey}
           isOpen={isCheckoutOpen}
           onClose={handleCloseCheckout}
           orderSummary={orderSummaryData}
@@ -437,10 +418,21 @@ export default function MultitiendaHub() {
             if (isCollabOrder && (orderData.referencia || orderData.comprobante)) {
               setIsCheckoutOpen(false);
               setIsTrackingOpen(true);
+              // El pedido ya está creado y se pasa al seguimiento: ciclo cerrado (mismo criterio que `onViewTracking`)
+              setHasCompletedOrder(false);
+              setCheckoutKey((k) => k + 1);
             }
           }}
           onBackToCart={() => { setIsCheckoutOpen(false); setForceCartOpenCount(prev => prev + 1); }}
-          onViewTracking={() => { setIsCheckoutOpen(false); setIsTrackingOpen(true); }}
+          onViewTracking={() => {
+            // "Ver seguimiento" cierra el ciclo del pedido recién creado (la bolsa ya se vació al comprar): se apaga
+            // `hasCompletedOrder` y el checkout se remonta limpio, para que el pedido NUEVO que arme después no quede
+            // bloqueado en la confirmación vieja ni se le borre el carrito al cerrar (auditoría C2).
+            setIsCheckoutOpen(false);
+            setIsTrackingOpen(true);
+            setHasCompletedOrder(false);
+            setCheckoutKey((k) => k + 1);
+          }}
           onViewReceipt={() => {
             const url = typeof window !== 'undefined' ? localStorage.getItem('last_receipt_url') : null;
             if (url) window.open(url, '_blank');
@@ -734,6 +726,22 @@ export default function MultitiendaHub() {
             <div className="flex items-center justify-center py-10">
               <Loader2 className="w-8 h-8 animate-spin text-[#fe6712]" />
             </div>
+          ) : homeError ? (
+            // Sin conexión con el backend: error limpio con reintento (jamás tiendas de respaldo/ficticias)
+            <div role="alert" className="flex flex-col items-center justify-center text-center gap-3 py-12 px-4 bg-white rounded-2xl border border-slate-100">
+              <div className="w-12 h-12 rounded-full bg-orange-50 flex items-center justify-center">
+                <Store className="w-6 h-6 text-[#fe6712]" />
+              </div>
+              <p className="text-sm font-black text-slate-900">No pudimos cargar las tiendas</p>
+              <p className="text-xs text-slate-500 font-medium max-w-xs">{homeError}</p>
+              <button
+                type="button"
+                onClick={loadHomeData}
+                className="mt-1 bg-[#fe6712] hover:bg-[#e0580d] text-white text-xs font-black px-5 py-2.5 rounded-full shadow-md cursor-pointer active:scale-95 transition"
+              >
+                Reintentar
+              </button>
+            </div>
           ) : (
             <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-4 sm:gap-5">
               {filteredMerchants.map(merchant => {
@@ -862,6 +870,42 @@ export default function MultitiendaHub() {
       
       {/* Modal de microsectores eliminado (2026-09-23): la plataforma opera por GPS exacto del dispositivo.
           Fallback: centro geométrico de Cabimas. Selector de CIUDAD para expansión nacional, pendiente. */}
+
+      {/* Abriendo una tienda (hasta 15 s si la red está lenta): indicador y bloqueo de clics repetidos */}
+      {openingStoreName && (
+        <div role="status" aria-live="polite" className="fixed inset-0 z-[120] flex items-center justify-center bg-black/40 backdrop-blur-[2px] px-6">
+          <div className="bg-white rounded-2xl shadow-2xl px-5 py-4 flex items-center gap-3 max-w-xs">
+            <Loader2 className="w-5 h-5 animate-spin text-[#fe6712] shrink-0" />
+            <span className="text-sm font-bold text-slate-800 truncate">Abriendo {openingStoreName}…</span>
+          </div>
+        </div>
+      )}
+
+      {/* La tienda NO se abrió por falta de catálogo real: error con reintento (jamás productos ficticios) */}
+      {storeLoadError && (
+        <div className="fixed inset-x-0 bottom-4 z-[120] flex justify-center px-4">
+          <div role="alert" className="w-full max-w-md bg-white rounded-2xl shadow-2xl border border-slate-200 p-4 space-y-3">
+            <p className="text-sm font-black text-slate-900">No se pudo abrir la tienda</p>
+            <p className="text-xs text-slate-500 font-medium">{storeLoadError.message}</p>
+            <div className="flex gap-2">
+              <button
+                type="button"
+                onClick={() => { const s = storeLoadError.store; setStoreLoadError(null); handleStoreClick(s); }}
+                className="flex-1 bg-[#fe6712] hover:bg-[#e0580d] text-white text-xs font-black py-2.5 rounded-full shadow-md cursor-pointer active:scale-95 transition"
+              >
+                Reintentar
+              </button>
+              <button
+                type="button"
+                onClick={() => setStoreLoadError(null)}
+                className="px-4 bg-slate-100 hover:bg-slate-200 text-slate-700 text-xs font-bold py-2.5 rounded-full cursor-pointer transition"
+              >
+                Cerrar
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
 
       <StoreScheduleModal
         isOpen={scheduleStore !== null}
