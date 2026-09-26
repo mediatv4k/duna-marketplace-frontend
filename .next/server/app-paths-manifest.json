@@ -1,3 +1,6 @@
 {
-  "/page": "app/page.js"
+  "/_not-found/page": "app/_not-found/page.js",
+  "/page": "app/page.js",
+  "/api/bcv/route": "app/api/bcv/route.js",
+  "/api/admin/recompose-image/route": "app/api/admin/recompose-image/route.js"
 }
