@@ -458,27 +458,31 @@ export default function CheckoutModal({
       vehicleType,
       service: orderSummary.metodoEntrega === 'pickup' ? 'PICKUP' : 'DELIVERY',
       location: { lat: Number(orderSummary.location.lat), lng: Number(orderSummary.location.lng) },
-      duration: String(Math.round(Number(orderSummary.durationMin || 0))),
-      distance: Number(orderSummary.distanceKm || 0).toFixed(1),
+      // Campos raíz numéricos (confirmado por Oswaldo): viajan como `number` con 2 decimales, jamás como string. Se conservan
+      // los redondeos de siempre (minutos enteros y distancia a 1 decimal: son los valores con los que se cotizó el flete);
+      // solo cambia el tipo. Los textos (`durationText`, `distanceText`) y los identificadores siguen siendo string.
+      duration: money(Math.round(Number(orderSummary.durationMin || 0))),
+      distance: money(Number(orderSummary.distanceKm || 0).toFixed(1)),
       durationText: `${Math.round(Number(orderSummary.durationMin || 0))} mins`,
       distanceText: `${Number(orderSummary.distanceKm || 0).toFixed(1)} km`,
-      serviceAmount: costoEnvio.toFixed(2),
+      serviceAmount: money(costoEnvio),
       address: String(orderSummary.direccion || 'Cabimas, Zulia'),
       phone: telefonoCompleto,
       customerName: nombre,
       customerDocument: `${tipoDocumento}${cedula}`,
       ftoken: '',
       paymentRef: referenciaPago || "",
-      totalPaidReferenceAmount: String(totalBolivares.toFixed(2)),
-      totalPaidDefaultAmount: String(totalFinalUSD.toFixed(2)),
-      totalWithoutDiscount: (totalFinalUSD || (subtotalNeto + costoEnvio + propina)).toFixed(2),
+      totalPaidReferenceAmount: money(totalBolivares),
+      totalPaidDefaultAmount: money(totalFinalUSD),
+      // Gemelo de `totalPaidDefaultAmount` (mismo valor si no hay descuento): mismo tipo para que no queden mezclados string/number
+      totalWithoutDiscount: money(totalFinalUSD || (subtotalNeto + costoEnvio + propina)),
       paymentMethod: metodoPagoReal ? { code: metodoPagoReal.code, value: metodoPagoReal.value } : { code: 'PAGO', value: 'Banco' },
-      tip: propina.toFixed(2),
+      tip: money(propina),
       store: { id: storeIdNum, phone: storePhoneStr },
       foodStoreId: String(storeIdNum),
       couponId: "",
       couponCode: "",
-      discountAmount: "0"
+      discountAmount: money(0)
     };
 
     console.log('[AUDITORIA CHECKOUT] osvaldoPayload.data (items + variants + pricing):', JSON.stringify(itemsAdonis, null, 2));
