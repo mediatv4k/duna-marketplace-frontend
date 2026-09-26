@@ -13,16 +13,17 @@ export async function POST(req: Request) {
     // Opcional: Proteger la ruta verificando algún token de admin aquí
 
     // 1. Invocar microservicio de transformación con Gemini
-    const optimizedImage = await recomposeImage(imageUrl);
+    const optimizedImageBuffer = await recomposeImage(imageUrl);
+    const recomposedUrl = `data:image/jpeg;base64,${optimizedImageBuffer.toString('base64')}`;
 
     // 2. Aquí iría la lógica para guardar `optimizedImage` en la base de datos (e.g. Firebase)
-    // asociado al productId. Para este endpoint, simplemente devolvemos la URL procesada.
+    // asociado al productId. Para este endpoint, simplemente devolvemos la URL procesada en base64.
 
     return NextResponse.json({
       success: true,
       productId,
       originalUrl: imageUrl,
-      recomposedUrl: optimizedImage
+      recomposedUrl
     });
 
   } catch (error: any) {
