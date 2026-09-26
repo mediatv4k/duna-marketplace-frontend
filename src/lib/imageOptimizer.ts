@@ -3,8 +3,8 @@ const CLOUD_NAME = 'rukjbnry';
 /**
  * Optimiza y encuadra automáticamente los productos al vuelo:
  * - PROMOTION: Conserva geometría original sin recortar (f_auto,q_auto).
- * - PRODUCT: La IA detecta el objeto/producto principal, hace zoom y lo maximiza
- *   a 512x512 eliminando espacios muertos para que se vea grande y comercial.
+ * - PRODUCT: Muestra la imagen completa, centrada en un lienzo de 512x512
+ *   con fondo blanco, sin recortar contenido ni textos.
  */
 export function getOptimizedImageUrl(
   url: string | undefined | null,
@@ -18,6 +18,6 @@ export function getOptimizedImageUrl(
     return `https://res.cloudinary.com/${CLOUD_NAME}/image/fetch/f_auto,q_auto/${encodeURIComponent(url)}`;
   }
 
-  // Productos: Detección de sujeto con IA + Zoom protagónico en 512x512
-  return `https://res.cloudinary.com/${CLOUD_NAME}/image/fetch/c_fill,g_auto:subject,w_512,h_512,f_auto,q_auto/${encodeURIComponent(url)}`;
+  // Productos: Se adaptan completamente en 512x512 con padding blanco sin recorte
+  return `https://res.cloudinary.com/${CLOUD_NAME}/image/fetch/c_pad,w_512,h_512,b_white,f_auto,q_auto/${encodeURIComponent(url)}`;
 }
