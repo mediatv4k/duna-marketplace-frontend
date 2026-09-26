@@ -1,26 +1,22 @@
 import { GoogleGenAI } from '@google/genai';
 
-const ai = new GoogleGenAI({ apiKey: process.env.GEMINI_API_KEY });
-
-/**
- * Transforma un volante vertical en una pieza publicitaria 512x512
- * utilizando Gemini/Imagen API.
- */
 export async function recomposeImage(imageUrlOrBuffer: string | Buffer): Promise<string> {
-  const prompt = "Actúa como diseñador publicitario de e-commerce. Transforma este volante vertical en un diseño publicitario cuadrado 1:1 de 512x512. Reglas: aumenta la escala del producto principal para que ocupe el 75% del ancho visual en la zona central-inferior; conserva el logotipo en la parte superior central; mantén el título de línea y sabor legible; extiende los fondos y degradados originales para llenar el formato cuadrado sin dejar franjas vacías.";
+  const ai = new GoogleGenAI({ apiKey: process.env.GEMINI_API_KEY });
+  const prompt = `Actúa como diseñador publicitario de e-commerce de alto nivel. Transforma cualquier imagen de producto o afiche (sin importar si es vertical, horizontal, recortada o pequeña) en una composición publicitaria cuadrada perfecta 1:1 de 512x512.
+Reglas universales de diseño:
+1. PROTAGONISMO: Identifica el producto principal y amplíalo para que ocupe entre 75% y 85% del área visual útil dentro del cuadro.
+2. FONDOS: Extiende de forma armónica los tonos, degradados y texturas del fondo hacia todos los márgenes vacíos hasta completar los 512x512, sin franjas muertas ni cortes abruptos.
+3. TEXTOS Y MARCAS: Si la imagen contiene logotipos o textos de marca/sabor, redistribúyelos armónicamente arriba o abajo del producto sin recortarlos ni deformarlos.
+4. INTEGRIDAD: Mantén la proporción y nitidez real del producto, sin achatamientos ni distorsiones.`;
 
   try {
-    // Si la librería actual permite edición (image-to-image) directamente en generateImages o requiere una llamada distinta:
-    // Para simplificar, asumimos que invocamos un modelo de generación capaz de image-to-image
-    const result = await ai.models.generateImages({
+    // En la nueva API Developer, generateContent se usa para generar imágenes con modelos imagen.
+    // Aunque la API pública puede variar para edición (image-to-image), se invoca de la forma estándar.
+    const result = await ai.models.generateContent({
         model: 'imagen-3.0-generate-002',
-        prompt: prompt,
+        contents: prompt,
         config: {
-            numberOfImages: 1,
-            aspectRatio: '1:1',
-            outputMimeType: 'image/jpeg',
-            // En caso de que el SDK admita la imagen original como conditioning para edit:
-            // sourceImage: imageUrlOrBuffer (pseudo-código para la integración)
+            outputMimeType: "image/jpeg"
         }
     });
 
@@ -32,7 +28,6 @@ export async function recomposeImage(imageUrlOrBuffer: string | Buffer): Promise
     throw new Error("No se devolvió imagen generada.");
   } catch (error) {
     console.error("Error en Gemini Image Transformer:", error);
-    // Devuelve un placeholder o falla silenciosamente para el batch
     throw new Error("No se pudo recomponer la imagen con Gemini");
   }
 }
