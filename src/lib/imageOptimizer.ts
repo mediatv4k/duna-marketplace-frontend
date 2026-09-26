@@ -1,8 +1,10 @@
 const CLOUD_NAME = 'rukjbnry';
 
 /**
- * Normaliza imágenes de productos a 512x512 mediante Cloudinary Fetch.
- * Si es una promoción o banner, no altera su geometría ni proporción.
+ * Optimiza y encuadra automáticamente los productos al vuelo:
+ * - PROMOTION: Conserva geometría original sin recortar (f_auto,q_auto).
+ * - PRODUCT: La IA detecta el objeto/producto principal, hace zoom y lo maximiza
+ *   a 512x512 eliminando espacios muertos para que se vea grande y comercial.
  */
 export function getOptimizedImageUrl(
   url: string | undefined | null,
@@ -11,11 +13,11 @@ export function getOptimizedImageUrl(
   if (!url || typeof url !== 'string') return '/placeholder.png';
   if (url.startsWith('/') || url.includes('cloudinary.com')) return url;
 
-  // REGLA: Promociones se optimizan sin recortar ni forzar cuadrado
+  // Promociones: se optimizan en formato WebP sin forzar dimensiones cuadradas
   if (entityType === 'PROMOTION') {
     return `https://res.cloudinary.com/${CLOUD_NAME}/image/fetch/f_auto,q_auto/${encodeURIComponent(url)}`;
   }
 
-  // Productos: Outpainting con IA Generativa (b_gen_fill) a 512x512 exactos
-  return `https://res.cloudinary.com/${CLOUD_NAME}/image/fetch/c_pad,w_512,h_512,b_gen_fill,f_auto,q_auto/${encodeURIComponent(url)}`;
+  // Productos: Detección de sujeto con IA + Zoom protagónico en 512x512
+  return `https://res.cloudinary.com/${CLOUD_NAME}/image/fetch/c_fill,g_auto:subject,w_512,h_512,f_auto,q_auto/${encodeURIComponent(url)}`;
 }
