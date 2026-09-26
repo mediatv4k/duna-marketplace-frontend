@@ -723,11 +723,22 @@ export default function MerchantStoreView({
                       {badge && (
                         <span className={`absolute top-2 left-2 px-2 py-0.5 rounded-md text-[8px] font-bold ${badge.className}`}>{badge.label}</span>
                       )}
-                      <div className="relative aspect-square w-full overflow-hidden rounded-t-xl bg-white p-2 flex items-center justify-center">
+                      <div className="relative aspect-square w-full overflow-hidden rounded-t-xl bg-slate-50 flex items-center justify-center">
+                        {/* Capa de fondo desenfocada dinámica que toma los colores del afiche */}
+                        {product.image && (
+                          <img
+                            src={product.image}
+                            alt=""
+                            aria-hidden="true"
+                            className="absolute inset-0 h-full w-full object-cover blur-xl scale-125 opacity-70 pointer-events-none"
+                          />
+                        )}
+                        {/* Imagen frontal nítida contenida sin recorte */}
                         <img
                           src={product.image || 'https://images.unsplash.com/photo-1560008511-11c63416e52d'}
                           alt={product.name}
-                          className="h-full w-full object-contain transition-transform duration-300 group-hover:scale-105"
+                          loading="lazy"
+                          className="relative z-10 h-full w-full object-contain p-1.5 transition-transform duration-300 group-hover:scale-105"
                         />
                         {/* Lightbox: solo la lupa lo abre (stopPropagation); tocar el resto de la foto abre la ficha del producto como el resto de la tarjeta */}
                         <button
