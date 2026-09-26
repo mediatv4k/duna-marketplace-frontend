@@ -5,7 +5,7 @@ import { useBeacon, BEACON_CLASS } from '@/lib/beacon';
 import {
   ArrowRight, ArrowLeft, X, HeartHandshake, Check, Copy, Upload,
   CheckCircle2, Info, Clock, FileText, Loader2, MessageCircle,
-  CreditCard, Bike, Car, Truck, Gift
+  CreditCard, Bike, Car, Truck, Gift, Tag
 } from 'lucide-react';
 
 // Ícono del vehículo asignado por el motor logístico (antes emoji de `logisticsEngine.icono`): moto → Bike,
@@ -18,6 +18,7 @@ function VehicleIcon({ vehicleId, className }: { vehicleId: string; className?: 
 
 import { submitPurchaseOrder, getStorePaymentInfo, uploadPaymentReference, getOrderPublic, getDeliveryRate, getCustomerLoyalties, type ApiResponse } from '@/services/marketplaceService';
 import { parseLoyaltyResponse, rewardDiscount, describeReward, rewardTitle, type LoyaltyReward } from '@/lib/loyalty';
+import { parseStoreAdjustments, computeStoreAdjustments, adjustmentsSignature, type StoreAdjustment } from '@/lib/storeAdjustments';
 import { calculateLogistics, PhysicalItem } from '@/lib/logisticsEngine';
 import { clearCart } from '@/lib/cartStorage';
 import { toWhatsAppNumber } from '@/lib/orderTracking';
@@ -60,6 +61,9 @@ export interface SubmittedOrderPayload {
   descuentoUSD?: number;
   cuponCode?: string;
   cuponAplicaA?: 'PURCHASE' | 'DELIVERY';
+  // Descuentos (monto negativo) y cargos (positivo) propios del comercio aplicados a este pedido (`additionalItemsPercent`/`Amount`);
+  // `subtotalUSD` va sin ellos y `totalUSD` ya los incluye. El recibo los dibuja línea por línea para que cuadre con el total.
+  ajustesTienda?: { label: string; amount: number }[];
   items: CartItemOption[];
   merchantName?: string;
   subtotalUSD: number;
@@ -91,6 +95,9 @@ export interface OrderSummaryData {
   location?: { lat: number; lng: number } | null;
   distanceKm?: number;
   durationMin?: number;
+  // Descuentos/cargos del comercio ya consultados en la tienda (payment/info): siembran el primer render del checkout para que el total no
+  // "salte"; el checkout los vuelve a consultar al abrir y esa respuesta manda
+  storeAdjustments?: StoreAdjustment[];
 }
 
 // Comprime la imagen del comprobante (canvas): ancho máx. 1024 px y JPEG calidad 0.6, para no superar el límite del backend (Error 413).
@@ -262,6 +269,9 @@ export default function CheckoutModal({
   const [selectedRewardId, setSelectedRewardId] = useState<number | null>(null);
   const rewardsPhoneRef = useRef<string>('');
   const rewardsReqRef = useRef<number>(0);
+  // Descuentos (< 0) y cargos (> 0) del comercio: `store.additionalItemsPercent`/`additionalItemsAmount` de payment/info. Se siembran con lo que
+  // la tienda ya consultó y la consulta fresca al abrir (y la de un `code: 21`) los reemplaza: esa respuesta es la fuente de verdad.
+  const [storeAdjustments, setStoreAdjustments] = useState<StoreAdjustment[]>(() => orderSummary.storeAdjustments ?? []);
 
   // Teléfono con el mismo formato que `phone` de la compra (+58…)
   const buildFullPhone = () => `${codigoPais}${telefono.replace(/\D/g, '').replace(/^0+/, '')}`;
@@ -295,6 +305,7 @@ export default function CheckoutModal({
     setAvisoTarifa(null);
     setIntentoAmbiguo(false);
     clearRewards();
+    setStoreAdjustments(orderSummary.storeAdjustments ?? []);
     if (!storeId) {
       // Sin id real de comercio no se consulta ni se inventa uno
       setLoadingPaymentInfo(false);
@@ -314,6 +325,8 @@ export default function CheckoutModal({
         if (Number.isFinite(officialRate) && officialRate > 0) {
           setLiveRateBcv(officialRate);
         }
+        // La respuesta fresca del comercio manda: sin campos = el comercio ya no tiene descuentos/cargos
+        if (res?.data?.store) setStoreAdjustments(parseStoreAdjustments(res.data.store));
       }
     }).catch(() => {
       setLoadingPaymentInfo(false);
@@ -446,13 +459,19 @@ export default function CheckoutModal({
 
   // Cofre de Recompensas: el único descuento posible es el de una recompensa REAL del backend (`activeRewards`), elegida por el cliente.
   // El simulador local de 25 % (auditoría C6) no existe. Bases: PURCHASE = subtotal de productos; DELIVERY = flete (0 en retiro en tienda).
-  const rewardBases = { purchase: subtotalNeto, delivery: orderSummary.metodoEntrega === 'pickup' ? 0 : costoEnvio };
+  // Descuentos (< 0) y cargos (> 0) del comercio, de payment/info. Base de los porcentajes = subtotal de productos; cada línea a 2 decimales.
+  // Los descuentos se ACUMULAN con el cupón: primero el de la tienda y el cupón PURCHASE se calcula sobre el subtotal ya descontado
+  // (el de DELIVERY sobre el flete). Los cargos no forman parte de esa base.
+  const adjResult = computeStoreAdjustments(storeAdjustments, subtotalNeto);
+  const subtotalConDescuentoTienda = subtotalNeto - adjResult.discountTotal;
+  const rewardBases = { purchase: subtotalConDescuentoTienda, delivery: orderSummary.metodoEntrega === 'pickup' ? 0 : costoEnvio };
   const selectedReward = rewards.find((r) => r.id === selectedRewardId) ?? null;
   const rewardDiscountUSD = selectedReward ? rewardDiscount(selectedReward, rewardBases) : 0;
   // Una recompensa cuyo descuento da 0 (p. ej. de flete en un retiro) no se aplica ni viaja en el pedido
   const appliedReward = rewardDiscountUSD > 0 ? selectedReward : null;
-  const totalAntesDescuento = subtotalNeto + costoEnvio + propina;
-  // Fórmula: total = subtotal + flete + propina − descuento
+  // Total ANTES del cupón (ya con los descuentos/cargos del comercio) y total a pagar:
+  //   total = subtotal − descuentos de tienda + cargos de tienda + flete + propina − cupón
+  const totalAntesDescuento = subtotalConDescuentoTienda + adjResult.chargesTotal + costoEnvio + propina;
   const totalFinalUSD = totalAntesDescuento - rewardDiscountUSD;
 
   const cobraEnBs = selectedMethod?.field5 === 'REF';
@@ -520,6 +539,12 @@ export default function CheckoutModal({
           if (Number.isFinite(nuevaTasa) && nuevaTasa > 0) {
             if (Math.abs(nuevaTasa - tasaRef) > 0.0001) cambios.push(`la tasa de cambio (Bs. ${tasaRef.toFixed(2)} → Bs. ${nuevaTasa.toFixed(2)})`);
             setLiveRateBcv(nuevaTasa);
+          }
+          // Los descuentos/cargos del comercio también pueden haber cambiado (p. ej. terminó una promoción)
+          if (info.data?.store) {
+            const nuevosAjustes = parseStoreAdjustments(info.data.store);
+            if (adjustmentsSignature(nuevosAjustes) !== adjustmentsSignature(storeAdjustments)) cambios.push('el descuento o cargo de la tienda');
+            setStoreAdjustments(nuevosAjustes);
           }
           const methods: PaymentConfigItem[] = info.data?.paymentConfig || [];
           if (methods.length > 0) {
@@ -714,8 +739,9 @@ export default function CheckoutModal({
       ftoken: '',
       paymentRef: referenciaPago || "",
       totalPaidReferenceAmount: money(totalBolivares),
-      // Total cobrado = subtotal + flete + propina − descuento del cupón; `totalWithoutDiscount` = el mismo total ANTES del descuento
-      // (con cupón, `totalWithoutDiscount − totalPaidDefaultAmount = discountAmount`; sin cupón son iguales)
+      // Total cobrado = subtotal − descuentos de tienda + cargos de tienda + flete + propina − cupón. Los ajustes del comercio (`additionalItems*`)
+      // viajan SOLO dentro del total (Adonis los aplica desde la configuración del comercio); `discountAmount`/`couponId` son únicamente del
+      // cupón. `totalWithoutDiscount` = el mismo total ANTES del cupón (con cupón, `totalWithoutDiscount − totalPaidDefaultAmount = discountAmount`).
       totalPaidDefaultAmount: money(totalFinalUSD),
       totalWithoutDiscount: money(totalAntesDescuento),
       paymentMethod: metodoPagoReal ? { code: metodoPagoReal.code, value: metodoPagoReal.value } : { code: 'PAGO', value: 'Banco' },
@@ -755,6 +781,7 @@ export default function CheckoutModal({
           direccion: orderSummary.direccion,
           costoEnvio,
           ...(appliedReward ? { descuentoUSD: money(rewardDiscountUSD), cuponAplicaA: appliedReward.applyTo, ...(appliedReward.code ? { cuponCode: appliedReward.code } : {}) } : {}),
+          ...(adjResult.lines.length > 0 ? { ajustesTienda: adjResult.lines.map((l) => ({ label: l.label, amount: l.amount })) } : {}),
           items: orderSummary.items || [],
           merchantName,
           subtotalUSD: subtotalNeto,
@@ -1110,6 +1137,17 @@ export default function CheckoutModal({
             )}
 
             <div className="text-center shrink-0 py-1 bg-slate-50 p-2 rounded-xl border border-slate-100">
+              {adjResult.lines.map((line, idx) => (
+                <span
+                  key={`${line.label}-${idx}`}
+                  data-testid={line.isDiscount ? 'store-discount-line-p3' : 'store-charge-line-p3'}
+                  className={`block text-[10px] font-black mb-0.5 ${line.isDiscount ? 'text-emerald-600' : 'text-slate-600'}`}
+                >
+                  {line.label}: {line.amount < 0 ? '- ' : '+ '}{cobraEnBs
+                    ? `Bs.S ${(Math.abs(line.amount) * tasaRef).toLocaleString('es-VE', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`
+                    : `$${Math.abs(line.amount).toFixed(2)} USD`}
+                </span>
+              ))}
               {appliedReward && (
                 <span data-testid="discount-line-p3" className="block text-[10px] font-black text-emerald-600 mb-0.5">
                   Descuento{appliedReward.code ? ` (${appliedReward.code})` : ''}: - {cobraEnBs
@@ -1249,6 +1287,19 @@ export default function CheckoutModal({
                   )}
                 </div>
               )}
+              {adjResult.lines.map((line, idx) => (
+                <div
+                  key={`${line.label}-${idx}`}
+                  data-testid={line.isDiscount ? 'store-discount-line' : 'store-charge-line'}
+                  className={`flex items-center justify-between gap-2 text-[10.5px] px-1 font-black ${line.isDiscount ? 'text-emerald-600' : 'text-slate-600'}`}
+                >
+                  <span className="flex items-center gap-1 min-w-0">
+                    {line.isDiscount && <Tag className="w-3 h-3 shrink-0" />}
+                    <span className="truncate">{line.label}:</span>
+                  </span>
+                  <span className="shrink-0">{line.amount < 0 ? '-' : '+'}${Math.abs(line.amount).toFixed(2)} USD</span>
+                </div>
+              ))}
               {appliedReward && (
                 <div data-testid="discount-line" className="flex items-center justify-between text-[10.5px] px-1 font-black text-emerald-600">
                   <span>Descuento{appliedReward.code ? ` (${appliedReward.code})` : ''}:</span>

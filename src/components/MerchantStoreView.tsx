@@ -1,8 +1,9 @@
 'use client';
 
 import React, { useState } from 'react';
-import { ShoppingBag, ChevronRight, Search, Star, Clock, MapPin, Sparkles, FileText, X, ZoomIn, Bike } from 'lucide-react';
+import { ShoppingBag, ChevronRight, Search, Star, Clock, MapPin, Sparkles, FileText, X, ZoomIn, Bike, Flame } from 'lucide-react';
 import { parseDescriptionTags } from '@/lib/productTags';
+import { parseStoreAdjustments, computeStoreAdjustments, storeDiscountBadge, storeDiscountNotice, type StoreAdjustment } from '@/lib/storeAdjustments';
 import ProductTagBadges from './ProductTagBadges';
 import ShareButton from './ShareButton';
 import CartModal from './CartModal';
@@ -278,6 +279,9 @@ export default function MerchantStoreView({
   // Tasa oficial de la tienda: store.referenceRateValue de GET /store/{id}/payment/info.
   // null = no disponible → el modal de producto no muestra montos en Bs. (nunca una tasa inventada)
   const [bcvRate, setBcvRate] = useState<number | null>(null);
+  // Descuentos (< 0) y cargos (> 0) propios del comercio: `store.additionalItemsPercent`/`additionalItemsAmount` de la MISMA consulta
+  // (payment/info). Sin campos o sin respuesta = sin ajustes; nunca valores de respaldo.
+  const [storeAdjustments, setStoreAdjustments] = useState<StoreAdjustment[]>([]);
   React.useEffect(() => {
     if (!merchant?.id) return;
     let cancelled = false;
@@ -285,6 +289,7 @@ export default function MerchantStoreView({
       .then((res) => {
         const rate = Number(res?.data?.store?.referenceRateValue);
         if (!cancelled && res?.code === 1 && Number.isFinite(rate) && rate > 0) setBcvRate(rate);
+        if (!cancelled && res?.code === 1 && res?.data?.store) setStoreAdjustments(parseStoreAdjustments(res.data.store));
       })
       .catch(() => {});
     return () => { cancelled = true; };
@@ -543,7 +548,13 @@ export default function MerchantStoreView({
   // distancia real y descuadraba el total contra el backend) ni tarifas de respaldo inventadas.
   const deliveryCost = quote.status === 'ok' && quote.rate !== undefined ? quote.rate : 0;
   const fleteActivo = deliveryMode === 'delivery' ? deliveryCost : 0; // pickup: 0; el envío nacional no está soportado
-  const totalUSD = subtotalUSD + fleteActivo;
+
+  // Descuentos/cargos del comercio sobre el subtotal (base de los porcentajes = subtotal de productos; líneas a 2 decimales)
+  const storeAdj = computeStoreAdjustments(storeAdjustments, subtotalUSD);
+  const totalUSD = subtotalUSD + storeAdj.net + fleteActivo;
+  // Aviso promocional (solo con la tienda abierta, igual que las promociones): insignia con el valor real y el texto del propio comercio
+  const discountBadge = canShowPromotions ? storeDiscountBadge(storeAdjustments) : null;
+  const discountNotice = discountBadge ? storeDiscountNotice(storeAdjustments) : '';
 
   // Piezas de la vista: se montan dentro del motor multiplantilla (nichos con plantilla) o directo (sin plantilla)
   const templateNiche = templateNicheFromStoreNiche(storeNiche);
@@ -576,6 +587,17 @@ export default function MerchantStoreView({
           <img src={merchant.banner} alt={merchant.name} className="w-full h-full object-cover" />
         ) : (
           <div className="w-full h-full bg-gradient-to-r from-[#fe6712] to-amber-600" />
+        )}
+        {/* Aviso promocional de la tienda: el valor sale de `additionalItemsPercent`/`Amount` (Adonis) y el texto es el del propio comercio */}
+        {discountBadge && (
+          <div data-testid="store-discount-notice" className="absolute bottom-3 left-3 right-3 z-10 flex items-center gap-2">
+            <span className="shrink-0 inline-flex items-center gap-1 rounded-full bg-gradient-to-r from-[#fe6712] to-amber-500 px-3 py-1.5 text-xs font-black text-white shadow-lg">
+              <Flame className="w-3.5 h-3.5" /> {discountBadge}
+            </span>
+            <span className="min-w-0 truncate rounded-full bg-black/60 backdrop-blur-sm px-3 py-1.5 text-[11px] font-bold text-white">
+              {discountNotice || 'Descuento aplicado automáticamente en tu pedido'}
+            </span>
+          </div>
         )}
       </div>
       {searchNode}
@@ -972,6 +994,7 @@ export default function MerchantStoreView({
             setDeliveryMode={setDeliveryMode}
             deliveryCost={deliveryCost}
             totalUSD={totalUSD}
+            adjustmentLines={storeAdj.lines}
             onUpdateQty={handleUpdateQty}
             quoteStatus={quote.status}
             quoteMessage={quote.message}
@@ -989,6 +1012,8 @@ export default function MerchantStoreView({
               const point = isDelivery ? customerLocation : (customerLocation || merchant?.coords);
               onOpenCheckout({
                 ...summary,
+                // Descuentos/cargos del comercio ya consultados: siembran el checkout (que los vuelve a consultar al abrir)
+                storeAdjustments,
                 ...(isDelivery && customerLocation
                   ? { direccion: `${customerLocation.label}: ${customerLocation.lat.toFixed(5)}, ${customerLocation.lng.toFixed(5)}` }
                   : {}),

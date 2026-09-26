@@ -14,7 +14,7 @@ import React, { useState, useEffect, useRef } from 'react';
 import { useBeacon, BEACON_CLASS } from '@/lib/beacon';
 import {
   X, Bike, Store, Navigation, MapPin,
-  Trash2, ArrowRight, Truck, Package
+  Trash2, ArrowRight, Truck, Package, Tag
 } from 'lucide-react';
 
 export interface CartItem {
@@ -41,6 +41,9 @@ interface CartModalProps {
   setDeliveryMode: (mode: 'delivery' | 'pickup' | 'national') => void;
   deliveryCost: number; // flete = cotización oficial del backend (deliveryRate); no existe ninguna regla local de "envío gratis"
   totalUSD: number;
+  // Descuentos (monto negativo, en verde) y cargos (positivo) del comercio sobre el subtotal, ya calculados por la tienda con los
+  // `additionalItemsPercent`/`additionalItemsAmount` reales de payment/info
+  adjustmentLines?: { label: string; amount: number; isDiscount: boolean }[];
   onUpdateQty: (identifier: string, delta: number) => void;
   onOpenCheckout: (summary: any) => void;
   isNationalShippingEnabled?: boolean;
@@ -66,6 +69,7 @@ export default function CartModal({
   setDeliveryMode,
   deliveryCost,
   totalUSD,
+  adjustmentLines = [],
   onUpdateQty,
   onOpenCheckout,
   // El envío nacional NO tiene soporte en el contrato de Adonis: la opción solo se ofrece si el comercio lo habilita explícitamente
@@ -117,13 +121,19 @@ export default function CartModal({
   // En delivery no se muestra ni se cobra flete hasta tener la cotización oficial
   const deliveryBlocked = deliveryMode === 'delivery' && quoteStatus !== 'ok';
   const fleteFinalMostrado = deliveryMode === 'pickup' ? 0 : (deliveryMode === 'national' ? costoNacionalFijo : (deliveryBlocked ? 0 : deliveryCost));
-  const totalCalculadoFinal = subtotalUSD + fleteFinalMostrado;
+  // total = subtotal + (cargos − descuentos del comercio) + flete
+  const ajusteNeto = Math.round(adjustmentLines.reduce((acc, l) => acc + l.amount, 0) * 100) / 100;
+  const totalCalculadoFinal = subtotalUSD + ajusteNeto + fleteFinalMostrado;
+  // El modal mide 590 px fijos (325 lista + 265 totales) y el bloque de totales ya viene justo: cada línea de descuento/cargo (20 px) se
+  // le resta a la lista de productos (que tiene su propio scroll) y se le da al bloque de totales, para que "Total a pagar" y
+  // "PROCEDER AL PAGO" nunca queden recortados. Sin ajustes = alturas de siempre; tope de 6 líneas.
+  const extraTotalsPx = Math.min(adjustmentLines.length, 6) * 20;
 
   return (
     <div className="fixed inset-0 z-[140] flex items-center justify-center bg-black/75 p-4 backdrop-blur-sm animate-in fade-in duration-150">
       <div className="w-full max-w-[420px] h-[590px] bg-white rounded-[28px] shadow-2xl flex flex-col overflow-hidden animate-in zoom-in-95 duration-200">
 
-        <div className="h-[325px] flex flex-col border-b border-slate-100 bg-white shrink-0">
+        <div className="h-[325px] flex flex-col border-b border-slate-100 bg-white shrink-0" style={extraTotalsPx ? { height: 325 - extraTotalsPx } : undefined}>
 
           {/* Header Fijo */}
           <div className="bg-[#fe6712] w-full px-5 py-3 flex justify-between items-center text-white shrink-0">
@@ -204,7 +214,7 @@ export default function CartModal({
 
         </div>
 
-        <div className="h-[265px] shrink-0 px-4 pt-2 pb-2.5 bg-white flex flex-col justify-between">
+        <div className="h-[265px] shrink-0 px-4 pt-2 pb-2.5 bg-white flex flex-col justify-between" style={extraTotalsPx ? { height: 265 + extraTotalsPx } : undefined}>
 
           <div className="space-y-1">
             <div className={`grid gap-1.5 ${isNationalShippingEnabled ? 'grid-cols-3' : 'grid-cols-2'}`}>
@@ -329,6 +339,22 @@ export default function CartModal({
               <span className="text-[12px]">Subtotal:</span>
               <span className="font-black text-slate-800 text-[12px]">${subtotalUSD.toFixed(2)} USD</span>
             </div>
+
+            {adjustmentLines.map((line, idx) => (
+              <div
+                key={`${line.label}-${idx}`}
+                data-testid={line.isDiscount ? 'cart-store-discount' : 'cart-store-charge'}
+                className={`flex justify-between items-center gap-2 font-medium ${line.isDiscount ? 'text-emerald-600' : 'text-slate-500'}`}
+              >
+                <span className="flex items-center gap-1 text-[12px] min-w-0">
+                  {line.isDiscount && <Tag className="w-3 h-3 shrink-0" />}
+                  <span className="truncate">{line.label}:</span>
+                </span>
+                <span className={`font-black text-[12px] shrink-0 ${line.isDiscount ? 'text-emerald-600' : 'text-slate-800'}`}>
+                  {line.amount < 0 ? '-' : '+'}${Math.abs(line.amount).toFixed(2)} USD
+                </span>
+              </div>
+            ))}
 
             {deliveryMode === 'delivery' && (
               <div className="flex justify-between items-center text-slate-500 font-medium">

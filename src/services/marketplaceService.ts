@@ -62,8 +62,10 @@ export async function findStores(): Promise<ApiResponse<any>> {
   return await apiFetch<any>('/store/find?category=&keywords=', {}, REQUEST_TIMEOUT_MS);
 }
 
-export async function getStorePaymentInfo(storeId: number | string): Promise<ApiResponse<any>> {
-  return await apiFetch<any>(`/store/${storeId}/payment/info`);
+// `timeoutMs` opcional (sin él, sin límite como siempre). Devuelve `store` con la tasa oficial (`referenceRateValue`) y los descuentos/cargos
+// del comercio (`additionalItemsPercent` / `additionalItemsAmount`, ver `src/lib/storeAdjustments.ts`).
+export async function getStorePaymentInfo(storeId: number | string, timeoutMs?: number): Promise<ApiResponse<any>> {
+  return await apiFetch<any>(`/store/${storeId}/payment/info`, {}, timeoutMs);
 }
 
 // GET /loyalties/{phone} — recompensas del cliente (`activeRewards[]`). El teléfono va con el mismo formato que `phone` de la compra

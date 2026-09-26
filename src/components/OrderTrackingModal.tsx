@@ -196,6 +196,13 @@ export default function OrderTrackingModal({ isOpen, onClose, orderId, orderSumm
   const descuentoEnCompra = descuentoVal > 0 && orderData?.cuponAplicaA === 'PURCHASE';
   const descuentoFleteVal = descuentoVal > 0 && !descuentoEnCompra ? descuentoVal : 0;
   const cuponEtiqueta = cuponCode ? `Cupón ${cuponCode}` : 'Cofre -25%';
+  // Descuentos (monto negativo) y cargos (positivo) del comercio aplicados al pedido (`additionalItemsPercent`/`Amount`): se guardan en
+  // `last_active_order.ajustesTienda` para que las líneas del ticket cuadren con el total. Pedidos anteriores no traen el campo.
+  const ajustesTienda: { label: string; amount: number }[] = Array.isArray(orderData?.ajustesTienda)
+    ? orderData.ajustesTienda
+        .filter((a: any) => a && Number.isFinite(Number(a.amount)) && Number(a.amount) !== 0)
+        .map((a: any) => ({ label: String(a.label || 'Ajuste de la tienda'), amount: Number(a.amount) }))
+    : [];
   const costoEnvioFinal = Math.max(0, costoEnvio - descuentoFleteVal);
   const displayPhone = remote?.customer_phone || orderData?.telefono || orderSummary?.telefono || '';
   const metodoPagoLower = String(orderData?.metodoPago || '').toLowerCase();
@@ -338,6 +345,12 @@ export default function OrderTrackingModal({ isOpen, onClose, orderId, orderSumm
                         <span>Subtotal general</span>
                         <span>{subtotalNeto.toFixed(2)}</span>
                       </div>
+                      {ajustesTienda.map((a, i) => (
+                        <div key={`aj-${i}`} className={`flex justify-between gap-2 ${a.amount < 0 ? 'text-emerald-600 font-black' : ''}`}>
+                          <span>{a.label}</span>
+                          <span className="shrink-0">{a.amount < 0 ? '-' : '+'}{Math.abs(a.amount).toFixed(2)}</span>
+                        </div>
+                      ))}
                       {descuentoEnCompra && (
                         <div className="flex justify-between text-emerald-600 font-black">
                           <span>Descuento{cuponCode ? ` (${cuponCode})` : ''}</span>
@@ -577,6 +590,12 @@ export default function OrderTrackingModal({ isOpen, onClose, orderId, orderSumm
                         <span>Subtotal general</span>
                         <span>{subtotalNeto.toFixed(2)}</span>
                       </div>
+                      {ajustesTienda.map((a, i) => (
+                        <div key={`aj-${i}`} className={`flex justify-between gap-2 ${a.amount < 0 ? 'text-emerald-600 font-black' : ''}`}>
+                          <span>{a.label}</span>
+                          <span className="shrink-0">{a.amount < 0 ? '-' : '+'}{Math.abs(a.amount).toFixed(2)}</span>
+                        </div>
+                      ))}
                       {descuentoEnCompra && (
                         <div className="flex justify-between text-emerald-600 font-black">
                           <span>Descuento{cuponCode ? ` (${cuponCode})` : ''}</span>

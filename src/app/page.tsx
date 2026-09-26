@@ -7,7 +7,8 @@ import OrderTrackingModal from '@/components/OrderTrackingModal';
 import PromotionsCarousel from '@/components/PromotionsCarousel';
 import StoreScheduleModal from '@/components/StoreScheduleModal';
 
-import { getProductsByStore, getStorePromotions, getOrderPublic, getProductCategories, findStores } from '@/services/marketplaceService';
+import { getProductsByStore, getStorePromotions, getOrderPublic, getProductCategories, findStores, getStorePaymentInfo, REQUEST_TIMEOUT_MS } from '@/services/marketplaceService';
+import { parseStoreAdjustments, storeDiscountBadge, type StoreAdjustment } from '@/lib/storeAdjustments';
 import { isFinalStatus } from '@/lib/orderTracking';
 import { getBCVRate } from '@/lib/bcvRate';
 import { purgeCartIfOtherStore, clearCart } from '@/lib/cartStorage';
@@ -15,7 +16,7 @@ import { purgeCartIfOtherStore, clearCart } from '@/lib/cartStorage';
 import {
   Clock, ChevronLeft, ChevronRight, Sparkles, MapPin, X, Navigation,
   Loader2, Home, Compass, ShoppingBag, Coins, Truck, Bike, ClipboardList, Search, Tag, Star,
-  Pizza, UtensilsCrossed, Coffee, Cake, IceCream, Sandwich, Pill, Wine, Beef, Store
+  Pizza, UtensilsCrossed, Coffee, Cake, IceCream, Sandwich, Pill, Wine, Beef, Store, Flame
 } from 'lucide-react';
 
 // Coordenadas de referencia de Cabimas (centro geométrico de la ciudad).
@@ -63,6 +64,11 @@ export default function MultitiendaHub() {
   const [homePromotions, setHomePromotions] = useState<any[]>([]);
   const [loadingHome, setLoadingHome] = useState(true);
   const [homeError, setHomeError] = useState<string | null>(null);
+  // Descuentos propios de cada comercio (id -> ajustes) para la insignia "15% OFF" de la tarjeta. `GET /store/find` NO trae
+  // `additionalItemsPercent`/`additionalItemsAmount` (verificado en DEV: solo `GET /store/{id}/payment/info`), así que se consultan en segundo
+  // plano solo para las tiendas abiertas ahora (las promociones solo se muestran con la tienda abierta), con concurrencia limitada.
+  const [storeAdjustmentsById, setStoreAdjustmentsById] = useState<Record<string, StoreAdjustment[]>>({});
+  const adjustmentsDoneRef = useRef<Set<string>>(new Set());
 
   const [activeMerchantInfo, setActiveMerchantInfo] = useState<any>(null);
   const [activeMerchantProducts, setActiveMerchantProducts] = useState<any[]>([]);
@@ -214,6 +220,38 @@ export default function MultitiendaHub() {
   useEffect(() => {
     loadHomeData();
   }, [loadHomeData]);
+
+  // Insignias de descuento del Home: 5 consultas a la vez, en segundo plano, sin bloquear nada; un fallo simplemente deja la tarjeta sin
+  // insignia (nunca un valor de respaldo). Si `GET /store/find` algún día trae los campos, se usan directo sin consultar.
+  useEffect(() => {
+    if (realStores.length === 0) return;
+    let cancelled = false;
+    const queue = realStores.filter((s: any) => storeOpenRank(s) === 0 && !adjustmentsDoneRef.current.has(String(s.id)));
+    const worker = async () => {
+      for (let s = queue.shift(); s && !cancelled; s = queue.shift()) {
+        const id = String(s.id);
+        try {
+          if ('additionalItemsPercent' in s || 'additionalItemsAmount' in s) {
+            const inline = parseStoreAdjustments(s);
+            if (inline.length > 0) setStoreAdjustmentsById((prev) => ({ ...prev, [id]: inline }));
+          } else {
+            const res = await getStorePaymentInfo(id, REQUEST_TIMEOUT_MS);
+            if (cancelled) return;
+            if (res?.code === 1 && res?.data?.store) {
+              const adj = parseStoreAdjustments(res.data.store);
+              if (adj.length > 0) setStoreAdjustmentsById((prev) => ({ ...prev, [id]: adj }));
+            }
+          }
+        } catch {
+          /* sin insignia para esta tienda */
+        }
+        adjustmentsDoneRef.current.add(id);
+      }
+    };
+    for (let i = 0; i < 5; i++) void worker();
+    return () => { cancelled = true; };
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [realStores]);
 
   const formatPriceBimonetary = (amountUSD: number): string => {
     if (currencyMode === 'USD' || !bcvRate) return `$${amountUSD.toFixed(2)}`;
@@ -766,6 +804,9 @@ export default function MultitiendaHub() {
                   return unique.length > 0 ? unique.join(' • ') : 'Comercio';
                 })();
 
+                // Insignia con el descuento REAL del comercio (payment/info): solo con la tienda abierta, igual que las promociones
+                const discountBadge = storeOpenRank(merchant) === 0 ? storeDiscountBadge(storeAdjustmentsById[String(merchant.id)] || []) : null;
+
                 return (
                   <div
                     key={merchant.id}
@@ -795,6 +836,13 @@ export default function MultitiendaHub() {
                       ) : (
                         <div className="relative z-10 flex items-center justify-center w-full h-full">
                           <Store className="w-8 h-8 text-slate-300/80" />
+                        </div>
+                      )}
+
+                      {/* Descuento del comercio en la esquina superior izquierda */}
+                      {discountBadge && (
+                        <div data-testid="home-discount-badge" className="absolute top-2 left-2 z-30 bg-gradient-to-r from-[#fe6712] to-amber-500 text-white text-[10px] font-black px-2 py-1 rounded-md flex items-center gap-1 shadow-md">
+                          <Flame className="w-3 h-3" /> {discountBadge}
                         </div>
                       )}
 
