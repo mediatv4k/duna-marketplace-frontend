@@ -2315,7 +2315,7 @@ export default function MasterProductModal({
 
           {/* ── Barra de precio + botones de acción ─────────────────────── */}
           {viewMode === 'host_setup' && (
-            <div className="p-4 sm:p-5 md:px-6 md:py-4 bg-white">
+            <div className="p-4 sm:p-5 md:px-6 md:py-4 bg-white md:flex md:justify-end">
               <button
                 onClick={() => {
                   createComboRoom().then(() => {
@@ -2325,7 +2325,7 @@ export default function MasterProductModal({
                 }}
                 ref={launchBtnRef}
                 disabled={comboCreating}
-                className={`w-full bg-[#25D366] hover:bg-[#20bd5a] text-white font-black py-3.5 px-4 rounded-xl text-sm transition flex items-center justify-center gap-2 cursor-pointer shadow-md disabled:opacity-50 ${activeBeacon === 'shareWhatsApp' ? BEACON_GREEN : ''}`}
+                className={`w-full md:w-auto md:px-8 bg-[#25D366] hover:bg-[#20bd5a] text-white font-black py-3.5 px-4 rounded-xl text-sm transition flex items-center justify-center gap-2 cursor-pointer shadow-md disabled:opacity-50 ${activeBeacon === 'shareWhatsApp' ? BEACON_GREEN : ''}`}
               >
                 {comboCreating ? (
                   <><div className="w-4 h-4 border-2 border-white border-t-transparent rounded-full animate-spin" /> Creando...</>
@@ -2338,17 +2338,19 @@ export default function MasterProductModal({
               </button>
             </div>
           )}
-          <div className={`p-4 sm:p-5 md:px-6 md:py-4 ${viewMode === 'host_setup' ? 'hidden' : ''}`}>
+          {/* Escritorio (md+) en la sala: una sola fila con el Total a la izquierda y el botón principal acotado a la derecha
+              (flex-row-reverse: el botón va primero en el DOM para que en móvil siga arriba del Total, a todo el ancho). */}
+          <div className={`p-4 sm:p-5 md:px-6 md:py-4 ${viewMode === 'host_setup' ? 'hidden' : ''} ${viewMode === 'comboRoom' ? 'md:flex md:flex-row-reverse md:items-center md:gap-6' : ''}`}>
             {/* Sala colaborativa activa: mientras falten ranuras el anfitrión puede seguir compartiendo; al llenarse, el
                 CTA lo lleva a caja (agrega el combo maestro al carrito y abre el carrito → checkout). */}
             {viewMode === 'comboRoom' && comboRoomData && (
-              <div className="mb-3 md:flex md:justify-end">
+              <div className="mb-3 md:mb-0 md:flex md:justify-end md:shrink-0">
                 {comboAllDone ? (
                   <button
                     type="button"
                     ref={proceedBtnRef}
                     onClick={() => handleAddToCart(true)}
-                    className={`w-full bg-[#FE6712] hover:bg-[#E05509] text-white font-bold py-3.5 px-4 rounded-xl shadow-lg transition flex items-center justify-center gap-2 cursor-pointer active:scale-[0.98] ${activeBeacon === 'proceed' ? BEACON_ORANGE : ''}`}
+                    className={`w-full md:w-auto md:px-8 bg-[#FE6712] hover:bg-[#E05509] text-white font-bold py-3.5 px-4 rounded-xl shadow-lg transition flex items-center justify-center gap-2 cursor-pointer active:scale-[0.98] ${activeBeacon === 'proceed' ? BEACON_ORANGE : ''}`}
                   >
                     Proceder al Pago y Despacho ({comboRoomData.totalUnits}/{comboRoomData.totalUnits}) <ArrowRight className="w-4 h-4" />
                   </button>
@@ -2357,14 +2359,14 @@ export default function MasterProductModal({
                     href={`https://api.whatsapp.com/send?text=${encodeURIComponent("¡Pilas panas! Entren a este link para armar el combo en D'una: " + comboLink)}`}
                     target="_blank"
                     rel="noopener noreferrer"
-                    className="w-full md:w-auto md:px-6 md:py-3 bg-[#25D366] hover:bg-[#20bd5a] text-white font-black py-3.5 px-4 rounded-xl text-sm transition flex items-center justify-center gap-2 cursor-pointer shadow-md"
+                    className="w-full md:w-auto md:px-8 md:py-3 bg-[#25D366] hover:bg-[#20bd5a] text-white font-black py-3.5 px-4 rounded-xl text-sm transition flex items-center justify-center gap-2 cursor-pointer shadow-md"
                   >
                     Compartir de nuevo por WhatsApp ({comboRoomData.claimedUnits}/{comboRoomData.totalUnits})
                   </a>
                 )}
               </div>
             )}
-            <div className="flex items-center justify-between gap-3">
+            <div className={`flex items-center justify-between gap-3 ${viewMode === 'comboRoom' ? 'md:flex-1' : ''}`}>
               <div className="shrink-0">
                 <span className="text-[10px] font-black text-slate-400 uppercase block mb-0.5">Total a Pagar</span>
                 <div className="flex flex-col sm:flex-row sm:items-baseline sm:gap-1.5">

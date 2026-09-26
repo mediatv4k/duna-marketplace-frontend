@@ -44,6 +44,8 @@ export interface CartItemOption {
 
 export interface SubmittedOrderPayload {
   id: string;
+  // Correlativo comercial (`order_number` de la respuesta de compra): es el número que ven el cliente y el comercio; `id` es el id primario
+  orderNumber?: string;
   nombre: string;
   cedula: string;
   telefono: string;
@@ -494,9 +496,13 @@ export default function CheckoutModal({
         const resolvedId = (response?.data as { id?: string | number } | undefined)?.id
           ? String((response?.data as { id?: string | number }).id)
           : generatedOrderId;
+        const created = response?.data as { id?: string | number; order_number?: string | number; orderNumber?: string | number } | undefined;
+        // Número visible del pedido: el correlativo `order_number`; el id primario solo como respaldo (`order_number || id`) al mostrarlo
+        const commercialNumber = String(created?.order_number || created?.orderNumber || '');
 
         onFinalizeOrder({
           id: resolvedId,
+          orderNumber: commercialNumber || undefined,
           nombre,
           cedula: `${tipoDocumento}${cedula}`,
           telefono: telefonoCompleto,
@@ -519,8 +525,7 @@ export default function CheckoutModal({
           status: 'pendiente'
         });
 
-        const created = response?.data as { id?: string | number; order_number?: string | number; orderNumber?: string | number } | undefined;
-        setNumeroOrden(String(created?.order_number ?? created?.orderNumber ?? created?.id ?? ''));
+        setNumeroOrden(commercialNumber || String(created?.id || ''));
         setOrdenCreada(true);
         // Compra registrada: la bolsa se vacía de inmediato (localStorage + estado de la tienda vía evento)
         try {
@@ -587,7 +592,7 @@ export default function CheckoutModal({
               </div>
               <div className="min-w-0">
                 <h3 className="font-black text-[17px] leading-tight mb-0.5 truncate">{merchantName || 'Comercio'}</h3>
-                <p className="text-[10px] font-medium text-white/90">Confirmación De Orden</p>
+                <p className="text-[10px] font-medium text-white/90 truncate">Confirmación De Orden{numeroOrden && <> · <span className="font-black">N° {numeroOrden}</span></>}</p>
               </div>
             </div>
             <button type="button" onClick={onClose} className="w-6 h-6 rounded-full bg-white/20 flex items-center justify-center text-white hover:bg-white/30 shrink-0">
@@ -601,7 +606,7 @@ export default function CheckoutModal({
                 {pasoVista === 'formulario' ? 'Fase 2: Datos y Métodos' : pasoVista === 'instrucciones' ? 'Fase 3: Pago' : 'Confirmación'}
               </h3>
               <p className="text-[10px] font-medium text-white/90">
-                {pasoVista === 'formulario' ? 'Completa tus datos reales de contacto' : pasoVista === 'instrucciones' ? 'Transfiere a las cuentas oficiales del comercio' : 'Orden registrada'}
+                {pasoVista === 'formulario' ? 'Completa tus datos reales de contacto' : pasoVista === 'instrucciones' ? 'Transfiere a las cuentas oficiales del comercio' : <>Orden registrada{numeroOrden && <> · <span className="font-black">N° {numeroOrden}</span></>}</>}
               </p>
             </div>
             <button type="button" onClick={onClose} className="w-6 h-6 rounded-full bg-white/20 flex items-center justify-center text-white hover:bg-white/30">

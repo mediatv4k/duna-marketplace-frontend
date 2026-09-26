@@ -54,8 +54,9 @@ export default function OrderTimelinePage() {
   // Alerta sonora/háptica al detectar la transición a "Llega a sitio"
   useArrivalAlert(getTrackingState(remote).phase, !!remote);
 
-  // ID global de la orden (el mismo de la URL y de la app del repartidor); order_number solo si no hay id
-  const displayId = remote?.order_number || remote?.id || orderId || '';
+  // Correlativo comercial (`order_number`); el id de la URL (el de la app del repartidor) solo como respaldo, y no mientras se
+  // hace la primera consulta (así no se ve un instante el id que luego cambia por el correlativo)
+  const displayId = remote?.order_number || ((remote || error) ? (remote?.id || orderId || '') : '');
 
   return (
     <div className="min-h-screen bg-slate-50 flex flex-col">
@@ -65,7 +66,7 @@ export default function OrderTimelinePage() {
             <Clock className="w-4 h-4 text-white" />
           </div>
           <div className="min-w-0">
-            <h1 className="text-sm font-black tracking-tight leading-none">Orden #{displayId}</h1>
+            <h1 className="text-sm font-black tracking-tight leading-none">Orden{displayId ? ` #${displayId}` : ''}</h1>
             <p className="text-[10px] text-orange-100 font-medium mt-0.5 truncate">
               {remote?.food_store ? `${remote.food_store} · ` : ''}Seguimiento de tu pedido
             </p>
