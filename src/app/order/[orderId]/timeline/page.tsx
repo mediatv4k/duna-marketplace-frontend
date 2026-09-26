@@ -55,7 +55,7 @@ export default function OrderTimelinePage() {
   useArrivalAlert(getTrackingState(remote).phase, !!remote);
 
   // ID global de la orden (el mismo de la URL y de la app del repartidor); order_number solo si no hay id
-  const displayId = remote?.id || orderId || remote?.order_number || '';
+  const displayId = remote?.order_number || remote?.id || orderId || '';
 
   return (
     <div className="min-h-screen bg-slate-50 flex flex-col">

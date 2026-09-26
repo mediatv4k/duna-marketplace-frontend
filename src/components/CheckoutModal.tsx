@@ -384,10 +384,12 @@ export default function CheckoutModal({
       : `ord_${Date.now()}`;
 
     const itemsAdonis = (orderSummary.items || []).map((item: CartItemOption) => {
-      const basePrice = Number(item.price);
-      const cantNum = Number(item.qty || item.quantity || item.cant || 1);
+      // Sanitización numérica estricta: ningún monto/cantidad viaja como string (el contrato de Adonis espera number)
+      const money = (v: unknown) => parseFloat(Number(v || 0).toFixed(2));
+      const basePrice = money(item.price);
+      const cantNum = parseInt(String(item.qty || item.quantity || item.cant || 1), 10) || 1;
       const itemPricing = item.pricing as { unitBasePrice?: number; addonsTotal?: number; unitFinalPrice?: number } | undefined;
-      const unitFinalPrice = itemPricing?.unitFinalPrice ?? basePrice;
+      const unitFinalPrice = money(itemPricing?.unitFinalPrice ?? basePrice);
       return {
         id: Number(item.id),
         code: String(item?.code),
@@ -397,11 +399,11 @@ export default function CheckoutModal({
         ...(typeof item.notes === 'string' && item.notes.trim() ? { comments: item.notes.trim() } : {}),
         cant: cantNum,
         pricing: {
-          unitBasePrice: itemPricing?.unitBasePrice ?? basePrice,
-          addonsTotal: itemPricing?.addonsTotal ?? 0,
+          unitBasePrice: money(itemPricing?.unitBasePrice ?? basePrice),
+          addonsTotal: money(itemPricing?.addonsTotal ?? 0),
           unitFinalPrice
         },
-        totalPrice: unitFinalPrice * cantNum,
+        totalPrice: money(unitFinalPrice * cantNum),
         // Contrato: variantes SINGLE/SIMPLE viajan con objeto `selected` (sin arreglo `items`); MULTIPLE conserva `items`
         variants: Array.isArray(item.variants)
           ? item.variants.map((v: any) => {
