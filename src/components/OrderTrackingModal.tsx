@@ -188,8 +188,14 @@ export default function OrderTrackingModal({ isOpen, onClose, orderId, orderSumm
   const remoteRate = Number(remote?.totalPaidDefaultAmount) > 0 ? Number(remote?.totalPaidReferenceAmount) / Number(remote?.totalPaidDefaultAmount) : 0;
   const tasaRef = Number(orderData?.tasa) || remoteRate || 0;
   const displayTotalBs = displayTotal * tasaRef;
-  // Cofre Recompensa D'una: refleja el 25% OFF en flete si el cliente lo activó en el checkout
-  const descuentoFleteVal = orderData?.descuentoUSD ?? 0;
+  // Cofre de Recompensas D'una: cupón real del backend (GET /loyalties). `descuentoUSD` = monto; `cuponAplicaA` = dónde se aplicó:
+  // 'DELIVERY' -> flete tachado; 'PURCHASE' -> línea de descuento bajo el subtotal. Los pedidos guardados antes de esta fase (Cofre 25 %
+  // simulado) traen `descuentoUSD` sin `cuponAplicaA` (siempre era sobre el flete) y sin código: se rotulan como antes.
+  const descuentoVal = Number(orderData?.descuentoUSD ?? 0);
+  const cuponCode = String(orderData?.cuponCode || '');
+  const descuentoEnCompra = descuentoVal > 0 && orderData?.cuponAplicaA === 'PURCHASE';
+  const descuentoFleteVal = descuentoVal > 0 && !descuentoEnCompra ? descuentoVal : 0;
+  const cuponEtiqueta = cuponCode ? `Cupón ${cuponCode}` : 'Cofre -25%';
   const costoEnvioFinal = Math.max(0, costoEnvio - descuentoFleteVal);
   const displayPhone = remote?.customer_phone || orderData?.telefono || orderSummary?.telefono || '';
   const metodoPagoLower = String(orderData?.metodoPago || '').toLowerCase();
@@ -332,10 +338,16 @@ export default function OrderTrackingModal({ isOpen, onClose, orderId, orderSumm
                         <span>Subtotal general</span>
                         <span>{subtotalNeto.toFixed(2)}</span>
                       </div>
+                      {descuentoEnCompra && (
+                        <div className="flex justify-between text-emerald-600 font-black">
+                          <span>Descuento{cuponCode ? ` (${cuponCode})` : ''}</span>
+                          <span>-{descuentoVal.toFixed(2)}</span>
+                        </div>
+                      )}
                       <div className="flex justify-between">
                         <span>
                           {orderData?.metodoEntrega === 'pickup' ? 'Retiro en Tienda' : 'Domicilio'}
-                          {descuentoFleteVal > 0 && <span className="text-emerald-600"> (Cofre -25%)</span>}
+                          {descuentoFleteVal > 0 && <span className="text-emerald-600"> ({cuponEtiqueta})</span>}
                         </span>
                         <span>
                           {descuentoFleteVal > 0 ? (
@@ -565,10 +577,16 @@ export default function OrderTrackingModal({ isOpen, onClose, orderId, orderSumm
                         <span>Subtotal general</span>
                         <span>{subtotalNeto.toFixed(2)}</span>
                       </div>
+                      {descuentoEnCompra && (
+                        <div className="flex justify-between text-emerald-600 font-black">
+                          <span>Descuento{cuponCode ? ` (${cuponCode})` : ''}</span>
+                          <span>-{descuentoVal.toFixed(2)}</span>
+                        </div>
+                      )}
                       <div className="flex justify-between">
                         <span>
                           Domicilio
-                          {descuentoFleteVal > 0 && <span className="text-emerald-600"> (Cofre -25%)</span>}
+                          {descuentoFleteVal > 0 && <span className="text-emerald-600"> ({cuponEtiqueta})</span>}
                         </span>
                         <span>
                           {descuentoFleteVal > 0 ? (

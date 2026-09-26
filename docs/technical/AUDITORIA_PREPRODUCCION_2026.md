@@ -22,7 +22,7 @@ los campos raíz, ítems y `variants[]` salen numéricos con sumas coherentes; `
 | C3 – mocks visibles a clientes | Resuelto en el Lote 1 (P0.3) |
 | C4 – falso éxito de la compra | Resuelto en el Lote 1 (P0.4) |
 | C5 – envío gratis inventado | Resuelto en el Lote 2 (P0.5) |
-| C6 – Cofre Recompensa simulado | Resuelto en el Lote 2 (P0.6); también se eliminó el precio de respaldo `price \|\| 1.5` |
+| C6 – Cofre Recompensa simulado | Resuelto en el Lote 2 (P0.6); también se eliminó el precio de respaldo `price \|\| 1.5`. El Cofre se reintrodujo después, conectado al endpoint real de fidelidad (`GET /loyalties/{phone}`); ver `AGENTS.md` |
 | C7 – modo "Nacional" | Resuelto en el Lote 2 (P0.7) |
 | C8 – petición de compra sin timeout | Resuelto en el Lote 2 (P0.8): timeout de 25 s, resultado ambiguo y guardia anti doble envío |
 | C9 – códigos 15/21 y errores crudos | Resuelto en el Lote 2 (P0.9): mensajes claros y refresco de tarifa con retorno a la Fase 2 |

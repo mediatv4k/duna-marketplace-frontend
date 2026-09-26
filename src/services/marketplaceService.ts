@@ -66,6 +66,13 @@ export async function getStorePaymentInfo(storeId: number | string): Promise<Api
   return await apiFetch<any>(`/store/${storeId}/payment/info`);
 }
 
+// GET /loyalties/{phone} — recompensas del cliente (`activeRewards[]`). El teléfono va con el mismo formato que `phone` de la compra
+// (+58…, codificado en la URL). Un cliente sin historial responde HTTP 404 `{ success: false, message: "Cliente no encontrado" }` (sin
+// `code`): no es un error para el usuario, simplemente no tiene recompensas (`parseLoyaltyResponse` en `src/lib/loyalty.ts` lo interpreta).
+export async function getCustomerLoyalties(phone: string): Promise<ApiResponse<any>> {
+  return await apiFetch<any>(`/loyalties/${encodeURIComponent(phone)}`, {}, REQUEST_TIMEOUT_MS);
+}
+
 // Tiempo máximo de espera de la compra (incluye la subida del comprobante): 25 s. Pasado ese tiempo la petición se aborta y el cliente
 // recibe `errorKind: 'timeout'` (auditoría C8). OJO: abortar en el cliente no garantiza que el backend no haya creado el pedido.
 export const PURCHASE_TIMEOUT_MS = 25000;

@@ -5,7 +5,7 @@ import { useBeacon, BEACON_CLASS } from '@/lib/beacon';
 import {
   ArrowRight, ArrowLeft, X, HeartHandshake, Check, Copy, Upload,
   CheckCircle2, Info, Clock, FileText, Loader2, MessageCircle,
-  CreditCard, Bike, Car, Truck
+  CreditCard, Bike, Car, Truck, Gift
 } from 'lucide-react';
 
 // Ícono del vehículo asignado por el motor logístico (antes emoji de `logisticsEngine.icono`): moto → Bike,
@@ -16,7 +16,8 @@ function VehicleIcon({ vehicleId, className }: { vehicleId: string; className?: 
   return <Truck className={className} />;
 }
 
-import { submitPurchaseOrder, getStorePaymentInfo, uploadPaymentReference, getOrderPublic, getDeliveryRate, type ApiResponse } from '@/services/marketplaceService';
+import { submitPurchaseOrder, getStorePaymentInfo, uploadPaymentReference, getOrderPublic, getDeliveryRate, getCustomerLoyalties, type ApiResponse } from '@/services/marketplaceService';
+import { parseLoyaltyResponse, rewardDiscount, describeReward, rewardTitle, type LoyaltyReward } from '@/lib/loyalty';
 import { calculateLogistics, PhysicalItem } from '@/lib/logisticsEngine';
 import { clearCart } from '@/lib/cartStorage';
 import { toWhatsAppNumber } from '@/lib/orderTracking';
@@ -54,7 +55,11 @@ export interface SubmittedOrderPayload {
   metodoEntrega: 'delivery' | 'pickup' | 'national';
   direccion: string;
   costoEnvio: number;
+  // Descuento del cupón del Cofre de Recompensas (GET /loyalties): monto en USD, código y dónde se aplicó. `costoEnvio` y `subtotalUSD`
+  // van SIN descuento; `totalUSD` ya lo trae descontado. Pedidos antiguos (Cofre 25 % simulado) traen `descuentoUSD` sin `cuponAplicaA`.
   descuentoUSD?: number;
+  cuponCode?: string;
+  cuponAplicaA?: 'PURCHASE' | 'DELIVERY';
   items: CartItemOption[];
   merchantName?: string;
   subtotalUSD: number;
@@ -250,6 +255,37 @@ export default function CheckoutModal({
   // Guardia síncrona contra doble envío (el estado `submitting` tarda un render en deshabilitar el botón)
   const submittingRef = useRef<boolean>(false);
 
+  // ── Cofre de Recompensas (GET /loyalties/{phone} -> `activeRewards`) ─────────────────────────────────────────────────────────
+  // Fuente de verdad = el backend: no hay contador local ni simulador. `rewardsPhoneRef` = último teléfono consultado (evita repetir la
+  // consulta) y `rewardsReqRef` descarta respuestas de consultas viejas (el cliente puede seguir editando el número).
+  const [rewards, setRewards] = useState<LoyaltyReward[]>([]);
+  const [selectedRewardId, setSelectedRewardId] = useState<number | null>(null);
+  const rewardsPhoneRef = useRef<string>('');
+  const rewardsReqRef = useRef<number>(0);
+
+  // Teléfono con el mismo formato que `phone` de la compra (+58…)
+  const buildFullPhone = () => `${codigoPais}${telefono.replace(/\D/g, '').replace(/^0+/, '')}`;
+  const clearRewards = () => {
+    rewardsReqRef.current++; // invalida consultas en curso
+    rewardsPhoneRef.current = '';
+    setRewards([]);
+    setSelectedRewardId(null);
+  };
+  // Consulta las recompensas activas. Devuelve la lista, o null si el backend no respondió con claridad (red/timeout) o llegó una
+  // consulta más nueva: en ese caso NO se toca lo que el cliente ya tenía (no se concluye que perdió su recompensa).
+  const fetchRewards = async (fullPhone: string): Promise<LoyaltyReward[] | null> => {
+    const reqId = ++rewardsReqRef.current;
+    try {
+      const parsed = parseLoyaltyResponse(await getCustomerLoyalties(fullPhone));
+      if (reqId !== rewardsReqRef.current || !parsed.answered) return null;
+      setRewards(parsed.rewards);
+      setSelectedRewardId((prev) => (prev !== null && parsed.rewards.some((r) => r.id === prev) ? prev : null));
+      return parsed.rewards;
+    } catch {
+      return null;
+    }
+  };
+
   useEffect(() => {
     if (!isOpen) return;
 
@@ -258,6 +294,7 @@ export default function CheckoutModal({
     setFleteRefrescado(null);
     setAvisoTarifa(null);
     setIntentoAmbiguo(false);
+    clearRewards();
     if (!storeId) {
       // Sin id real de comercio no se consulta ni se inventa uno
       setLoadingPaymentInfo(false);
@@ -372,9 +409,31 @@ export default function CheckoutModal({
     setFleteRefrescado(null);
     setAvisoTarifa(null);
     setIntentoAmbiguo(false);
+    clearRewards(); // el cupón del pedido anterior ya se consumió: se vuelve a consultar
     latestOrderIdRef.current = '';
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [isOpen]);
+
+  // Recompensas del cliente: al escribir un WhatsApp de ≥ 7 dígitos (Fase 2) se consultan tras una pausa de 600 ms. Va DESPUÉS de los
+  // efectos que reinician el estado y ANTES del `return null` (regla #300). Al cambiar el número las recompensas anteriores se quitan
+  // de inmediato: un cupón consultado con otro teléfono nunca queda aplicado.
+  useEffect(() => {
+    if (!isOpen) return;
+    const digits = telefono.replace(/\D/g, '').replace(/^0+/, '');
+    if (digits.length < 7) {
+      if (rewardsPhoneRef.current || rewards.length > 0 || selectedRewardId !== null) clearRewards();
+      return;
+    }
+    const full = `${codigoPais}${digits}`;
+    if (rewardsPhoneRef.current === full) return; // ya consultado
+    if (rewardsPhoneRef.current) clearRewards(); // el número cambió: fuera las recompensas del anterior
+    const t = setTimeout(() => {
+      rewardsPhoneRef.current = full;
+      void fetchRewards(full);
+    }, 600);
+    return () => clearTimeout(t);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [isOpen, telefono, codigoPais]);
 
   if (!isOpen) return null;
 
@@ -382,12 +441,19 @@ export default function CheckoutModal({
   // Flete = el cotizado en el carrito, o el re-cotizado tras un `code: 21` (fleteRefrescado)
   const costoEnvio = fleteRefrescado ?? Number(orderSummary.costoEnvio || 0);
 
-  // El "Cofre Recompensa" (25 % OFF en el flete) era un simulador local sin soporte del backend y se retiró (auditoría C6): el frontend
-  // NUNCA altera el total a pagar por su cuenta. Cuando exista un descuento real, debe viajar en `discountAmount`/`totalWithoutDiscount`.
-
   // Retiro en tienda (pickup): sin propina, sin importar lo elegido antes
   const propina = orderSummary.metodoEntrega === 'pickup' ? 0 : propinaElegida;
-  const totalFinalUSD = subtotalNeto + costoEnvio + propina;
+
+  // Cofre de Recompensas: el único descuento posible es el de una recompensa REAL del backend (`activeRewards`), elegida por el cliente.
+  // El simulador local de 25 % (auditoría C6) no existe. Bases: PURCHASE = subtotal de productos; DELIVERY = flete (0 en retiro en tienda).
+  const rewardBases = { purchase: subtotalNeto, delivery: orderSummary.metodoEntrega === 'pickup' ? 0 : costoEnvio };
+  const selectedReward = rewards.find((r) => r.id === selectedRewardId) ?? null;
+  const rewardDiscountUSD = selectedReward ? rewardDiscount(selectedReward, rewardBases) : 0;
+  // Una recompensa cuyo descuento da 0 (p. ej. de flete en un retiro) no se aplica ni viaja en el pedido
+  const appliedReward = rewardDiscountUSD > 0 ? selectedReward : null;
+  const totalAntesDescuento = subtotalNeto + costoEnvio + propina;
+  // Fórmula: total = subtotal + flete + propina − descuento
+  const totalFinalUSD = totalAntesDescuento - rewardDiscountUSD;
 
   const cobraEnBs = selectedMethod?.field5 === 'REF';
   const tasaRef = liveRateBcv ?? 0;
@@ -442,6 +508,9 @@ export default function CheckoutModal({
     setPasoVista('formulario');
     setAvisoTarifa('Se actualizó la tarifa de envío o la tasa de cambio mientras completabas tu pedido, así que el total ya no coincidía. Estamos actualizando los valores…');
     const cambios: string[] = [];
+    // El `code: 21` del contrato también cubre "cupón no aplicable": si había un cupón aplicado se vuelve a validar contra el backend
+    const cuponPrevio = appliedReward;
+    let cuponQuitado = false;
     try {
       const storeId = orderSummary.merchantId;
       if (storeId) {
@@ -467,15 +536,25 @@ export default function CheckoutModal({
           }
         }
       }
+      if (cuponPrevio) {
+        // `fetchRewards` ya quita la selección si la recompensa dejó de estar activa; si la consulta no respondió (null) no se concluye nada
+        const vigentes = await fetchRewards(buildFullPhone());
+        if (vigentes && !vigentes.some((r) => r.id === cuponPrevio.id)) cuponQuitado = true;
+      }
     } catch {
       /* se informa igual: el cliente puede revisar y reintentar */
     }
+    const partes: string[] = [];
+    if (cambios.length > 0) partes.push(`Se actualizó ${cambios.join(' y ')} y el total cambió.`);
+    if (cuponQuitado && cuponPrevio) partes.push(`Tu cupón "${rewardTitle(cuponPrevio)}" ya no está disponible y se quitó del pedido.`);
     setAvisoTarifa(
-      cambios.length > 0
-        ? `Se actualizó ${cambios.join(' y ')} y el total cambió. Revisa el nuevo total y continúa cuando estés de acuerdo.`
-        : `Actualizamos las tarifas pero no encontramos cambios. Si el total no coincide con lo que esperabas, vuelve al carrito y revisa tus productos, o comunícate con ${merchantName || 'el comercio'}.`
+      partes.length > 0
+        ? `${partes.join(' ')} Revisa el nuevo total y continúa cuando estés de acuerdo.`
+        : `Actualizamos las tarifas pero no encontramos cambios. ${cuponPrevio ? `Es posible que tu cupón "${rewardTitle(cuponPrevio)}" no sea aplicable a este pedido: quítalo del Cofre de Recompensas e inténtalo de nuevo. ` : ''}Si el total no coincide con lo que esperabas, vuelve al carrito y revisa tus productos, o comunícate con ${merchantName || 'el comercio'}.`
     );
   };
+
+  const handleSelectReward = (id: number) => setSelectedRewardId((prev) => (prev === id ? null : id));
 
   const handleProceedToInstructions = () => {
     // El envío nacional no tiene soporte en el contrato de Adonis: no se deja avanzar (defensa en profundidad; el carrito ya no lo ofrece)
@@ -635,16 +714,19 @@ export default function CheckoutModal({
       ftoken: '',
       paymentRef: referenciaPago || "",
       totalPaidReferenceAmount: money(totalBolivares),
+      // Total cobrado = subtotal + flete + propina − descuento del cupón; `totalWithoutDiscount` = el mismo total ANTES del descuento
+      // (con cupón, `totalWithoutDiscount − totalPaidDefaultAmount = discountAmount`; sin cupón son iguales)
       totalPaidDefaultAmount: money(totalFinalUSD),
-      // Gemelo de `totalPaidDefaultAmount` (mismo valor si no hay descuento): mismo tipo para que no queden mezclados string/number
-      totalWithoutDiscount: money(totalFinalUSD || (subtotalNeto + costoEnvio + propina)),
+      totalWithoutDiscount: money(totalAntesDescuento),
       paymentMethod: metodoPagoReal ? { code: metodoPagoReal.code, value: metodoPagoReal.value } : { code: 'PAGO', value: 'Banco' },
       tip: money(propina),
       store: { id: storeIdNum, phone: storePhoneStr },
       foodStoreId: String(storeIdNum),
-      couponId: "",
-      couponCode: "",
-      discountAmount: money(0)
+      // Cupón del Cofre de Recompensas (contrato §8.1): con cupón aplicado viajan su id numérico, su código y el descuento calculado
+      // (2 decimales, `number`); sin cupón, `null`/`null`/`0`.
+      couponId: appliedReward ? appliedReward.id : null,
+      couponCode: appliedReward ? appliedReward.code : null,
+      discountAmount: money(appliedReward ? rewardDiscountUSD : 0)
     };
 
     console.log('[AUDITORIA CHECKOUT] osvaldoPayload.data (items + variants + pricing):', JSON.stringify(itemsAdonis, null, 2));
@@ -672,6 +754,7 @@ export default function CheckoutModal({
           metodoEntrega: orderSummary.metodoEntrega,
           direccion: orderSummary.direccion,
           costoEnvio,
+          ...(appliedReward ? { descuentoUSD: money(rewardDiscountUSD), cuponAplicaA: appliedReward.applyTo, ...(appliedReward.code ? { cuponCode: appliedReward.code } : {}) } : {}),
           items: orderSummary.items || [],
           merchantName,
           subtotalUSD: subtotalNeto,
@@ -907,6 +990,67 @@ export default function CheckoutModal({
             </div>
             )}
 
+            {/* Cofre de Recompensas: solo aparece si el backend (GET /loyalties/{phone}) devuelve recompensas activas para este WhatsApp */}
+            {rewards.length > 0 && (
+              <div data-testid="rewards-card" className="shrink-0 bg-orange-50/70 border border-orange-200/60 px-3 py-2 rounded-xl space-y-1.5">
+                <div className="flex items-center justify-between">
+                  <span className="text-[10px] font-black text-slate-800 flex items-center gap-1.5">
+                    <Gift className="h-3.5 w-3.5 text-[#fe6712]" />
+                    Cofre de Recompensas D&apos;una
+                  </span>
+                  <span className="text-[8px] font-black text-[#fe6712] bg-orange-100 px-1.5 py-0.5 rounded-md">
+                    {rewards.length} disponible{rewards.length === 1 ? '' : 's'}
+                  </span>
+                </div>
+                <div className="space-y-1 max-h-[140px] overflow-y-auto no-scrollbar">
+                  {rewards.map((reward) => {
+                    const descuento = rewardDiscount(reward, rewardBases);
+                    const disponible = descuento > 0;
+                    const seleccionada = appliedReward?.id === reward.id;
+                    return (
+                      <button
+                        type="button"
+                        key={reward.id}
+                        disabled={!disponible}
+                        aria-pressed={seleccionada}
+                        onClick={() => handleSelectReward(reward.id)}
+                        className={`w-full flex items-center justify-between gap-2 rounded-lg border px-2 py-1.5 text-left transition ${
+                          seleccionada
+                            ? 'border-emerald-400 bg-emerald-50 ring-1 ring-emerald-300/50'
+                            : disponible ? 'border-orange-200 bg-white hover:bg-orange-50 cursor-pointer' : 'border-slate-200 bg-slate-50 opacity-60 cursor-not-allowed'
+                        }`}
+                      >
+                        <div className="min-w-0">
+                          <p className="text-[10.5px] font-black text-slate-800 leading-tight truncate">{rewardTitle(reward)}</p>
+                          <p className="text-[8.5px] font-medium text-slate-500 leading-tight">
+                            {disponible
+                              ? describeReward(reward)
+                              : reward.applyTo === 'DELIVERY' ? 'Aplica al envío: no disponible en retiro en tienda' : 'No aplica a este pedido'}
+                          </p>
+                        </div>
+                        {seleccionada ? (
+                          <span className="shrink-0 text-[9px] font-black text-emerald-700 flex items-center gap-1">
+                            <CheckCircle2 className="w-3 h-3" /> -${descuento.toFixed(2)}
+                          </span>
+                        ) : disponible ? (
+                          <span className="shrink-0 text-[9px] font-black text-white bg-emerald-500 rounded px-1.5 py-0.5">Usar -${descuento.toFixed(2)}</span>
+                        ) : null}
+                      </button>
+                    );
+                  })}
+                </div>
+                {appliedReward && (
+                  <button
+                    type="button"
+                    onClick={() => setSelectedRewardId(null)}
+                    className="text-[8.5px] text-slate-500 underline hover:text-slate-800 transition cursor-pointer"
+                  >
+                    Guardar para después
+                  </button>
+                )}
+              </div>
+            )}
+
             <div className="shrink-0 flex-1">
               <label className="text-[9px] font-bold text-slate-700 block mb-1">
                 Cuentas activas en la tienda ({paymentMethods.length})
@@ -966,6 +1110,13 @@ export default function CheckoutModal({
             )}
 
             <div className="text-center shrink-0 py-1 bg-slate-50 p-2 rounded-xl border border-slate-100">
+              {appliedReward && (
+                <span data-testid="discount-line-p3" className="block text-[10px] font-black text-emerald-600 mb-0.5">
+                  Descuento{appliedReward.code ? ` (${appliedReward.code})` : ''}: - {cobraEnBs
+                    ? `Bs.S ${(rewardDiscountUSD * tasaRef).toLocaleString('es-VE', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`
+                    : `$${rewardDiscountUSD.toFixed(2)} USD`}
+                </span>
+              )}
               <span className="text-[7.5px] font-black text-slate-400 uppercase tracking-widest block">Total A Pagar</span>
               <span className="text-2xl font-black text-[#fe6712] block leading-tight mt-0.5">
                 {cobraEnBs
@@ -1096,6 +1247,12 @@ export default function CheckoutModal({
                   {orderSummary.scheduleInfo && (
                     <span className="block text-[10px] font-bold text-red-500 mt-0.5">{orderSummary.scheduleInfo}</span>
                   )}
+                </div>
+              )}
+              {appliedReward && (
+                <div data-testid="discount-line" className="flex items-center justify-between text-[10.5px] px-1 font-black text-emerald-600">
+                  <span>Descuento{appliedReward.code ? ` (${appliedReward.code})` : ''}:</span>
+                  <span>-${rewardDiscountUSD.toFixed(2)} USD</span>
                 </div>
               )}
               <div className="flex items-center justify-between text-xs px-1 font-black mb-1">
