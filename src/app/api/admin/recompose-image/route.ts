@@ -3,22 +3,35 @@ import { recomposeImage } from '@/lib/geminiImageTransformer';
 
 export async function POST(req: Request) {
   try {
-    const body = await req.json();
-    const { imageUrl, productId } = body;
-
-    if (!imageUrl) {
-      return NextResponse.json({ success: false, message: 'imageUrl es requerido' }, { status: 400 });
+    if (!process.env.GEMINI_API_KEY) {
+      return NextResponse.json(
+        { error: "GEMINI_API_KEY no configurada en el entorno" },
+        { status: 400 }
+      );
     }
 
-    // Opcional: Proteger la ruta verificando algún token de admin aquí
+    const body = await req.json();
+    let { imageUrl, productId } = body;
 
-    // 1. Invocar microservicio de transformación con Gemini
+    if (!imageUrl) {
+      return NextResponse.json(
+        { error: 'imageUrl es requerido' },
+        { status: 400 }
+      );
+    }
+
+    // 1. Normalizar URL relativa
+    if (imageUrl.startsWith('/')) {
+      const host = req.headers.get('host') || 'localhost:3000';
+      const protocol = req.headers.get('x-forwarded-proto') || (host.includes('localhost') ? 'http' : 'https');
+      imageUrl = `${protocol}://${host}${imageUrl}`;
+    }
+
+    // 2. Invocar microservicio de transformación con Gemini
     const optimizedImageBuffer = await recomposeImage(imageUrl);
     const recomposedUrl = `data:image/jpeg;base64,${optimizedImageBuffer.toString('base64')}`;
 
-    // 2. Aquí iría la lógica para guardar `optimizedImage` en la base de datos (e.g. Firebase)
-    // asociado al productId. Para este endpoint, simplemente devolvemos la URL procesada en base64.
-
+    // 3. Responder con JSON válido
     return NextResponse.json({
       success: true,
       productId,
@@ -27,7 +40,10 @@ export async function POST(req: Request) {
     });
 
   } catch (error: any) {
-    console.error('Error en recompose-image API:', error.message);
-    return NextResponse.json({ success: false, message: error.message }, { status: 500 });
+    console.error('[RECOMPOSE ERROR]:', error);
+    return NextResponse.json(
+      { error: error.message || 'Error interno del servidor' },
+      { status: 500 }
+    );
   }
 }
