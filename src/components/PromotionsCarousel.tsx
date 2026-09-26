@@ -2,6 +2,7 @@
 
 import React, { useEffect, useState } from 'react';
 import { Sparkles } from 'lucide-react';
+import { getOptimizedImageUrl } from '@/lib/imageOptimizer';
 
 interface PromotionsCarouselProps {
   promotions: any[];
@@ -53,7 +54,7 @@ export default function PromotionsCarousel({ promotions, onSelectPromotion, dura
       >
         <div className="w-full aspect-[2/3] bg-slate-50">
           <img
-            src={image}
+            src={getOptimizedImageUrl(image, 'PROMOTION')}
             alt={promo.title || promo.productName || 'Promoción'}
             className="w-full h-full object-cover"
             draggable={false}

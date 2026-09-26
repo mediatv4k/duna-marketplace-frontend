@@ -23,6 +23,7 @@ import { parseDescriptionTags } from '@/lib/productTags';
 import ProductTagBadges from './ProductTagBadges';
 import ShareButton from './ShareButton';
 import KitchenNote, { cleanKitchenNote, formatSin } from './KitchenNote';
+import { getOptimizedImageUrl } from '@/lib/imageOptimizer';
 
 export interface ComboSlot {
   id: number;
@@ -1934,7 +1935,7 @@ export default function MasterProductModal({
                     {/* Imagen del producto */}
                     <div className="relative flex items-center justify-center w-full aspect-square max-h-72 rounded-2xl border border-slate-200/80 bg-white overflow-hidden p-3 shrink-0 shadow-xs">
                       <img
-                        src={product.image || product.img}
+                        src={getOptimizedImageUrl(product.image || product.img, 'PRODUCT')}
                         alt={product.name}
                         className="w-full h-full object-contain"
                         onError={(e:any)=>{e.target.src='https://images.unsplash.com/photo-1542838132-92c53300491e?w=500&auto=format&fit=crop&q=60'}}
@@ -2030,7 +2031,7 @@ export default function MasterProductModal({
                   {/* Columna Izquierda: Imagen, Precio y Cantidad */}
                   <div className="flex flex-col gap-2.5">
                     <div className="relative flex items-center justify-center w-full aspect-square max-h-72 rounded-xl border border-slate-200/80 bg-white overflow-hidden p-3">
-                      <img src={product.image || product.img} alt={product.name} className="w-full h-full object-contain" onError={(e:any)=>{e.target.src='https://images.unsplash.com/photo-1542838132-92c53300491e?w=500&auto=format&fit=crop&q=60'}} />
+                      <img src={getOptimizedImageUrl(product.image || product.img, 'PRODUCT')} alt={product.name} className="w-full h-full object-contain" onError={(e:any)=>{e.target.src='https://images.unsplash.com/photo-1542838132-92c53300491e?w=500&auto=format&fit=crop&q=60'}} />
                     </div>
                     <div className="flex items-center justify-center gap-1.5 rounded-lg bg-sky-50/70 border border-sky-200/60 px-2.5 py-1 text-sky-800">
                       <svg className="w-3.5 h-3.5 text-sky-600 shrink-0" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={1.75}>
