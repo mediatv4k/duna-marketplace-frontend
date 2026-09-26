@@ -16,7 +16,7 @@ function VehicleIcon({ vehicleId, className }: { vehicleId: string; className?: 
   return <Truck className={className} />;
 }
 
-import { submitPurchaseOrder, getStorePaymentInfo, uploadPaymentReference } from '@/services/marketplaceService';
+import { submitPurchaseOrder, getStorePaymentInfo, uploadPaymentReference, getOrderPublic } from '@/services/marketplaceService';
 import { calculateLogistics, PhysicalItem } from '@/lib/logisticsEngine';
 
 export interface PaymentConfigItem {
@@ -118,6 +118,24 @@ async function compressPaymentImage(file: File, maxWidth = 1024, quality = 0.6):
   }
 }
 
+// La respuesta de compra (POST /delivery/request/purchase/web) solo trae { id, url }: NO trae `order_number`. El correlativo comercial se
+// obtiene del seguimiento público (GET /delivery/request/{id}/public). Se reintenta unos segundos por si el pedido aún no está listo;
+// si no llega devuelve null (la confirmación queda sin número: jamás se muestra el id primario en su lugar).
+async function fetchCommercialNumber(orderId: string): Promise<string | null> {
+  const MAX_ATTEMPTS = 4;
+  for (let attempt = 0; attempt < MAX_ATTEMPTS; attempt++) {
+    try {
+      const res = await getOrderPublic(orderId);
+      const n = res && res.code === 1 ? (res.data as { order_number?: string | number } | undefined)?.order_number : undefined;
+      if (n) return String(n);
+    } catch {
+      /* se reintenta */
+    }
+    if (attempt < MAX_ATTEMPTS - 1) await new Promise((resolve) => setTimeout(resolve, 700 * (attempt + 1)));
+  }
+  return null;
+}
+
 interface CheckoutModalProps {
   isOpen: boolean;
   onClose: () => void;
@@ -148,6 +166,9 @@ export default function CheckoutModal({
   const [numeroOrden, setNumeroOrden] = useState<string>('');
   const [ordenCreada, setOrdenCreada] = useState<boolean>(false);
   const [ordenId, setOrdenId] = useState<string>(''); // id real de la orden creada (para PUT payment/reference)
+  // Último pedido creado en este modal: evita que el correlativo resuelto en segundo plano de un pedido anterior se pinte en el nuevo.
+  // (Hook al nivel superior, antes del `return null`.)
+  const latestOrderIdRef = useRef<string>('');
   const [uploading, setUploading] = useState<boolean>(false);
 
   const [paymentMethods, setPaymentMethods] = useState<PaymentConfigItem[]>([]);
@@ -497,7 +518,8 @@ export default function CheckoutModal({
           ? String((response?.data as { id?: string | number }).id)
           : generatedOrderId;
         const created = response?.data as { id?: string | number; order_number?: string | number; orderNumber?: string | number } | undefined;
-        // Número visible del pedido: el correlativo `order_number`; el id primario solo como respaldo (`order_number || id`) al mostrarlo
+        // La respuesta de compra solo trae { id, url }: si algún día trae el correlativo `order_number` se usa; si no, se resuelve más
+        // abajo desde el seguimiento público. El id primario NUNCA se muestra como número de pedido.
         const commercialNumber = String(created?.order_number || created?.orderNumber || '');
 
         onFinalizeOrder({
@@ -525,7 +547,7 @@ export default function CheckoutModal({
           status: 'pendiente'
         });
 
-        setNumeroOrden(commercialNumber || String(created?.id || ''));
+        setNumeroOrden(commercialNumber);
         setOrdenCreada(true);
         // Compra registrada: la bolsa se vacía de inmediato (localStorage + estado de la tienda vía evento)
         try {
@@ -537,6 +559,23 @@ export default function CheckoutModal({
         }
         window.dispatchEvent(new Event('duna:cart-cleared'));
         setOrdenId(created?.id !== undefined && created?.id !== null ? String(created.id) : '');
+        // Correlativo comercial en segundo plano (la confirmación ya está visible): al llegar se muestra en la cabecera y se guarda en
+        // `last_active_order` para que el seguimiento lo tenga desde el primer instante
+        latestOrderIdRef.current = created?.id !== undefined && created?.id !== null ? String(created.id) : '';
+        if (!commercialNumber && latestOrderIdRef.current) {
+          const idToResolve = latestOrderIdRef.current;
+          void fetchCommercialNumber(idToResolve).then((n) => {
+            if (!n || latestOrderIdRef.current !== idToResolve) return; // sin dato, o ya se creó otro pedido
+            setNumeroOrden(n);
+            try {
+              const raw = localStorage.getItem('last_active_order');
+              const saved = raw ? JSON.parse(raw) : null;
+              if (saved && String(saved.id) === idToResolve) localStorage.setItem('last_active_order', JSON.stringify({ ...saved, orderNumber: n }));
+            } catch {
+              /* sin localStorage */
+            }
+          });
+        }
         // Datos del cliente para futuras compras (la ubicación NO se guarda: el GPS en vivo es la predeterminada)
         try {
           localStorage.setItem('customerName', nombre.trim());
