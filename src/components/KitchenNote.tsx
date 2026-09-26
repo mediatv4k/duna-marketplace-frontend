@@ -20,8 +20,10 @@ interface KitchenNoteProps {
   onChange: (next: string) => void;
 }
 
-// Acordeón ultra-compacto de "sugerencia para la cocina": cerrado es un botón sutil de una línea; abierto, un input de
-// una sola línea con tope de 70 caracteres y contador. Solo se usa en la ranura del combo y en el producto simple.
+// Acordeón compacto de "nota o indicación especial", neutro y válido para cualquier comercio (restaurante, farmacia,
+// bodegón, ferretería...): cerrado es un botón sutil de una línea; abierto, un campo de 2 líneas con tope de 70
+// caracteres y contador (2 líneas para que el placeholder completo se lea también en móviles de 360 px). Se usa en la
+// ranura del combo, en el producto simple y en la vista del invitado; el texto viaja en `comments` del ítem.
 export default function KitchenNote({ value, onChange }: KitchenNoteProps) {
   const [open, setOpen] = useState(value.length > 0);
   return (
@@ -32,19 +34,19 @@ export default function KitchenNote({ value, onChange }: KitchenNoteProps) {
         aria-expanded={open}
         className="text-xs text-slate-500 hover:text-[#FE6712] font-medium flex items-center gap-1 mt-1 mb-2 cursor-pointer"
       >
-        📝 ¿Alguna sugerencia para la cocina? (Opcional)
+        📝 ¿Alguna nota o indicación especial? (Opcional)
       </button>
       {open && (
         <div className="relative">
-          <input
-            type="text"
+          <textarea
+            rows={2}
             value={value}
             maxLength={KITCHEN_NOTE_MAX}
             onChange={(e) => onChange(e.target.value.slice(0, KITCHEN_NOTE_MAX))}
-            placeholder="Ej: Poca salsa roja, salsas aparte..."
-            className="w-full h-9 text-xs pl-3 pr-14 rounded-lg border border-slate-200 bg-slate-50 font-medium text-slate-900 placeholder:text-slate-400 focus:bg-white focus:outline-none focus:border-[#FE6712] transition"
+            placeholder="Escribe aquí cualquier detalle, preferencia o indicación..."
+            className="w-full resize-none text-xs leading-snug py-2 pl-3 pr-12 rounded-lg border border-slate-200 bg-slate-50 font-medium text-slate-900 placeholder:text-slate-400 focus:bg-white focus:outline-none focus:border-[#FE6712] transition"
           />
-          <span className="absolute right-2 top-1/2 -translate-y-1/2 text-[10px] font-bold text-slate-400 tabular-nums">
+          <span className="absolute right-2 bottom-1.5 text-[10px] font-bold text-slate-400 tabular-nums pointer-events-none">
             {value.length}/{KITCHEN_NOTE_MAX}
           </span>
         </div>
