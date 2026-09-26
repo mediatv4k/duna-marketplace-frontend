@@ -4,7 +4,7 @@ import React, { useState, useEffect, useRef } from 'react';
 import { useBeacon, BEACON_CLASS } from '@/lib/beacon';
 import {
   ArrowRight, ArrowLeft, X, HeartHandshake, Check, Copy, Upload,
-  CheckCircle2, Info, Clock, FileText, Loader2, Gift, Bookmark, MessageCircle,
+  CheckCircle2, Info, Clock, FileText, Loader2, MessageCircle,
   CreditCard, Bike, Car, Truck
 } from 'lucide-react';
 
@@ -16,9 +16,10 @@ function VehicleIcon({ vehicleId, className }: { vehicleId: string; className?: 
   return <Truck className={className} />;
 }
 
-import { submitPurchaseOrder, getStorePaymentInfo, uploadPaymentReference, getOrderPublic } from '@/services/marketplaceService';
+import { submitPurchaseOrder, getStorePaymentInfo, uploadPaymentReference, getOrderPublic, getDeliveryRate, type ApiResponse } from '@/services/marketplaceService';
 import { calculateLogistics, PhysicalItem } from '@/lib/logisticsEngine';
 import { clearCart } from '@/lib/cartStorage';
+import { toWhatsAppNumber } from '@/lib/orderTracking';
 
 export interface PaymentConfigItem {
   code: string;
@@ -137,6 +138,57 @@ async function fetchCommercialNumber(orderId: string): Promise<string | null> {
   return null;
 }
 
+// ── Fallos de la compra: mensajes claros para el cliente (auditoría C9) ───────────────────────────────────────────────────────────
+// Antes se mostraba `response.message` crudo (E_STORE_NOT_OPEN, E_AMOUNT_MISMATCH, "Failed to fetch"...). Se clasifica así:
+//  · mismatch  (code 21 / E_AMOUNT_MISMATCH): los montos no cuadran con el backend -> se refrescan tarifas y se vuelve a la Fase 2.
+//  · business  (code 15 / tienda cerrada, sin jornada, sin stock, sin saldo): el comercio no puede recibir el pedido ahora.
+//  · ambiguous (timeout / red / respuesta no válida): puede que el pedido SÍ se haya creado -> se pide verificar antes de reintentar.
+//  · generic   (cualquier otro error del backend): texto amable; solo se muestra el mensaje del backend si es lenguaje natural.
+type PurchaseFailure = { kind: 'mismatch' | 'business' | 'ambiguous' | 'generic'; message: string };
+
+const CLOSED_RE = /cerrad|closed|not[_ ]?open|no est[aá] abiert|horario|jornada|schedule|shift/i;
+const STOCK_RE = /stock|agotad|disponib|inventar|inventory|existencia|out[_ ]?of/i;
+const WALLET_RE = /billetera|wallet|saldo|balance|fondos|credit/i;
+const MISMATCH_RE = /AMOUNT_MISMATCH|inconsisten|mismatch/i;
+// "Presentable" = texto normal en español; se descartan códigos E_*, errores de JavaScript y stacks
+const isPresentable = (m: string) =>
+  !!m && m.length <= 200 && !/\bE_[A-Z0-9_]{3,}/.test(m) && !/(TypeError|ReferenceError|undefined|null|stack| at |Cannot |ECONN|fetch)/i.test(m);
+
+function classifyPurchaseFailure(response: ApiResponse<any> | null | undefined, merchantName: string): PurchaseFailure {
+  const merchant = merchantName || 'el comercio';
+  const msg = String(response?.message || '').trim();
+  const code = Number(response?.code);
+
+  if (response?.errorKind) {
+    const lead = response.errorKind === 'timeout'
+      ? 'La confirmación de tu pedido tardó demasiado.'
+      : response.errorKind === 'network'
+        ? 'Hubo un problema de conexión al enviar tu pedido.'
+        : 'No recibimos una respuesta válida del servidor.';
+    return { kind: 'ambiguous', message: `${lead} No sabemos si ${merchant} llegó a recibirlo. Antes de intentarlo de nuevo, verifica con el comercio para no duplicar tu pedido.` };
+  }
+  if (code === 21 || MISMATCH_RE.test(msg)) {
+    return { kind: 'mismatch', message: 'Se actualizó la tarifa de envío o la tasa de cambio y el total ya no coincidía.' };
+  }
+  if (code === 15 || CLOSED_RE.test(msg)) {
+    // Si el backend ya explica el motivo en lenguaje natural (con espacios, sin códigos E_*), ese ES el motivo comercial exacto
+    if (isPresentable(msg) && /\s/.test(msg)) return { kind: 'business', message: `${merchant} no pudo recibir tu pedido: ${msg}` };
+    if (CLOSED_RE.test(msg)) return { kind: 'business', message: `${merchant} está cerrado en este momento o no tiene una jornada activa. Revisa su horario e inténtalo cuando esté abierto.` };
+    if (STOCK_RE.test(msg)) return { kind: 'business', message: 'Alguno de los productos de tu carrito ya no tiene disponibilidad. Vuelve al carrito, revísalo e inténtalo de nuevo.' };
+    if (WALLET_RE.test(msg)) return { kind: 'business', message: `${merchant} no puede recibir pedidos en este momento. Inténtalo de nuevo más tarde o elige otro comercio.` };
+    return {
+      kind: 'business',
+      message: isPresentable(msg)
+        ? `${merchant} no pudo recibir tu pedido: ${msg}`
+        : `${merchant} no puede recibir tu pedido en este momento (cerrado, sin disponibilidad o sin jornada activa). Revisa su horario o tu carrito e inténtalo más tarde.`,
+    };
+  }
+  return {
+    kind: 'generic',
+    message: isPresentable(msg) ? msg : `No pudimos registrar tu pedido. Inténtalo de nuevo en unos minutos; si el problema continúa, comunícate con ${merchant}.`,
+  };
+}
+
 interface CheckoutModalProps {
   isOpen: boolean;
   onClose: () => void;
@@ -190,14 +242,22 @@ export default function CheckoutModal({
   const [nombreArchivo, setNombreArchivo] = useState<string | null>(null);
   const [copiadoTexto, setCopiadoTexto] = useState<string | null>(null);
 
-  const [orderCount, setOrderCount] = useState<number>(3);
-  const [usarRecompensa, setUsarRecompensa] = useState<boolean>(false);
+  // Tarifas refrescadas tras un `code: 21` (auditoría C9): flete cotizado de nuevo (null = el del carrito) y aviso para el cliente
+  const [fleteRefrescado, setFleteRefrescado] = useState<number | null>(null);
+  const [avisoTarifa, setAvisoTarifa] = useState<string | null>(null);
+  // Falló la compra sin saber si el pedido llegó a crearse (timeout / red / respuesta no válida): se pide verificar antes de reintentar
+  const [intentoAmbiguo, setIntentoAmbiguo] = useState<boolean>(false);
+  // Guardia síncrona contra doble envío (el estado `submitting` tarda un render en deshabilitar el botón)
+  const submittingRef = useRef<boolean>(false);
 
   useEffect(() => {
     if (!isOpen) return;
 
     const storeId = orderSummary.merchantId;
     setLiveRateBcv(null);
+    setFleteRefrescado(null);
+    setAvisoTarifa(null);
+    setIntentoAmbiguo(false);
     if (!storeId) {
       // Sin id real de comercio no se consulta ni se inventa uno
       setLoadingPaymentInfo(false);
@@ -309,7 +369,9 @@ export default function CheckoutModal({
     setReferenciaPago('');
     setArchivoComprobante(null);
     setNombreArchivo(null);
-    setUsarRecompensa(false);
+    setFleteRefrescado(null);
+    setAvisoTarifa(null);
+    setIntentoAmbiguo(false);
     latestOrderIdRef.current = '';
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [isOpen]);
@@ -317,16 +379,15 @@ export default function CheckoutModal({
   if (!isOpen) return null;
 
   const subtotalNeto = Number(orderSummary.subtotalUSD || 0);
-  const costoEnvio = Number(orderSummary.costoEnvio || 0);
+  // Flete = el cotizado en el carrito, o el re-cotizado tras un `code: 21` (fleteRefrescado)
+  const costoEnvio = fleteRefrescado ?? Number(orderSummary.costoEnvio || 0);
 
-  // Cofre Recompensa D'una: 25% OFF exclusivo sobre el flete, nunca sobre productos ni propina
-  const esElegibleParaCofre = orderCount >= 3 && orderSummary.metodoEntrega === 'delivery';
-  const aplicaDescuentoDelivery = esElegibleParaCofre && usarRecompensa;
-  const descuentoUSD = aplicaDescuentoDelivery ? costoEnvio * 0.25 : 0;
+  // El "Cofre Recompensa" (25 % OFF en el flete) era un simulador local sin soporte del backend y se retiró (auditoría C6): el frontend
+  // NUNCA altera el total a pagar por su cuenta. Cuando exista un descuento real, debe viajar en `discountAmount`/`totalWithoutDiscount`.
 
   // Retiro en tienda (pickup): sin propina, sin importar lo elegido antes
   const propina = orderSummary.metodoEntrega === 'pickup' ? 0 : propinaElegida;
-  const totalFinalUSD = subtotalNeto + costoEnvio + propina - descuentoUSD;
+  const totalFinalUSD = subtotalNeto + costoEnvio + propina;
 
   const cobraEnBs = selectedMethod?.field5 === 'REF';
   const tasaRef = liveRateBcv ?? 0;
@@ -373,7 +434,55 @@ export default function CheckoutModal({
     }
   };
 
+  // `code: 21` (montos/tarifa no coinciden con el backend). El pedido NO se creó. Se devuelve al cliente a la Fase 2 con un aviso claro y,
+  // en segundo plano, se vuelve a consultar la tasa oficial y el flete para que revise el total ACTUALIZADO antes de reintentar.
+  const handleAmountMismatch = async () => {
+    setSubmitError(null);
+    setIntentoAmbiguo(false);
+    setPasoVista('formulario');
+    setAvisoTarifa('Se actualizó la tarifa de envío o la tasa de cambio mientras completabas tu pedido, así que el total ya no coincidía. Estamos actualizando los valores…');
+    const cambios: string[] = [];
+    try {
+      const storeId = orderSummary.merchantId;
+      if (storeId) {
+        const info = await getStorePaymentInfo(storeId);
+        if (info?.code === 1 && info?.data) {
+          const nuevaTasa = Number(info.data?.store?.referenceRateValue);
+          if (Number.isFinite(nuevaTasa) && nuevaTasa > 0) {
+            if (Math.abs(nuevaTasa - tasaRef) > 0.0001) cambios.push(`la tasa de cambio (Bs. ${tasaRef.toFixed(2)} → Bs. ${nuevaTasa.toFixed(2)})`);
+            setLiveRateBcv(nuevaTasa);
+          }
+          const methods: PaymentConfigItem[] = info.data?.paymentConfig || [];
+          if (methods.length > 0) {
+            setPaymentMethods(methods);
+            setSelectedMethod((prev) => methods.find((m) => m.code === prev?.code && m.value === prev?.value) || methods[0]);
+          }
+        }
+        const loc = orderSummary.location;
+        if (orderSummary.metodoEntrega === 'delivery' && loc && orderSummary.distanceKm !== undefined && orderSummary.durationMin !== undefined) {
+          const cot = await getDeliveryRate({ storeId, lat: Number(loc.lat), lng: Number(loc.lng), distance: Number(orderSummary.distanceKm), duration: Number(orderSummary.durationMin) });
+          if (cot.ok) {
+            if (Math.abs(cot.rate - costoEnvio) > 0.0001) cambios.push(`el flete ($${costoEnvio.toFixed(2)} → $${cot.rate.toFixed(2)})`);
+            setFleteRefrescado(cot.rate);
+          }
+        }
+      }
+    } catch {
+      /* se informa igual: el cliente puede revisar y reintentar */
+    }
+    setAvisoTarifa(
+      cambios.length > 0
+        ? `Se actualizó ${cambios.join(' y ')} y el total cambió. Revisa el nuevo total y continúa cuando estés de acuerdo.`
+        : `Actualizamos las tarifas pero no encontramos cambios. Si el total no coincide con lo que esperabas, vuelve al carrito y revisa tus productos, o comunícate con ${merchantName || 'el comercio'}.`
+    );
+  };
+
   const handleProceedToInstructions = () => {
+    // El envío nacional no tiene soporte en el contrato de Adonis: no se deja avanzar (defensa en profundidad; el carrito ya no lo ofrece)
+    if (orderSummary.metodoEntrega === 'national') {
+      alert('El envío nacional todavía no está disponible. Vuelve al carrito y elige delivery o retiro en tienda.');
+      return;
+    }
     if (!(tasaRef > 0)) {
       alert('No se pudo obtener la tasa oficial del comercio. Intenta de nuevo en unos momentos.');
       return;
@@ -386,12 +495,20 @@ export default function CheckoutModal({
       alert('Por favor selecciona un método de pago.');
       return;
     }
+    setAvisoTarifa(null);
     setPasoVista('instrucciones');
   };
 
   const handleCompleteFinalOrder = async () => {
-    // La orden ya fue registrada en el backend: el contrato solo tiene POST de creación, reenviar duplicaría el pedido
-    if (ordenCreada) return;
+    // La orden ya fue registrada en el backend: el contrato solo tiene POST de creación, reenviar duplicaría el pedido.
+    // `submittingRef` evita un segundo envío mientras el primero sigue en curso (doble toque).
+    if (ordenCreada || submittingRef.current) return;
+
+    // Una orden nacional NUNCA viaja como DELIVERY local con un flete plano inventado (auditoría C7)
+    if (orderSummary.metodoEntrega === 'national') {
+      setSubmitError('El envío nacional todavía no está disponible. Vuelve al carrito y elige delivery o retiro en tienda.');
+      return;
+    }
 
     // Sin datos reales no se envía el pedido: nunca se inventan comercio, teléfono, tasa, ubicación ni productos
     const storeIdNum = Number(orderSummary.merchantId);
@@ -420,8 +537,10 @@ export default function CheckoutModal({
       setSubmitError('Falta tu ubicación de entrega. Vuelve al carrito y toca "Mi Ubicación".');
       return;
     }
+    submittingRef.current = true;
     setSubmitting(true);
     setSubmitError(null);
+    setIntentoAmbiguo(false);
 
     const numeroLimpio = telefono.replace(/\D/g, '').replace(/^0+/, '');
     const telefonoCompleto = `${codigoPais}${numeroLimpio}`;
@@ -553,7 +672,6 @@ export default function CheckoutModal({
           metodoEntrega: orderSummary.metodoEntrega,
           direccion: orderSummary.direccion,
           costoEnvio,
-          descuentoUSD,
           items: orderSummary.items || [],
           merchantName,
           subtotalUSD: subtotalNeto,
@@ -612,13 +730,22 @@ export default function CheckoutModal({
         // El backend dijo "ok" pero sin `data.id`: no se puede confirmar ni rastrear el pedido. Se trata como fallo y se evita que
         // el cliente lo repita a ciegas (podría haberse registrado).
         setSubmitError(`Recibimos una respuesta incompleta del servidor y no pudimos confirmar tu pedido. Antes de intentarlo de nuevo, comunícate con ${merchantName || 'el comercio'} para verificar si se registró.`);
+        setIntentoAmbiguo(true);
       } else {
-        const errorMsg = response?.message || 'No pudimos registrar tu pedido. Revisa tus datos e inténtalo de nuevo.';
-        setSubmitError(errorMsg);
+        const failure = classifyPurchaseFailure(response, merchantName);
+        if (failure.kind === 'mismatch') {
+          // Sin `await`: el refresco de tarifas corre en segundo plano y el botón se libera de inmediato
+          void handleAmountMismatch();
+        } else {
+          setSubmitError(failure.message);
+          setIntentoAmbiguo(failure.kind === 'ambiguous');
+        }
       }
     } catch (err: unknown) {
-      setSubmitError('Error al contactar con la pasarela de pedidos.');
+      setSubmitError(`Ocurrió un error inesperado al enviar tu pedido. Antes de intentarlo de nuevo, comunícate con ${merchantName || 'el comercio'} para verificar si se registró.`);
+      setIntentoAmbiguo(true);
     } finally {
+      submittingRef.current = false;
       setSubmitting(false);
     }
   };
@@ -682,6 +809,11 @@ export default function CheckoutModal({
 
         {pasoVista === 'formulario' && (
           <div className="px-5 py-3 space-y-3 flex-1 overflow-y-auto no-scrollbar flex flex-col justify-between">
+            {avisoTarifa && (
+              <div role="alert" className="shrink-0 rounded-xl bg-amber-50 border border-amber-200 px-3 py-2 text-[10.5px] font-bold text-amber-800 leading-snug">
+                {avisoTarifa}
+              </div>
+            )}
             {orderSummary.metodoEntrega === 'delivery' && (
               <div className="shrink-0 bg-slate-50/70 p-2.5 rounded-xl border border-slate-100 flex items-center gap-2">
                 <VehicleIcon vehicleId={logisticsResult.vehiculoAsignado.id} className="w-5 h-5 shrink-0 text-slate-600" />
@@ -823,65 +955,6 @@ export default function CheckoutModal({
 
         {pasoVista === 'instrucciones' && selectedMethod && (
           <div className="px-5 py-2 space-y-2 flex-1 overflow-y-auto no-scrollbar flex flex-col justify-between">
-            {orderSummary.metodoEntrega === 'delivery' && (
-              <div className="bg-orange-50/70 border border-orange-200/60 px-3 py-1.5 rounded-xl shrink-0 space-y-1">
-                <div className="flex items-center justify-between">
-                  <span className="text-[10px] font-black text-slate-800 flex items-center gap-1.5">
-                    <Gift className="h-3.5 w-3.5 text-[#fe6712]" />
-                    Cofre Recompensa D&apos;una
-                  </span>
-                  <button
-                    type="button"
-                    onClick={() => setOrderCount(prev => prev === 2 ? 3 : 2)}
-                    title="Simular 3 compras"
-                    className="text-[8px] font-black text-[#fe6712] bg-orange-100 px-1.5 py-0.5 rounded-md hover:bg-orange-200 transition cursor-pointer"
-                  >
-                    {orderCount >= 3 ? '3 de 3 (¡Desbloqueado!)' : '2 de 3 pedidos'}
-                  </button>
-                </div>
-
-                <div className="flex gap-1 h-1">
-                  <div className="h-1 flex-1 rounded-full bg-emerald-500"></div>
-                  <div className="h-1 flex-1 rounded-full bg-emerald-500"></div>
-                  <div className={`h-1 flex-1 rounded-full ${orderCount >= 3 ? 'bg-emerald-500' : 'bg-orange-200'}`}></div>
-                </div>
-
-                {orderCount >= 3 ? (
-                  !usarRecompensa ? (
-                    <div className="flex items-center justify-between mt-1 animate-in fade-in">
-                      <p className="text-[8px] text-slate-600 font-medium leading-tight w-2/3">
-                        Tienes un cupón del <strong>25% OFF en Flete</strong> disponible. ¿Lo usas hoy o lo guardas para después?
-                      </p>
-                      <button
-                        type="button"
-                        onClick={() => setUsarRecompensa(true)}
-                        className="bg-emerald-500 text-white text-[8px] font-black px-2 py-1 rounded shadow-sm hover:bg-emerald-600 transition cursor-pointer"
-                      >
-                        Usar Ahora
-                      </button>
-                    </div>
-                  ) : (
-                    <div className="flex items-center justify-between mt-1 bg-emerald-50 p-1 rounded-lg border border-emerald-200 animate-in zoom-in-95">
-                      <span className="text-[8.5px] font-black text-emerald-700 flex items-center gap-1">
-                        <CheckCircle2 className="w-3 h-3" /> ¡Descuento Aplicado!
-                      </span>
-                      <button
-                        type="button"
-                        onClick={() => setUsarRecompensa(false)}
-                        className="text-[8px] text-slate-500 underline flex items-center gap-0.5 hover:text-slate-800 transition cursor-pointer"
-                      >
-                        <Bookmark className="w-2.5 h-2.5" /> Guardar para después
-                      </button>
-                    </div>
-                  )
-                ) : (
-                  <p className="text-[8.5px] font-bold text-slate-600 leading-tight flex items-center gap-1">
-                    <Gift className="w-3 h-3 shrink-0" /> ¡Estás a solo <span className="text-[#fe6712] font-black">1 pedido</span> de destapar tu cupón sorpresa!
-                  </p>
-                )}
-              </div>
-            )}
-
             {cobraEnBs && (
               <div className="bg-orange-50/70 border border-orange-200/60 px-3 py-1 rounded-xl flex items-center justify-between shrink-0">
                 <div className="flex items-center gap-1.5">
@@ -893,13 +966,6 @@ export default function CheckoutModal({
             )}
 
             <div className="text-center shrink-0 py-1 bg-slate-50 p-2 rounded-xl border border-slate-100">
-              {descuentoUSD > 0 && (
-                <span className="block text-[10px] font-black text-emerald-600 mb-0.5">
-                  Cofre Recompensa D&apos;una (25% OFF en flete): - {cobraEnBs
-                    ? `Bs.S ${(descuentoUSD * tasaRef).toLocaleString('es-VE', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`
-                    : `$${descuentoUSD.toFixed(2)} USD`}
-                </span>
-              )}
               <span className="text-[7.5px] font-black text-slate-400 uppercase tracking-widest block">Total A Pagar</span>
               <span className="text-2xl font-black text-[#fe6712] block leading-tight mt-0.5">
                 {cobraEnBs
@@ -1058,8 +1124,18 @@ export default function CheckoutModal({
           ) : pasoVista === 'instrucciones' ? (
             <div className="space-y-1.5">
               {submitError && (
-                <div className="p-2 rounded-xl bg-red-50 border border-red-200 text-red-600 text-[10px] font-bold text-center">
+                <div role="alert" className="p-2 rounded-xl bg-red-50 border border-red-200 text-red-600 text-[10px] font-bold text-center">
                   {submitError}
+                  {intentoAmbiguo && toWhatsAppNumber(orderSummary.merchantPhone) && (
+                    <a
+                      href={`https://wa.me/${toWhatsAppNumber(orderSummary.merchantPhone)}?text=${encodeURIComponent(`Hola, intenté hacer un pedido en D'una a nombre de ${nombre.trim() || 'un cliente'} y no recibí confirmación. ¿Les llegó?`)}`}
+                      target="_blank"
+                      rel="noopener noreferrer"
+                      className="block mt-1 underline font-black text-red-700"
+                    >
+                      Verificar con {merchantName || 'el comercio'} por WhatsApp
+                    </a>
+                  )}
                 </div>
               )}
               {ordenCreada ? (
@@ -1081,7 +1157,7 @@ export default function CheckoutModal({
                   disabled={submitting}
                   className={`w-full flex items-center justify-center gap-2 rounded-full bg-[#fe6712] hover:bg-[#e0580d] disabled:opacity-50 py-2 text-xs font-black text-white shadow-md ${beacon === 'confirm' ? BEACON_CLASS : ''}`}
                 >
-                  <span>{submitting ? 'Registrando tu pedido...' : 'Completar pedido'}</span>
+                  <span>{submitting ? 'Registrando tu pedido...' : (intentoAmbiguo ? 'Ya verifiqué, reintentar pedido' : 'Completar pedido')}</span>
                   {!submitting && <Check className="h-4 w-4 stroke-[3]" />}
                 </button>
               )}

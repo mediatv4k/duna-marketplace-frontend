@@ -14,7 +14,7 @@ import React, { useState, useEffect, useRef } from 'react';
 import { useBeacon, BEACON_CLASS } from '@/lib/beacon';
 import {
   X, Bike, Store, Navigation, MapPin,
-  Trash2, ArrowRight, Gift, Truck, PartyPopper, Flame, Package
+  Trash2, ArrowRight, Truck, Package
 } from 'lucide-react';
 
 export interface CartItem {
@@ -39,13 +39,7 @@ interface CartModalProps {
   subtotalUSD: number;
   deliveryMode: 'delivery' | 'pickup' | 'national';
   setDeliveryMode: (mode: 'delivery' | 'pickup' | 'national') => void;
-  rewardMode: 'DYNAMIC' | 'FIXED';
-  setRewardMode: React.Dispatch<React.SetStateAction<'DYNAMIC' | 'FIXED'>>;
-  faltaParaEnvioGratis: number;
-  progresoEnvio: number;
-  esEnvioGratis: boolean;
-  deliveryCost: number;
-  discountDelivery: number;
+  deliveryCost: number; // flete = cotización oficial del backend (deliveryRate); no existe ninguna regla local de "envío gratis"
   totalUSD: number;
   onUpdateQty: (identifier: string, delta: number) => void;
   onOpenCheckout: (summary: any) => void;
@@ -70,17 +64,12 @@ export default function CartModal({
   subtotalUSD,
   deliveryMode,
   setDeliveryMode,
-  rewardMode,
-  setRewardMode,
-  faltaParaEnvioGratis,
-  progresoEnvio,
-  esEnvioGratis,
   deliveryCost,
-  discountDelivery,
   totalUSD,
   onUpdateQty,
   onOpenCheckout,
-  isNationalShippingEnabled = true,
+  // El envío nacional NO tiene soporte en el contrato de Adonis: la opción solo se ofrece si el comercio lo habilita explícitamente
+  isNationalShippingEnabled = false,
   quoteStatus = 'ok',
   quoteMessage,
   distanceKm,
@@ -127,7 +116,7 @@ export default function CartModal({
 
   // En delivery no se muestra ni se cobra flete hasta tener la cotización oficial
   const deliveryBlocked = deliveryMode === 'delivery' && quoteStatus !== 'ok';
-  const fleteFinalMostrado = deliveryMode === 'pickup' ? 0 : (deliveryMode === 'national' ? costoNacionalFijo : (deliveryBlocked ? 0 : (esEnvioGratis ? 0 : deliveryCost)));
+  const fleteFinalMostrado = deliveryMode === 'pickup' ? 0 : (deliveryMode === 'national' ? costoNacionalFijo : (deliveryBlocked ? 0 : deliveryCost));
   const totalCalculadoFinal = subtotalUSD + fleteFinalMostrado;
 
   return (
@@ -150,36 +139,6 @@ export default function CartModal({
               <X className="h-3.5 w-3.5" />
             </button>
           </div>
-
-          {/* Barra de Recompensa Inteligente (solo delivery local) */}
-          {deliveryMode === 'delivery' && (
-          <div className="px-4 pt-2 pb-1 shrink-0">
-            <div className="bg-orange-50/70 border border-orange-200/60 px-3 py-2 rounded-[14px] space-y-1">
-              <div className="flex items-center justify-between">
-                <div className="flex items-center gap-1.5">
-                  <Gift className="h-3.5 w-3.5 text-[#fe6712]" />
-                  <span className="text-[10px] font-black text-slate-800">Recompensa D&apos;una</span>
-                </div>
-
-                <span className="text-[9px] font-black text-[#fe6712]">
-                  {esEnvioGratis ? '¡Envío 100% Gratis!' : `Faltan $${faltaParaEnvioGratis.toFixed(2)} en productos`}
-                </span>
-              </div>
-
-              <div className="w-full bg-slate-200 h-1.5 rounded-full overflow-hidden">
-                <div className="bg-[#fe6712] h-full transition-all duration-500" style={{ width: `${progresoEnvio}%` }}></div>
-              </div>
-
-              <p className="text-[9px] font-medium text-slate-600">
-                {esEnvioGratis ? (
-                  <span className="inline-flex items-center gap-1"><PartyPopper className="w-3 h-3 shrink-0" /> ¡Felicidades! Desbloqueaste tu <strong className="text-[#fe6712]">Delivery 100% GRATIS</strong></span>
-                ) : (
-                  <span className="inline-flex items-center gap-1"><Flame className="w-3 h-3 shrink-0" /> ¡Agrega <strong className="text-[#fe6712]">${faltaParaEnvioGratis.toFixed(2)}</strong> más en productos para <strong className="text-[#fe6712]">Delivery GRATIS</strong>!</span>
-                )}
-              </p>
-            </div>
-          </div>
-          )}
 
           {/* Título de Sección Fijo */}
           <div className="px-4 pt-1 pb-0.5 shrink-0 flex justify-between items-center">
@@ -338,7 +297,7 @@ export default function CartModal({
               <div className="grid grid-cols-3 pt-0.5">
                 <div className="text-center">
                   <p className="text-[8px] font-black text-slate-400 uppercase tracking-widest">Flete Final</p>
-                  <p className="text-[10px] font-black"><span className="text-[#fe6712]">{deliveryBlocked ? '—' : (esEnvioGratis ? 'GRATIS' : `$${deliveryCost.toFixed(2)}`)}</span></p>
+                  <p className="text-[10px] font-black"><span className="text-[#fe6712]">{deliveryBlocked ? '—' : `$${deliveryCost.toFixed(2)}`}</span></p>
                 </div>
                 <div className="text-center border-l border-slate-100">
                   <p className="text-[8px] font-black text-slate-400 uppercase tracking-widest">Distancia</p>
@@ -373,14 +332,9 @@ export default function CartModal({
 
             {deliveryMode === 'delivery' && (
               <div className="flex justify-between items-center text-slate-500 font-medium">
-                <span className="flex items-center gap-1 text-[12px]">
-                  Delivery:
-                  {esEnvioGratis && (
-                    <span className="bg-emerald-100 text-emerald-800 text-[8px] font-black px-1.5 py-0.2 rounded uppercase">100% OFF</span>
-                  )}
-                </span>
+                <span className="flex items-center gap-1 text-[12px]">Delivery:</span>
                 <span className="font-black text-[#fe6712] text-[12px]">
-                  {deliveryBlocked ? '—' : (esEnvioGratis ? '$0.00 USD' : `$${deliveryCost.toFixed(2)} USD`)}
+                  {deliveryBlocked ? '—' : `$${deliveryCost.toFixed(2)} USD`}
                 </span>
               </div>
             )}

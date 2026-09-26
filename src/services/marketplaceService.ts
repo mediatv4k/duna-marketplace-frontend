@@ -6,6 +6,9 @@ export interface ApiResponse<T> {
   code: number;
   data: T;
   message?: string;
+  // Solo en fallos de la COMPRA donde no se sabe si el backend llegó a crear el pedido (timeout, red caída, respuesta no válida):
+  // el llamador no debe dejar reintentar a ciegas (riesgo de pedido duplicado). Un sobre JSON con `code` de error NO lo lleva.
+  errorKind?: 'timeout' | 'network' | 'invalid_response';
 }
 
 // Tiempo máximo razonable para las lecturas críticas (Home, catálogo): 15 s. Pasado ese tiempo la petición se aborta de verdad
@@ -63,6 +66,10 @@ export async function getStorePaymentInfo(storeId: number | string): Promise<Api
   return await apiFetch<any>(`/store/${storeId}/payment/info`);
 }
 
+// Tiempo máximo de espera de la compra (incluye la subida del comprobante): 25 s. Pasado ese tiempo la petición se aborta y el cliente
+// recibe `errorKind: 'timeout'` (auditoría C8). OJO: abortar en el cliente no garantiza que el backend no haya creado el pedido.
+export const PURCHASE_TIMEOUT_MS = 25000;
+
 export async function submitPurchaseOrder(orderDataPayload: any, file?: File | null): Promise<ApiResponse<any>> {
   const formData = new FormData();
   formData.append('orderData', JSON.stringify(orderDataPayload));
@@ -70,6 +77,8 @@ export async function submitPurchaseOrder(orderDataPayload: any, file?: File | n
     formData.append('paymentFile', file);
   }
 
+  const controller = new AbortController();
+  const timer = setTimeout(() => controller.abort(), PURCHASE_TIMEOUT_MS);
   try {
     const res = await fetch(`${API_BASE}/delivery/request/purchase/web`, {
       method: 'POST',
@@ -78,6 +87,7 @@ export async function submitPurchaseOrder(orderDataPayload: any, file?: File | n
         'timeZone': TIMEZONE,
       },
       body: formData,
+      signal: controller.signal,
     });
     const text = await res.text();
     let json: unknown;
@@ -90,12 +100,18 @@ export async function submitPurchaseOrder(orderDataPayload: any, file?: File | n
     // HTTP sea 200/201: el estado HTTP ya NO se convierte en `code` (antes un "200 OK" sin JSON se leía como compra exitosa).
     if (!json || typeof json !== 'object' || Array.isArray(json)) {
       console.warn('[purchase/web] Respuesta no válida (HTTP', res.status, '):', text.slice(0, 200));
-      return { code: 0, data: null, message: 'No recibimos una respuesta válida del servidor, así que tu pedido no fue confirmado. Inténtalo de nuevo.' };
+      return { code: 0, data: null, message: 'No recibimos una respuesta válida del servidor, así que no pudimos confirmar tu pedido.', errorKind: 'invalid_response' };
     }
     const envelope = json as Partial<ApiResponse<any>>;
     return { ...(envelope as ApiResponse<any>), code: typeof envelope.code === 'number' ? envelope.code : 0 };
-  } catch {
-    return { code: 500, data: null, message: 'No pudimos conectar con el servidor. Revisa tu conexión e inténtalo de nuevo.' };
+  } catch (err: any) {
+    // Ni el timeout ni la caída de red permiten saber si el pedido se creó: `errorKind` le indica al llamador que no reintente a ciegas
+    if (err?.name === 'AbortError') {
+      return { code: 0, data: null, message: 'La confirmación de tu pedido tardó demasiado.', errorKind: 'timeout' };
+    }
+    return { code: 500, data: null, message: 'No pudimos conectar con el servidor.', errorKind: 'network' };
+  } finally {
+    clearTimeout(timer);
   }
 }
 

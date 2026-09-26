@@ -127,7 +127,11 @@ export default function MerchantStoreView({
   const [loadingProduct, setLoadingProduct] = useState(false);
 
   const [deliveryMode, setDeliveryMode] = useState<'delivery' | 'pickup' | 'national'>('delivery');
-  const [rewardMode, setRewardMode] = useState<'DYNAMIC' | 'FIXED'>('DYNAMIC');
+  // El envío nacional no tiene soporte en el contrato de Adonis: si la tienda no lo habilita, jamás puede quedar seleccionado
+  // (una orden nacional viajaba como DELIVERY local con un flete plano inventado). Hook antes de cualquier `return`.
+  React.useEffect(() => {
+    if (deliveryMode === 'national' && !merchant?.isNationalShippingEnabled) setDeliveryMode('delivery');
+  }, [deliveryMode, merchant?.isNationalShippingEnabled]);
 
   // Ubicación real del cliente (GPS / sector elegido en el Home) y cotización oficial del flete
   const [customerLocation, setCustomerLocation] = useState<CustomerLocation | null>(() => {
@@ -302,6 +306,25 @@ export default function MerchantStoreView({
   const handleProductClick = async (product: any, initialQty: number = 1) => {
     setModalInitialQty(initialQty);
     setLoadingProduct(true);
+    // Si el detalle del backend no llega, solo se abre el modal con los datos REALES del listado. Si el listado tampoco trae un
+    // precio válido NO se inventa uno (antes `price || 1.5`): se avisa y no se abre (auditoría C5/limpieza de precio de respaldo).
+    const openWithListingData = () => {
+      const listPrice = Number(product.price);
+      if (!Number.isFinite(listPrice) || listPrice <= 0) {
+        alert('No pudimos cargar la información de este producto. Revisa tu conexión e inténtalo de nuevo.');
+        return;
+      }
+      setSelectedProductDetail({
+        ...product,
+        id: product.id,
+        price: listPrice,
+        variants: [],
+        groups: [],
+        slotGroups: [],
+        metadata: { variants: [], groups: [], slotGroups: [] }
+      });
+      setIsMasterModalOpen(true);
+    };
     try {
       const res = await getProduct(product.id);
       if (res && res.code === 1 && res.data) {
@@ -398,7 +421,8 @@ export default function MerchantStoreView({
         const adaptedProduct = {
           ...raw,
           id: raw.id || product.id,
-          price: raw.price || raw.metadata?.price?.basePrice || product.price || 1.5,
+          // Sin precio en ningún lado: 0 (jamás uno inventado); un producto sin precio válido no se puede agregar (ver handleAddToCartFromModal)
+          price: raw.price || raw.metadata?.price?.basePrice || product.price || 0,
           variants: normalizedGroups,
           groups: normalizedGroups,
           slotGroups: normalizedGroups,
@@ -410,30 +434,13 @@ export default function MerchantStoreView({
           }
         };
         setSelectedProductDetail(adaptedProduct);
+        setIsMasterModalOpen(true);
       } else {
-        setSelectedProductDetail({
-          ...product,
-          id: product.id,
-          price: product.price || 1.5,
-          variants: [],
-          groups: [],
-          slotGroups: [],
-          metadata: { variants: [], groups: [], slotGroups: [] }
-        });
+        openWithListingData();
       }
-      setIsMasterModalOpen(true);
     } catch (err) {
       console.error('Error al cargar detalle del producto:', err);
-      setSelectedProductDetail({
-        ...product,
-        id: product.id,
-        price: product.price || 1.5,
-        variants: [],
-        groups: [],
-        slotGroups: [],
-        metadata: { variants: [], groups: [], slotGroups: [] }
-      });
-      setIsMasterModalOpen(true);
+      openWithListingData();
     } finally {
       setLoadingProduct(false);
     }
@@ -446,6 +453,11 @@ export default function MerchantStoreView({
     // Nunca se inventan ids/códigos de producto: deben ser los reales del backend
     if (!Number.isFinite(realId) || realId <= 0 || !productCode) {
       alert('No se pudo identificar el producto. Recarga la tienda e inténtalo de nuevo.');
+      return;
+    }
+    // Ni precios: un producto sin precio válido (total 0 o no numérico) no entra al carrito
+    if (!(Number(configuredItem.totalPrice) > 0)) {
+      alert('Este producto no tiene un precio disponible en este momento, así que no se puede agregar al pedido.');
       return;
     }
     // Identidad única por producto + configuración de variantes: sabores distintos del mismo producto NO deben fusionarse
@@ -526,17 +538,11 @@ export default function MerchantStoreView({
   const totalItems = cartItems.reduce((acc, item) => acc + (item.qty || item.quantity || 1), 0);
   const subtotalUSD = cartItems.reduce((acc, item) => acc + (item.totalPrice || (item.price * (item.qty || item.quantity || 1))), 0);
 
-  const umbralEnvio = rewardMode === 'FIXED' ? 15 : 20;
-  const faltaParaEnvioGratis = Math.max(0, umbralEnvio - subtotalUSD);
-  const esEnvioGratis = subtotalUSD >= umbralEnvio;
-  const progresoEnvio = Math.min(100, (subtotalUSD / umbralEnvio) * 100);
-  // Flete: cotización oficial del backend (deliveryRate) cuando existe; la tarifa mínima de la tienda queda solo como referencia previa
-  const staticDeliveryFee = Number(merchant?.deliveryFee?.replace('$', '') || 1.50);
-  const deliveryCost = quote.status === 'ok' && quote.rate !== undefined
-    ? quote.rate
-    : (Number.isFinite(staticDeliveryFee) ? staticDeliveryFee : 1.50);
-  const discountDelivery = esEnvioGratis ? deliveryCost : 0;
-  const fleteActivo = deliveryMode === 'pickup' ? 0 : (deliveryMode === 'national' ? 4.50 : (esEnvioGratis ? 0 : deliveryCost));
+  // Flete: SOLO la cotización oficial del backend (deliveryRate según distancia/zonas). Sin cotización el flete es 0 y el carrito no
+  // deja continuar (CartModal `deliveryBlocked`). No hay "envío gratis por umbral" (auditoría C5: enviaba serviceAmount 0 con
+  // distancia real y descuadraba el total contra el backend) ni tarifas de respaldo inventadas.
+  const deliveryCost = quote.status === 'ok' && quote.rate !== undefined ? quote.rate : 0;
+  const fleteActivo = deliveryMode === 'delivery' ? deliveryCost : 0; // pickup: 0; el envío nacional no está soportado
   const totalUSD = subtotalUSD + fleteActivo;
 
   // Piezas de la vista: se montan dentro del motor multiplantilla (nichos con plantilla) o directo (sin plantilla)
@@ -731,7 +737,7 @@ export default function MerchantStoreView({
                     </div>
                     <div>
                       <div className="flex justify-between items-end mt-2">
-                        <span className="text-base md:text-lg font-black text-slate-900">${(product.price || 1.5).toFixed(2)}</span>
+                        <span className="text-base md:text-lg font-black text-slate-900">{Number(product.price) > 0 ? `$${Number(product.price).toFixed(2)}` : 'Ver precio'}</span>
                         <span className="text-[9px] text-slate-400 hover:text-brand-orange cursor-pointer">Ver Ficha</span>
                       </div>
                       <button
@@ -964,13 +970,7 @@ export default function MerchantStoreView({
             subtotalUSD={subtotalUSD}
             deliveryMode={deliveryMode}
             setDeliveryMode={setDeliveryMode}
-            rewardMode={rewardMode}
-            setRewardMode={setRewardMode}
-            faltaParaEnvioGratis={faltaParaEnvioGratis}
-            progresoEnvio={progresoEnvio}
-            esEnvioGratis={esEnvioGratis}
             deliveryCost={deliveryCost}
-            discountDelivery={discountDelivery}
             totalUSD={totalUSD}
             onUpdateQty={handleUpdateQty}
             quoteStatus={quote.status}
@@ -997,7 +997,7 @@ export default function MerchantStoreView({
                 durationMin: isDelivery ? (quote.durationMin ?? 0) : 0,
               });
             }}
-            isNationalShippingEnabled={true}
+            isNationalShippingEnabled={Boolean(merchant?.isNationalShippingEnabled)}
           />
         )}
 
