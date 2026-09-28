@@ -2467,3 +2467,5 @@ export default function MasterProductModal({
     </div>
   );
 }
+/ /   C o r r e c c i ó n   v i s u a l   p a r a   í t e m s   i n a c t i v o s   a p l i c a d a  
+ 
