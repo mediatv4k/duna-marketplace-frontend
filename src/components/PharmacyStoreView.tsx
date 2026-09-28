@@ -70,7 +70,7 @@ export default function PharmacyStoreView() {
   const filteredProducts = pharmacyCatalog.filter(p => 
     p.name.toLowerCase().includes(searchFilter.toLowerCase()) || 
     p.category.toLowerCase().includes(searchFilter.toLowerCase())
-  ).sort((a, b) => {
+  ).sort((a: any, b: any) => {
     const aAgotado = a.status === 'INACTIVE' || a.outOfStock;
     const bAgotado = b.status === 'INACTIVE' || b.outOfStock;
     if (aAgotado === bAgotado) return 0;
@@ -155,7 +155,7 @@ export default function PharmacyStoreView() {
       </div>
       <main className='max-w-4xl mx-auto w-full p-4 flex-1 space-y-3'>
         <div className='grid grid-cols-1 sm:grid-cols-2 gap-3'>
-          {filteredProducts.map((product) => {
+          {filteredProducts.map((product: any) => {
             const agotado = product.status === 'INACTIVE' || product.outOfStock;
             return (
             <div key={product.id} onClick={() => { if(!agotado) setSelectedProduct(product); }} className={`bg-white rounded-2xl border border-slate-200 p-3.5 flex items-center gap-3.5 shadow-2xs hover:shadow-md transition ${agotado ? 'opacity-50 cursor-not-allowed relative' : 'cursor-pointer group'}`}>
