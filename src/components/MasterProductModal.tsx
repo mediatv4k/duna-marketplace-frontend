@@ -482,7 +482,7 @@ export default function MasterProductModal({
       const options = grp?.options || [];
       const currentSel = slot.selectedVariants[groupIdx];
       const current: any[] = Array.isArray(currentSel) && currentSel.length > 0 ? currentSel : options.map((o: any) => ({ ...o, count: 0 }));
-      const max = Number(grp?.maxItems || grp?.max || 0);
+      const max = isPapaito ? papaitoSize : Number(grp?.maxItems || grp?.max || 0);
       const isTarget = (i: any) => i.code === optionCode || i.id === optionCode;
       const turningOn = !current.some((i: any) => isTarget(i) && (i.count || 0) > 0);
       const selectedCount = current.filter((i: any) => (i.count || 0) > 0).length;
@@ -625,7 +625,7 @@ export default function MasterProductModal({
       const grp = availableGroups[groupIdx];
       const options = grp?.options || [];
       const current: any[] = Array.isArray(prev[groupIdx]) ? prev[groupIdx] : options.map((o: any) => ({ ...o, count: 0 }));
-      const max = Number(grp?.maxItems || grp?.max || 0);
+      const max = isPapaito ? papaitoSize : Number(grp?.maxItems || grp?.max || 0);
       const isTarget = (i: any) => i.code === optionCode || i.id === optionCode;
       const turningOn = !current.some((i: any) => isTarget(i) && (i.count || 0) > 0);
       const selectedCount = current.filter((i: any) => (i.count || 0) > 0).length;
@@ -2467,5 +2467,4 @@ export default function MasterProductModal({
     </div>
   );
 }
-/ /   C o r r e c c i ó n   v i s u a l   p a r a   í t e m s   i n a c t i v o s   a p l i c a d a  
- 
+
