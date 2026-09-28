@@ -185,6 +185,14 @@ interface MasterProductModalProps {
   storeCatalog?: any[]; // unidades con las que arranca el contador al abrir (p. ej. el pedido del asistente); por defecto 1
   store?: { name: string; code: string; id?: string | number } | null; // botón "Compartir" (nombre y slug reales) e id real para la sala
   resumeRoomId?: string | null; // rescate de sesión del anfitrión: reabre el Monitor en Vivo de esa sala al abrir el modal
+  /**
+   * 'modal' (por defecto): overlay flotante centrado, igual que siempre — CERO cambios de comportamiento para el resto de tiendas.
+   * 'page': el mismo contenido, sin la tarjeta flotante ni el fondo semitransparente — cubre la pantalla como una página propia,
+   * con scroll nativo (sin los topes de alto del modal) y el botón superior pasa de "Cerrar" (X) a "Volver" (‹). Pensado para
+   * comercios con una "vista de página dedicada" (p. ej. `farma-duna`, ver `MerchantStoreView.handleProductClick`); ningún
+   * cálculo, estado ni handler de este componente cambia con el modo, solo el envoltorio visual.
+   */
+  displayMode?: 'modal' | 'page';
 }
 
 export default function MasterProductModal({
@@ -197,8 +205,10 @@ export default function MasterProductModal({
   initialQty = 1,
   storeCatalog = [],
   store,
-  resumeRoomId = null
+  resumeRoomId = null,
+  displayMode = 'modal'
 }: MasterProductModalProps) {
+  const isPageMode = displayMode === 'page';
   // Cantidad válida: entero entre 1 y 99
   const startQty = Math.min(Math.max(Math.floor(Number(initialQty)) || 1, 1), 99);
   const [step, setStep] = useState<number>(1);
@@ -482,7 +492,7 @@ export default function MasterProductModal({
       const options = grp?.options || [];
       const currentSel = slot.selectedVariants[groupIdx];
       const current: any[] = Array.isArray(currentSel) && currentSel.length > 0 ? currentSel : options.map((o: any) => ({ ...o, count: 0 }));
-      const max = isPapaito ? papaitoSize : Number(grp?.maxItems || grp?.max || 0);
+      const max = Number(grp?.maxItems || grp?.max || 0);
       const isTarget = (i: any) => i.code === optionCode || i.id === optionCode;
       const turningOn = !current.some((i: any) => isTarget(i) && (i.count || 0) > 0);
       const selectedCount = current.filter((i: any) => (i.count || 0) > 0).length;
@@ -625,7 +635,7 @@ export default function MasterProductModal({
       const grp = availableGroups[groupIdx];
       const options = grp?.options || [];
       const current: any[] = Array.isArray(prev[groupIdx]) ? prev[groupIdx] : options.map((o: any) => ({ ...o, count: 0 }));
-      const max = isPapaito ? papaitoSize : Number(grp?.maxItems || grp?.max || 0);
+      const max = Number(grp?.maxItems || grp?.max || 0);
       const isTarget = (i: any) => i.code === optionCode || i.id === optionCode;
       const turningOn = !current.some((i: any) => isTarget(i) && (i.count || 0) > 0);
       const selectedCount = current.filter((i: any) => (i.count || 0) > 0).length;
@@ -1917,10 +1927,22 @@ export default function MasterProductModal({
   );
 
   return (
-    <div className="fixed inset-0 z-[100] flex items-stretch md:items-center justify-center p-0 md:p-4 transition-all duration-300">
-      <div className="absolute inset-0 bg-black/60 backdrop-blur-sm" onClick={onClose}></div>
+    <div
+      className={
+        isPageMode
+          ? 'fixed inset-0 z-[100] bg-white overflow-y-auto' // "página" propia: opaca, a todo el viewport, con su propio scroll nativo (sin backdrop ni tarjeta flotante)
+          : 'fixed inset-0 z-[100] flex items-stretch md:items-center justify-center p-0 md:p-4 transition-all duration-300'
+      }
+    >
+      {!isPageMode && <div className="absolute inset-0 bg-black/60 backdrop-blur-sm" onClick={onClose}></div>}
 
-      <div className={`bg-white w-full ${hasVariants ? 'md:max-w-3xl' : 'md:max-w-2xl'} rounded-none md:rounded-3xl h-full md:h-auto max-h-full md:max-h-[92vh] flex flex-col overflow-hidden shadow-2xl relative z-10 animate-in slide-in-from-bottom md:slide-in-from-bottom-0 md:zoom-in-95 duration-200`}>
+      <div
+        className={
+          isPageMode
+            ? `bg-white w-full ${hasVariants ? 'md:max-w-3xl' : 'md:max-w-2xl'} mx-auto min-h-full flex flex-col relative` // sin recorte de alto ni sombra de tarjeta: crece con el contenido, la página es quien scrollea
+            : `bg-white w-full ${hasVariants ? 'md:max-w-3xl' : 'md:max-w-2xl'} rounded-none md:rounded-3xl h-full md:h-auto max-h-full md:max-h-[92vh] flex flex-col overflow-hidden shadow-2xl relative z-10 animate-in slide-in-from-bottom md:slide-in-from-bottom-0 md:zoom-in-95 duration-200`
+        }
+      >
 
         {/* Controles flotantes */}
         <div className="absolute top-3 right-3 flex items-center gap-2 z-40">
@@ -1933,12 +1955,12 @@ export default function MasterProductModal({
               className="w-8 h-8 rounded-full bg-white/90 backdrop-blur border border-slate-200 hover:bg-slate-100 flex items-center justify-center text-slate-500 transition cursor-pointer shadow-sm"
             />
           )}
-          <button onClick={onClose} className="w-8 h-8 rounded-full bg-white/90 backdrop-blur border border-slate-200 hover:bg-slate-100 flex items-center justify-center text-slate-500 transition cursor-pointer shadow-sm">
-            <X className="w-4 h-4" />
+          <button onClick={onClose} aria-label={isPageMode ? 'Volver' : 'Cerrar'} className="w-8 h-8 rounded-full bg-white/90 backdrop-blur border border-slate-200 hover:bg-slate-100 flex items-center justify-center text-slate-500 transition cursor-pointer shadow-sm">
+            {isPageMode ? <ChevronLeft className="w-4 h-4" /> : <X className="w-4 h-4" />}
           </button>
         </div>
 
-        <div className="flex-1 flex flex-col overflow-y-auto md:overflow-hidden min-h-0">
+        <div className={isPageMode ? 'flex-1 flex flex-col' : 'flex-1 flex flex-col overflow-y-auto md:overflow-hidden min-h-0'}>
           {step === 1 && (
             hasVariants ? (
               /* LAYOUT SIMÉTRICO 50/50 BILATERAL PARA PRODUCTOS CON VARIANTES */

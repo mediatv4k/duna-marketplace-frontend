@@ -115,6 +115,8 @@ export interface MerchantTemplateEngineProps {
   onCloseProductModal?: () => void;
   onAddToCart?: (payload: any) => void;
   productInitialQty?: number; // cantidad inicial del modal de producto (asistente)
+  /** Ver `MasterProductModal.displayMode`: 'page' para comercios con vista de página dedicada (p. ej. `farma-duna`). */
+  productDisplayMode?: 'modal' | 'page';
 }
 
 
@@ -170,6 +172,7 @@ export default function MerchantTemplateEngine({
   onCloseProductModal = () => {},
   onAddToCart = () => {},
   productInitialQty = 1,
+  productDisplayMode = 'modal',
 }: MerchantTemplateEngineProps) {
   const [isCartOpen, setIsCartOpen] = useState(false);
 
@@ -412,6 +415,7 @@ export default function MerchantTemplateEngine({
           initialQty={productInitialQty}
           store={storeCode ? { name: merchantName || '', code: storeCode, id: storeId } : null}
           resumeRoomId={resumeRoomId}
+          displayMode={productDisplayMode}
         />
       )}
     </div>

@@ -578,6 +578,11 @@ export default function MerchantStoreView({
   // Piezas de la vista: se montan dentro del motor multiplantilla (nichos con plantilla) o directo (sin plantilla)
   const templateNiche = templateNicheFromStoreNiche(storeNiche);
   const isFarma = templateNiche === 'farma';
+  // "Cofre de los 10 candados": SOLO este comercio (slug real verificado en DEV) usa una página de producto propia en vez del
+  // modal flotante. Deliberadamente por código exacto de tienda, no por nicho/`isFarma`: si mañana hay otra farmacia, no hereda
+  // este modo sin que alguien lo decida a propósito. Ver `MasterProductModal.displayMode`.
+  const isDedicatedProductPage = merchant?.code === 'farma-duna';
+  const productDisplayMode: 'modal' | 'page' = isDedicatedProductPage ? 'page' : 'modal';
   // Barra lateral de departamentos + productos en escritorio: TODAS las tiendas (la portada se conserva; solo farmacia la oculta)
   const sidebarLayout = true;
   // Buscador reubicado (2026-09-21): antes vivía dentro del catálogo, debajo de promociones/tabs; ahora va pegado
@@ -1013,6 +1018,7 @@ export default function MerchantStoreView({
             initialQty={modalInitialQty}
             store={{ name: merchant.name, code: merchant.code, id: merchant.id }}
             resumeRoomId={modalResumeRoomId}
+            displayMode={productDisplayMode}
           />
         )}
 
@@ -1130,6 +1136,7 @@ export default function MerchantStoreView({
         onCloseProductModal={() => setIsMasterModalOpen(false)}
         onAddToCart={handleAddToCartFromModal}
         productInitialQty={modalInitialQty}
+        productDisplayMode={productDisplayMode}
       >
         {contentNode}
         {overlaysNode}
