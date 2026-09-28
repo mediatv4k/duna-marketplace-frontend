@@ -77,15 +77,19 @@ interface OptionCapsuleProps {
   onSelect?: (e: React.MouseEvent<HTMLButtonElement>) => void;
   onIncrement?: (e: React.MouseEvent<HTMLButtonElement>) => void;
   onDecrement?: (e: React.MouseEvent<HTMLButtonElement>) => void;
+  disabled?: boolean;
 }
 
-function OptionCapsule({ name, image, priceLabel, bsLabel, count, mode, onSelect, onIncrement, onDecrement }: OptionCapsuleProps) {
+function OptionCapsule({ name, image, priceLabel, bsLabel, count, mode, onSelect, onIncrement, onDecrement, disabled }: OptionCapsuleProps) {
   const isActive = count > 0;
-  const shell = `w-full rounded-xl border py-2 px-3 transition-all duration-150 ${
+  let shell = `w-full rounded-xl border py-2 px-3 transition-all duration-150 ${
     isActive
       ? 'border-[#fe6712] bg-orange-50/20 ring-1 ring-[#fe6712]/30 shadow-xs'
       : 'border-slate-200 bg-white hover:border-slate-300'
   }`;
+  if (disabled) {
+    shell = `w-full rounded-xl border py-2 px-3 border-slate-100 bg-slate-50 opacity-50 cursor-not-allowed`;
+  }
 
   const leftInfo = (
     <div className="flex items-center gap-2.5 min-w-0 flex-1">
@@ -93,6 +97,7 @@ function OptionCapsule({ name, image, priceLabel, bsLabel, count, mode, onSelect
       {image && <VariantThumb image={image} name={name} priceLabel={priceLabel} bsLabel={bsLabel} />}
       <div className="min-w-0 flex-1">
         <span className="block text-xs font-bold text-slate-800 leading-tight line-clamp-2">{name}</span>
+        {disabled && <span className="block text-[9px] font-black text-rose-500 uppercase mt-0.5">Agotado</span>}
       </div>
     </div>
   );
@@ -110,9 +115,10 @@ function OptionCapsule({ name, image, priceLabel, bsLabel, count, mode, onSelect
     return (
       <button
         type="button"
+        disabled={disabled}
         onClick={(e) => { e.preventDefault(); e.stopPropagation(); onSelect?.(e); }}
         aria-pressed={isActive}
-        className={`${shell} flex items-center justify-between gap-2.5 text-left cursor-pointer active:scale-[0.99]`}
+        className={`${shell} flex items-center justify-between gap-2.5 text-left cursor-pointer active:scale-[0.99] disabled:active:scale-100 disabled:cursor-not-allowed`}
       >
         {leftInfo}
         <div className="flex items-center gap-2.5 shrink-0">
@@ -133,8 +139,9 @@ function OptionCapsule({ name, image, priceLabel, bsLabel, count, mode, onSelect
     <div className={`${shell} flex items-center justify-between gap-2.5`}>
       <button
         type="button"
+        disabled={disabled}
         onClick={(e) => { e.preventDefault(); e.stopPropagation(); onIncrement?.(e); }}
-        className="flex min-w-0 flex-1 items-center text-left cursor-pointer active:scale-[0.99]"
+        className="flex min-w-0 flex-1 items-center text-left cursor-pointer active:scale-[0.99] disabled:active:scale-100 disabled:cursor-not-allowed"
       >
         {leftInfo}
       </button>
@@ -144,7 +151,7 @@ function OptionCapsule({ name, image, priceLabel, bsLabel, count, mode, onSelect
           <button
             type="button"
             onClick={(e) => { e.preventDefault(); e.stopPropagation(); onDecrement?.(e); }}
-            disabled={count <= 0}
+            disabled={disabled || count <= 0}
             aria-label={`Quitar ${name}`}
             className="flex h-5 w-5 items-center justify-center rounded-full text-slate-600 transition hover:bg-slate-200 cursor-pointer disabled:cursor-not-allowed disabled:opacity-30 disabled:hover:bg-transparent"
           >
@@ -154,8 +161,9 @@ function OptionCapsule({ name, image, priceLabel, bsLabel, count, mode, onSelect
           <button
             type="button"
             onClick={(e) => { e.preventDefault(); e.stopPropagation(); onIncrement?.(e); }}
+            disabled={disabled}
             aria-label={`Agregar ${name}`}
-            className="flex h-5 w-5 items-center justify-center rounded-full bg-[#fe6712] text-white transition hover:bg-[#e0580d] cursor-pointer"
+            className="flex h-5 w-5 items-center justify-center rounded-full bg-[#fe6712] text-white transition hover:bg-[#e0580d] cursor-pointer disabled:cursor-not-allowed disabled:opacity-50"
           >
             <Plus className="h-3 w-3 stroke-[2.5]" />
           </button>
@@ -279,7 +287,7 @@ export default function MasterProductModal({
     if (isArrayOfGroups) {
       return rawList.map((g: any, gIdx: number) => {
         const rawOptions = g.options || g.items || g.values || g.variants || g.choices || [];
-        const normalizedOptions = Array.isArray(rawOptions) ? rawOptions.filter((opt: any) => opt?.status !== 'INACTIVE').map((opt: any, oIdx: number) => ({
+        const normalizedOptions = Array.isArray(rawOptions) ? rawOptions.sort((a: any, b: any) => { const aIn = a?.status === 'INACTIVE'; const bIn = b?.status === 'INACTIVE'; return aIn === bIn ? 0 : aIn ? 1 : -1; }).map((opt: any, oIdx: number) => ({
           ...opt,
           name: opt.name || opt.title || opt.label || (typeof opt === 'string' ? opt : `Opción ${oIdx + 1}`),
           title: opt.title || opt.name || opt.label || (typeof opt === 'string' ? opt : `Opción ${oIdx + 1}`),
@@ -306,7 +314,7 @@ export default function MasterProductModal({
     }
 
     // Array plano de opciones / sabores
-    const normalizedOptions = rawList.filter((opt: any) => opt?.status !== 'INACTIVE').map((opt: any, oIdx: number) => ({
+    const normalizedOptions = rawList.sort((a: any, b: any) => { const aIn = a?.status === 'INACTIVE'; const bIn = b?.status === 'INACTIVE'; return aIn === bIn ? 0 : aIn ? 1 : -1; }).map((opt: any, oIdx: number) => ({
       ...opt,
       name: opt.name || opt.title || opt.label || (typeof opt === 'string' ? opt : `Sabor ${oIdx + 1}`),
       title: opt.title || opt.name || opt.label || (typeof opt === 'string' ? opt : `Sabor ${oIdx + 1}`),
@@ -1585,6 +1593,7 @@ export default function MasterProductModal({
                     bsLabel={bsLabel}
                     count={matchedItem ? (matchedItem.count || 0) : 0}
                     onSelect={() => handleGlobalCheckboxToggle(gIdx, opt.code)}
+                    disabled={opt.status === 'INACTIVE'}
                   />
                 );
               }
@@ -1601,6 +1610,7 @@ export default function MasterProductModal({
                     bsLabel={bsLabel}
                     count={currentCount}
                     onSelect={() => handleGlobalSingleSelect(gIdx, opt.code)}
+                    disabled={opt.status === 'INACTIVE'}
                   />
                 );
               }
@@ -1617,6 +1627,7 @@ export default function MasterProductModal({
                   count={currentCount}
                   onIncrement={() => handleGlobalOptionQuantityChange(gIdx, opt.code, 1)}
                   onDecrement={() => handleGlobalOptionQuantityChange(gIdx, opt.code, -1)}
+                  disabled={opt.status === 'INACTIVE'}
                 />
               );
             })}
@@ -1747,19 +1758,22 @@ export default function MasterProductModal({
                             <button
                               key={opt.code || opt.id}
                               type="button"
+                              disabled={opt.status === 'INACTIVE'}
                               onClick={() => {
                                  const delta = isSelected ? -1 : 1;
                                  handleSlotOptionQuantityChange(gIdx, opt.code || opt.id, delta);
                               }}
-                              className={`h-9 px-3.5 rounded-full border text-[11px] font-bold flex items-center gap-1.5 transition cursor-pointer shadow-xs active:scale-95 ${
+                              className={`h-9 px-3.5 rounded-full border text-[11px] font-bold flex items-center gap-1.5 transition shadow-xs ${
+                                opt.status === 'INACTIVE' ? 'opacity-50 cursor-not-allowed bg-slate-50 text-slate-400 border-slate-200' :
                                 isSelected 
-                                  ? 'bg-[#fff5ed] border-[#FE6712] text-[#FE6712]' 
-                                  : 'bg-white border-slate-200 text-slate-700 hover:border-orange-300'
+                                  ? 'bg-[#fff5ed] border-[#FE6712] text-[#FE6712] cursor-pointer active:scale-95' 
+                                  : 'bg-white border-slate-200 text-slate-700 hover:border-orange-300 cursor-pointer active:scale-95'
                               }`}
                             >
-                              <span className={isSelected ? 'text-[#FE6712]' : 'text-slate-400 font-black'}>{isSelected ? '✓' : '+'}</span>
+                              <span className={opt.status === 'INACTIVE' ? 'text-slate-400 font-black' : isSelected ? 'text-[#FE6712]' : 'text-slate-400 font-black'}>{opt.status === 'INACTIVE' ? 'X' : isSelected ? '✓' : '+'}</span>
                               <span className="truncate max-w-[150px]">{opt.name || opt.title}</span>
-                              {opt.price > 0 && <span className={isSelected ? 'text-orange-700 font-black' : 'text-slate-500'}>(+${opt.price.toFixed(2)})</span>}
+                              {opt.status === 'INACTIVE' && <span className="text-rose-500 font-black ml-1">(Agotado)</span>}
+                              {opt.status !== 'INACTIVE' && opt.price > 0 && <span className={isSelected ? 'text-orange-700 font-black' : 'text-slate-500'}>(+${opt.price.toFixed(2)})</span>}
                             </button>
                           );
                         })}
