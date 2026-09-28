@@ -372,7 +372,7 @@ export default function MerchantStoreView({
           if (isGroupList) {
             normalizedGroups = rawVariants.map((g: any) => {
               const list = g.items || g.options || g.values || g.variants || g.choices || [];
-              const normalizedList = Array.isArray(list) ? list.filter((item: any) => item?.status !== 'INACTIVE').map((item: any, idx: number) => ({
+              const normalizedList = Array.isArray(list) ? list.sort((a: any, b: any) => { const aIn = a?.status === 'INACTIVE'; const bIn = b?.status === 'INACTIVE'; return aIn === bIn ? 0 : aIn ? 1 : -1; }).map((item: any, idx: number) => ({
                 ...item,
                 name: item.title || item.name || item.label || (typeof item === 'string' ? item : `Opción ${idx + 1}`),
                 title: item.title || item.name || item.label || (typeof item === 'string' ? item : `Opción ${idx + 1}`),
@@ -403,7 +403,7 @@ export default function MerchantStoreView({
             });
           } else {
             // Lista plana de sabores u opciones
-            const normalizedList = rawVariants.filter((item: any) => item?.status !== 'INACTIVE').map((item: any, idx: number) => ({
+            const normalizedList = rawVariants.sort((a: any, b: any) => { const aIn = a?.status === 'INACTIVE'; const bIn = b?.status === 'INACTIVE'; return aIn === bIn ? 0 : aIn ? 1 : -1; }).map((item: any, idx: number) => ({
               ...item,
               name: item.title || item.name || item.label || (typeof item === 'string' ? item : `Sabor ${idx + 1}`),
               title: item.title || item.name || item.label || (typeof item === 'string' ? item : `Sabor ${idx + 1}`),
@@ -552,6 +552,11 @@ export default function MerchantStoreView({
       p.name.toLowerCase().includes(searchQuery.toLowerCase()) ||
       (p.category && p.category.toLowerCase().includes(searchQuery.toLowerCase()));
     return matchesCategory && matchesSubcategory && matchesSearch;
+  }).sort((a, b) => {
+    const aAgotado = a.status === 'INACTIVE' || a.outOfStock;
+    const bAgotado = b.status === 'INACTIVE' || b.outOfStock;
+    if (aAgotado === bAgotado) return 0;
+    return aAgotado ? 1 : -1;
   });
 
   const totalItems = cartItems.reduce((acc, item) => acc + (item.qty || item.quantity || 1), 0);
@@ -724,6 +729,7 @@ export default function MerchantStoreView({
             
             <div className={`grid grid-cols-2 sm:grid-cols-2 md:grid-cols-3 ${sidebarLayout ? 'lg:grid-cols-3' : 'lg:grid-cols-4'} gap-3 md:gap-4`}>
               {filteredProducts.map((product) => {
+                const agotado = product.status === 'INACTIVE' || product.outOfStock;
                 // Insignia solo si el backend trae el dato (hoy los productos no incluyen marca oficial / genérico)
                 const badge = product.isOfficialBrand
                   ? { label: 'MARCA OFICIAL', className: 'bg-blue-100 text-blue-700' }
@@ -736,12 +742,17 @@ export default function MerchantStoreView({
                 return (
                   <div
                     key={product.id || product.code}
-                    onClick={() => handleProductClick(product)}
-                    className="group relative bg-white rounded-2xl p-3 border border-slate-100 shadow-sm flex flex-col justify-between cursor-pointer"
+                    onClick={() => { if (!agotado) handleProductClick(product); }}
+                    className={`group relative bg-white rounded-2xl p-3 border border-slate-100 shadow-sm flex flex-col justify-between ${agotado ? 'opacity-50 cursor-not-allowed' : 'cursor-pointer hover:shadow-md transition-shadow'}`}
                   >
                     <div>
+                      {agotado && (
+                        <div className="absolute inset-0 bg-white/40 z-10 rounded-2xl flex items-center justify-center pointer-events-none">
+                           <span className="bg-rose-500 text-white font-black text-[10px] px-3 py-1 rounded-full shadow-lg tracking-wider uppercase">Agotado</span>
+                        </div>
+                      )}
                       {badge && (
-                        <span className={`absolute top-2 left-2 px-2 py-0.5 rounded-md text-[8px] font-bold ${badge.className}`}>{badge.label}</span>
+                        <span className={`absolute top-2 left-2 px-2 py-0.5 rounded-md text-[8px] font-bold z-20 ${badge.className}`}>{badge.label}</span>
                       )}
                       <div className="relative aspect-square w-full overflow-hidden rounded-t-xl bg-slate-50 flex items-center justify-center">
                         <img
@@ -785,9 +796,10 @@ export default function MerchantStoreView({
                       </div>
                       <button
                         type="button"
-                        className="w-full mt-3 bg-slate-50 hover:bg-slate-100 text-slate-700 text-xs font-bold py-2.5 rounded-xl transition flex items-center justify-center gap-1"
+                        disabled={agotado}
+                        className={`w-full mt-3 text-xs font-bold py-2.5 rounded-xl transition flex items-center justify-center gap-1 ${agotado ? 'bg-slate-100 text-slate-400 cursor-not-allowed' : 'bg-slate-50 hover:bg-slate-100 text-slate-700'}`}
                       >
-                        + Agregar
+                        {agotado ? 'Agotado' : '+ Agregar'}
                       </button>
                     </div>
                   </div>

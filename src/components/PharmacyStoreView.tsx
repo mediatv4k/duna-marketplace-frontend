@@ -70,7 +70,12 @@ export default function PharmacyStoreView() {
   const filteredProducts = pharmacyCatalog.filter(p => 
     p.name.toLowerCase().includes(searchFilter.toLowerCase()) || 
     p.category.toLowerCase().includes(searchFilter.toLowerCase())
-  );
+  ).sort((a, b) => {
+    const aAgotado = a.status === 'INACTIVE' || a.outOfStock;
+    const bAgotado = b.status === 'INACTIVE' || b.outOfStock;
+    if (aAgotado === bAgotado) return 0;
+    return aAgotado ? 1 : -1;
+  });
 
   if (viewMode === 'marketplace') {
     return (
@@ -150,20 +155,27 @@ export default function PharmacyStoreView() {
       </div>
       <main className='max-w-4xl mx-auto w-full p-4 flex-1 space-y-3'>
         <div className='grid grid-cols-1 sm:grid-cols-2 gap-3'>
-          {filteredProducts.map(product => (
-            <div key={product.id} onClick={() => setSelectedProduct(product)} className='bg-white rounded-2xl border border-slate-200 p-3.5 flex items-center gap-3.5 shadow-2xs hover:shadow-md transition cursor-pointer group'>
+          {filteredProducts.map((product) => {
+            const agotado = product.status === 'INACTIVE' || product.outOfStock;
+            return (
+            <div key={product.id} onClick={() => { if(!agotado) setSelectedProduct(product); }} className={`bg-white rounded-2xl border border-slate-200 p-3.5 flex items-center gap-3.5 shadow-2xs hover:shadow-md transition ${agotado ? 'opacity-50 cursor-not-allowed relative' : 'cursor-pointer group'}`}>
+              {agotado && (
+                <div className="absolute inset-0 bg-white/40 z-10 rounded-2xl flex items-center justify-center pointer-events-none">
+                  <span className="bg-rose-500 text-white font-black text-[10px] px-3 py-1 rounded-full shadow-lg tracking-wider uppercase">Agotado</span>
+                </div>
+              )}
               <div className="w-16 h-16 rounded-xl border border-slate-100 bg-white flex items-center justify-center overflow-hidden shrink-0">
                 <img src={product.image} alt={product.name} className='max-w-full max-h-full object-contain' />
               </div>
               <div className='flex-1 min-w-0'>
                 <span className='text-[10px] font-black bg-blue-50 text-blue-700 px-2 py-0.5 rounded-md'>{product.category}</span>
-                <h3 className='text-xs font-black text-slate-900 mt-1 truncate group-hover:text-[#fe6712] transition'>{product.name}</h3>
-                <span className='text-xs font-black text-emerald-700 mt-2 block'>
+                <h3 className={`text-xs font-black text-slate-900 mt-1 truncate transition ${agotado ? '' : 'group-hover:text-[#fe6712]'}`}>{product.name}</h3>
+                <span className={`text-xs font-black mt-2 block ${agotado ? 'text-slate-500' : 'text-emerald-700'}`}>
                   {product.hasVariants ? 'Varias Presentaciones ➔' : formatPrice(product.price || 0)}
                 </span>
               </div>
             </div>
-          ))}
+          )})}
         </div>
       </main>
       {selectedProduct && (

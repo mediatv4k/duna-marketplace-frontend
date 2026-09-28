@@ -227,7 +227,7 @@ export default function ComboRoomPage({ params }: { params: { id: string } }) {
     if (isArrayOfGroups) {
       return rawList.map((g: any, gIdx: number) => {
         const rawOptions = g.options || g.items || g.values || g.variants || [];
-        const normalizedOptions = Array.isArray(rawOptions) ? rawOptions.filter((opt: any) => opt?.status !== 'INACTIVE').map((opt: any, oIdx: number) => ({
+        const normalizedOptions = Array.isArray(rawOptions) ? rawOptions.sort((a: any, b: any) => { const aIn = a?.status === 'INACTIVE'; const bIn = b?.status === 'INACTIVE'; return aIn === bIn ? 0 : aIn ? 1 : -1; }).map((opt: any, oIdx: number) => ({
           ...opt,
           name: opt.name || opt.title || opt.label || (typeof opt === 'string' ? opt : `Opción ${oIdx + 1}`),
           code: opt.code || opt.id || opt.value || `opt-${gIdx}-${oIdx}`,
@@ -246,7 +246,7 @@ export default function ComboRoomPage({ params }: { params: { id: string } }) {
       });
     }
 
-    const normalizedOptions = rawList.filter((opt: any) => opt?.status !== 'INACTIVE').map((opt: any, oIdx: number) => ({
+    const normalizedOptions = rawList.sort((a: any, b: any) => { const aIn = a?.status === 'INACTIVE'; const bIn = b?.status === 'INACTIVE'; return aIn === bIn ? 0 : aIn ? 1 : -1; }).map((opt: any, oIdx: number) => ({
       ...opt,
       name: opt.name || opt.title || opt.label || (typeof opt === 'string' ? opt : `Opción ${oIdx + 1}`),
       code: opt.code || opt.id || opt.value || `opt-${oIdx}`,
@@ -571,6 +571,7 @@ export default function ComboRoomPage({ params }: { params: { id: string } }) {
                   <p className="text-[10px] font-black text-slate-500 uppercase tracking-wider">Sin</p>
                   <div className="flex flex-wrap gap-2">
                     {sinOptions.map((opt: any) => {
+                      const agotado = opt.status === 'INACTIVE';
                       const label = opt.name || opt.title || '';
                       const selected = unit.exclusions.includes(label);
                       const displayLabel = label.toUpperCase().startsWith('SIN ') ? label : 'Sin ' + label;
@@ -578,10 +579,12 @@ export default function ComboRoomPage({ params }: { params: { id: string } }) {
                         <button
                           key={label}
                           type="button"
-                          onClick={() => toggleExclusion(safeUnit, label)}
-                          className={`px-4 py-2 rounded-full border text-xs font-bold transition cursor-pointer ${selected ? 'border-[#FE6712] bg-orange-50 text-[#FE6712]' : 'border-slate-200 bg-white text-slate-700 hover:border-[#FE6712]/40'}`}
+                          onClick={() => { if (!agotado) toggleExclusion(safeUnit, label); }}
+                          disabled={agotado}
+                          className={`px-4 py-2 rounded-full border text-xs font-bold transition ${agotado ? 'opacity-50 cursor-not-allowed bg-slate-50 text-slate-400 border-slate-200' : selected ? 'border-[#FE6712] bg-orange-50 text-[#FE6712] cursor-pointer' : 'border-slate-200 bg-white text-slate-700 hover:border-[#FE6712]/40 cursor-pointer'}`}
                         >
-                          {selected ? '✓ ' : '+ '}{displayLabel}
+                          {agotado ? 'X ' : selected ? '✓ ' : '+ '}{displayLabel}
+                          {agotado && <span className="ml-1 text-rose-500 font-black">(Agotado)</span>}
                         </button>
                       );
                     })}
@@ -594,15 +597,16 @@ export default function ComboRoomPage({ params }: { params: { id: string } }) {
                   <p className="text-[10px] font-black text-slate-500 uppercase tracking-wider">¿Acompañamos esta unidad?</p>
                   <div className="flex flex-row overflow-x-auto gap-2.5 pb-1 pt-0.5 no-scrollbar snap-x">
                     {addonOptions.map((opt: any) => {
+                      const agotado = opt.status === 'INACTIVE';
                       const selected = (unit.addons[opt.key] || 0) > 0;
                       return (
                         <div
                           key={opt.key}
-                          onClick={() => toggleAddon(safeUnit, opt.key)}
-                          className={`w-36 shrink-0 snap-start p-2 rounded-xl border flex flex-col justify-between transition cursor-pointer ${selected ? 'border-[#FE6712]/50 bg-[#fff5ed]' : 'border-slate-200 bg-white hover:border-[#FE6712]/30'}`}
+                          onClick={() => { if (!agotado) toggleAddon(safeUnit, opt.key); }}
+                          className={`w-36 shrink-0 snap-start p-2 rounded-xl border flex flex-col justify-between transition ${agotado ? 'opacity-50 cursor-not-allowed border-slate-200 bg-slate-50' : selected ? 'border-[#FE6712]/50 bg-[#fff5ed] cursor-pointer' : 'border-slate-200 bg-white hover:border-[#FE6712]/30 cursor-pointer'}`}
                         >
                           {(opt.image || opt.imageUrl) && (
-                            <img src={opt.image || opt.imageUrl} alt={opt.name} className="w-full h-14 object-cover rounded-lg mb-1.5 bg-white" />
+                            <img src={opt.image || opt.imageUrl} alt={opt.name} className={`w-full h-14 object-cover rounded-lg mb-1.5 bg-white ${agotado ? 'grayscale' : ''}`} />
                           )}
                           <div>
                             <p className="text-[11px] font-bold text-slate-900 truncate">{opt.name}</p>
@@ -610,9 +614,10 @@ export default function ComboRoomPage({ params }: { params: { id: string } }) {
                           </div>
                           <button
                             type="button"
-                            className={`w-full mt-1.5 py-1 text-[11px] font-bold rounded-lg flex items-center justify-center transition ${selected ? 'bg-[#FE6712]/10 text-[#FE6712] border border-[#FE6712]/30' : 'bg-slate-100 text-slate-600 hover:bg-slate-200'}`}
+                            disabled={agotado}
+                            className={`w-full mt-1.5 py-1 text-[11px] font-bold rounded-lg flex items-center justify-center transition ${agotado ? 'bg-slate-200 text-slate-400 cursor-not-allowed' : selected ? 'bg-[#FE6712]/10 text-[#FE6712] border border-[#FE6712]/30' : 'bg-slate-100 text-slate-600 hover:bg-slate-200'}`}
                           >
-                            {selected ? '✓ Agregado' : '+ Agregar'}
+                            {agotado ? 'Agotado' : selected ? '✓ Agregado' : '+ Agregar'}
                           </button>
                         </div>
                       );
