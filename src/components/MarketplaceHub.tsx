@@ -9,7 +9,7 @@ import StoreScheduleModal from '@/components/StoreScheduleModal';
 import AccountMenu from '@/components/AccountMenu';
 import { NoOrdersModal, SavedAddressesModal } from '@/components/AccountModals';
 
-import { getProductsByStore, getStorePromotions, getOrderPublic, getProductCategories, findStores, getStorePaymentInfo, REQUEST_TIMEOUT_MS } from '@/services/marketplaceService';
+import { getProductsByStore, getStorePromotions, getOrderPublic, getProductCategories, findStores, getStorePaymentInfo, getCustomerPromoProgress, REQUEST_TIMEOUT_MS, type CustomerPromoProgress } from '@/services/marketplaceService';
 import { parseStoreAdjustments, storeDiscountBadge, type StoreAdjustment } from '@/lib/storeAdjustments';
 import { isFinalStatus } from '@/lib/orderTracking';
 import { getBCVRate } from '@/lib/bcvRate';
@@ -207,6 +207,20 @@ export default function MultitiendaHub({ initialStoreCode, initialStore, initial
   const [activeOrderId, setActiveOrderId] = useState<string>('');
   const [hasCompletedOrder, setHasCompletedOrder] = useState<boolean>(false);
   const [forceCartOpenCount, setForceCartOpenCount] = useState<number>(0);
+
+  // Cofre Sorpresa: progreso real del cliente (GET /loyalties/{phone}) para el WhatsApp que el checkout confirma. Se consulta con el
+  // checkout abierto y al cambiar el número; al cerrarlo se descarta (al reabrir se vuelve a consultar: pudo sumar una compra).
+  const [promoPhone, setPromoPhone] = useState<string | null>(null);
+  const [promoProgress, setPromoProgress] = useState<CustomerPromoProgress | null>(null);
+  useEffect(() => {
+    setPromoProgress(null);
+    if (!isCheckoutOpen || !promoPhone) return;
+    let vigente = true; // descarta la respuesta de un número o apertura anterior
+    getCustomerPromoProgress(promoPhone)
+      .then((progress) => { if (vigente) setPromoProgress(progress); })
+      .catch(() => { /* sin progreso: la barra no inventa avance */ });
+    return () => { vigente = false; };
+  }, [isCheckoutOpen, promoPhone]);
 
   const [userLocation, setUserLocation] = useState<{ lat: number; lng: number; label: string } | null>(null);
   const [isLocating, setIsLocating] = useState<boolean>(false);
@@ -543,6 +557,8 @@ export default function MultitiendaHub({ initialStoreCode, initialStore, initial
           onClose={handleCloseCheckout}
           orderSummary={orderSummaryData}
           merchantName={activeMerchantInfo.name}
+          promoProgress={promoProgress ?? undefined}
+          onCustomerPhoneChange={setPromoPhone}
           onFinalizeOrder={async (orderData) => {
             if (typeof window !== 'undefined') {
               localStorage.setItem('last_active_order', JSON.stringify(orderData));

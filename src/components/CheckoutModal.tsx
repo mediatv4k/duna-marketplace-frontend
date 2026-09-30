@@ -101,11 +101,13 @@ export interface OrderSummaryData {
   storeAdjustments?: StoreAdjustment[];
 }
 
-// Avance del cliente en el ciclo de compras del Cofre D'una (contador de Adonis cuando el contrato lo exponga; hoy lo puede inyectar el
-// padre, real o simulado). Solo alimenta la barra de progreso: NUNCA genera un descuento; el descuento sale siempre de `activeRewards`.
+// Avance del cliente en el ciclo de compras del Cofre D'una (el padre lo consulta con `getCustomerPromoProgress`). Alimenta la barra de
+// progreso y puede traer la recompensa ya emitida por Adonis (`activeReward`): NUNCA se genera un descuento en el navegador.
 export interface PromoProgressData {
-  completedPurchases: number;
-  requiredPurchases?: number; // por defecto 3
+  completedPurchases: number | null; // null = el backend no informó el contador
+  requiredPurchases?: number | null; // por defecto 3
+  activeReward?: LoyaltyReward | null;
+  phone?: string; // teléfono consultado (+58…): si no coincide con el WhatsApp del formulario, este progreso se ignora
 }
 
 // Comprime la imagen del comprobante (canvas): ancho máx. 1024 px y JPEG calidad 0.6, para no superar el límite del backend (Error 413).
@@ -221,6 +223,8 @@ interface CheckoutModalProps {
   onViewTracking?: () => void;
   onViewReceipt?: () => void;
   promoProgress?: PromoProgressData;
+  // WhatsApp confirmado en la Fase 2 (+58…, tras la pausa de 600 ms) o null si queda incompleto: el padre consulta el progreso con él
+  onCustomerPhoneChange?: (fullPhone: string | null) => void;
 }
 
 export default function CheckoutModal({
@@ -233,6 +237,7 @@ export default function CheckoutModal({
   onViewTracking = () => console.log("Rastrear"),
   onViewReceipt = () => alert("Mostrando recibo digital..."),
   promoProgress,
+  onCustomerPhoneChange,
 }: CheckoutModalProps) {
 
   const [pasoVista, setPasoVista] = useState<'formulario' | 'instrucciones' | 'exito'>('formulario');
@@ -456,6 +461,7 @@ export default function CheckoutModal({
     const digits = telefono.replace(/\D/g, '').replace(/^0+/, '');
     if (digits.length < 7) {
       if (rewardsPhoneRef.current || rewards.length > 0 || selectedRewardId !== null) clearRewards();
+      onCustomerPhoneChange?.(null);
       return;
     }
     const full = `${codigoPais}${digits}`;
@@ -464,6 +470,7 @@ export default function CheckoutModal({
     const t = setTimeout(() => {
       rewardsPhoneRef.current = full;
       void fetchRewards(full);
+      onCustomerPhoneChange?.(full);
     }, 600);
     return () => clearTimeout(t);
     // eslint-disable-next-line react-hooks/exhaustive-deps
@@ -486,7 +493,12 @@ export default function CheckoutModal({
   const adjResult = computeStoreAdjustments(storeAdjustments, subtotalNeto);
   const subtotalConDescuentoTienda = subtotalNeto - adjResult.discountTotal;
   const rewardBases = { purchase: subtotalConDescuentoTienda, delivery: orderSummary.metodoEntrega === 'pickup' ? 0 : costoEnvio };
-  const selectedReward = rewards.find((r) => r.id === selectedRewardId) ?? null;
+  // Progreso consultado por el padre: solo cuenta si es del WhatsApp actual del formulario (el avance o el cupón de otro teléfono se ignora)
+  const progresoCliente = promoProgress && (!promoProgress.phone || promoProgress.phone === buildFullPhone()) ? promoProgress : null;
+  // Recompensas emitidas por el backend para este WhatsApp: las de GET /loyalties (Cofre) + la `activeReward` del progreso, sin duplicar
+  const progresoReward = progresoCliente?.activeReward ?? null;
+  const rewardsDisponibles = progresoReward && !rewards.some((r) => r.id === progresoReward.id) ? [...rewards, progresoReward] : rewards;
+  const selectedReward = rewardsDisponibles.find((r) => r.id === selectedRewardId) ?? null;
   const rewardDiscountUSD = selectedReward ? rewardDiscount(selectedReward, rewardBases) : 0;
   // Una recompensa cuyo descuento da 0 (p. ej. de flete en un retiro) no se aplica ni viaja en el pedido
   const appliedReward = rewardDiscountUSD > 0 ? selectedReward : null;
@@ -499,16 +511,17 @@ export default function CheckoutModal({
   // recompensa activa = ciclo completo; el avance intermedio llega por `promoProgress`. Sin ninguno de los dos no se inventa un avance.
   // Con la orden ya creada (se vuelve a la Fase 3 solo para adjuntar el comprobante) no se muestra: el cupón ya no puede cambiar el cobro.
   const mostrarPromo = orderSummary.metodoEntrega === 'delivery' && !ordenCreada;
-  const promoRequired = Math.min(5, Math.max(1, Math.round(Number(promoProgress?.requiredPurchases) || PROMO_CYCLE_PURCHASES)));
-  const promoReward = rewards.find((r) => r.applyTo === 'DELIVERY' && rewardDiscount(r, rewardBases) > 0)
-    ?? rewards.find((r) => rewardDiscount(r, rewardBases) > 0)
-    ?? rewards[0]
+  const promoRequired = Math.min(5, Math.max(1, Math.round(Number(progresoCliente?.requiredPurchases) || PROMO_CYCLE_PURCHASES)));
+  const promoReward = rewardsDisponibles.find((r) => r.applyTo === 'DELIVERY' && rewardDiscount(r, rewardBases) > 0)
+    ?? rewardsDisponibles.find((r) => rewardDiscount(r, rewardBases) > 0)
+    ?? rewardsDisponibles[0]
     ?? null;
   const promoRewardDiscount = promoReward ? rewardDiscount(promoReward, rewardBases) : 0;
-  const promoKnown = !!promoReward || promoProgress != null;
+  const promoCounter = progresoCliente?.completedPurchases ?? null;
+  const promoKnown = !!promoReward || promoCounter != null;
   const promoCompleted = promoReward
     ? promoRequired
-    : Math.min(promoRequired, Math.max(0, Math.floor(Number(promoProgress?.completedPurchases) || 0)));
+    : Math.min(promoRequired, Math.max(0, Math.floor(promoCounter ?? 0)));
   const promoUnlocked = promoKnown && promoCompleted >= promoRequired;
   const promoApplied = !!promoReward && appliedReward?.id === promoReward.id;
   const promoFaltan = promoRequired - promoCompleted;

@@ -1,4 +1,6 @@
-﻿const API_BASE = process.env.NEXT_PUBLIC_API_URL || 'https://dev.carjos-marketplace.cloud';
+﻿import { parseLoyaltyResponse, type LoyaltyReward } from '@/lib/loyalty';
+
+const API_BASE = process.env.NEXT_PUBLIC_API_URL || 'https://dev.carjos-marketplace.cloud';
 const API_KEY = process.env.NEXT_PUBLIC_SERVER_API_KEY || 'bf8f1b64-6342-48c5-af05-501e4c15a6cb';
 const TIMEZONE = process.env.NEXT_PUBLIC_TIMEZONE || 'America/Caracas';
 
@@ -74,6 +76,42 @@ export async function getStorePaymentInfo(storeId: number | string, timeoutMs?: 
 // `code`): no es un error para el usuario, simplemente no tiene recompensas (`parseLoyaltyResponse` en `src/lib/loyalty.ts` lo interpreta).
 export async function getCustomerLoyalties(phone: string): Promise<ApiResponse<any>> {
   return await apiFetch<any>(`/loyalties/${encodeURIComponent(phone)}`, {}, REQUEST_TIMEOUT_MS);
+}
+
+// Progreso del Cofre Sorpresa del cliente (barra de la Fase 3 del checkout). Se lee de GET /loyalties/{phone}: `/store/{id}/customer/progress`
+// NO existe en Adonis (verificado en DEV el 2026-09-30: E_ROUTE_NOT_FOUND). Del sobre con `code === 1` se toman `data.completedPurchases`,
+// `data.requiredPurchases` y `data.activeReward` (o, si no viene, la primera de `activeRewards`); un campo ausente o inválido queda en
+// null y la barra no inventa avance. Cliente sin historial (404 "Cliente no encontrado") = 0 compras. Cualquier otra respuesta = null.
+export interface CustomerPromoProgress {
+  phone: string; // teléfono consultado (+58…): el checkout solo usa este progreso si coincide con el WhatsApp del formulario
+  completedPurchases: number | null;
+  requiredPurchases: number | null;
+  activeReward: LoyaltyReward | null;
+}
+
+const purchaseCount = (v: unknown): number | null => {
+  if (typeof v !== 'number' && !(typeof v === 'string' && v.trim() !== '')) return null;
+  const n = Number(v);
+  return Number.isInteger(n) && n >= 0 ? n : null;
+};
+
+export async function getCustomerPromoProgress(phone: string): Promise<CustomerPromoProgress | null> {
+  const res = await getCustomerLoyalties(phone);
+  const envelope = (res && typeof res === 'object' ? res : {}) as { success?: unknown; message?: unknown };
+  if (envelope.success === false && /no encontrado|not found/i.test(String(envelope.message || ''))) {
+    return { phone, completedPurchases: 0, requiredPurchases: null, activeReward: null };
+  }
+  if (!res || res.code !== 1) return null;
+  const data = (res.data && typeof res.data === 'object' ? res.data : {}) as Record<string, unknown>;
+  const single = data.activeReward ? parseLoyaltyResponse({ activeRewards: [data.activeReward] }).rewards[0] ?? null : null;
+  const listed = parseLoyaltyResponse(res).rewards;
+  const required = purchaseCount(data.requiredPurchases);
+  return {
+    phone,
+    completedPurchases: purchaseCount(data.completedPurchases),
+    requiredPurchases: required && required > 0 ? required : null,
+    activeReward: single ?? listed.find((r) => r.applyTo === 'DELIVERY') ?? listed[0] ?? null,
+  };
 }
 
 // Tiempo máximo de espera de la compra (incluye la subida del comprobante): 25 s. Pasado ese tiempo la petición se aborta y el cliente
