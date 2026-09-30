@@ -1377,26 +1377,38 @@ export default function CheckoutModal({
                   </button>
                 </>
               ) : (
-                <button
-                  type="button"
-                  onClick={handleCompleteFinalOrder}
-                  disabled={submitting}
-                  className={`w-full flex items-center justify-center gap-2 rounded-full bg-[#fe6712] hover:bg-[#e0580d] disabled:opacity-50 py-2 text-xs font-black text-white shadow-md ${beacon === 'confirm' ? BEACON_CLASS : ''}`}
-                >
-                  <span>{submitting ? 'Registrando tu pedido...' : (intentoAmbiguo ? 'Ya verifiqué, reintentar pedido' : 'Completar pedido')}</span>
-                  {!submitting && <Check className="h-4 w-4 stroke-[3]" />}
-                </button>
+                <div className="flex gap-2">
+                  <button
+                    type="button"
+                    onClick={() => setPasoVista('formulario')}
+                    disabled={submitting}
+                    className="rounded-2xl border border-slate-200 px-3 py-1.5 text-xs font-bold text-slate-600 hover:bg-slate-50 disabled:opacity-50"
+                  >
+                    <ArrowLeft className="h-4 w-4" />
+                  </button>
+                  <button
+                    type="button"
+                    onClick={handleCompleteFinalOrder}
+                    disabled={submitting}
+                    className={`flex-1 flex items-center justify-center gap-2 rounded-full bg-[#fe6712] hover:bg-[#e0580d] disabled:opacity-50 py-2 text-xs font-black text-white shadow-md ${beacon === 'confirm' ? BEACON_CLASS : ''}`}
+                  >
+                    <span>{submitting ? 'Registrando tu pedido...' : (intentoAmbiguo ? 'Ya verifiqué, reintentar pedido' : 'Completar pedido')}</span>
+                    {!submitting && <Check className="h-4 w-4 stroke-[3]" />}
+                  </button>
+                </div>
               )}
-              <div className="text-center">
-                <button
-                  type="button"
-                  onClick={() => setPasoVista(ordenCreada ? 'exito' : 'formulario')}
-                  disabled={submitting || uploading}
-                  className="text-[10px] font-bold text-slate-500 hover:text-slate-800 underline"
-                >
-                  {ordenCreada ? 'Volver a la confirmación' : 'Volver para cambiar método'}
-                </button>
-              </div>
+              {ordenCreada && (
+                <div className="text-center">
+                  <button
+                    type="button"
+                    onClick={() => setPasoVista('exito')}
+                    disabled={uploading}
+                    className="text-[10px] font-bold text-slate-500 hover:text-slate-800 underline"
+                  >
+                    Volver a la confirmación
+                  </button>
+                </div>
+              )}
             </div>
           ) : (
             <div className="space-y-1.5">
