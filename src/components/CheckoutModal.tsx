@@ -101,6 +101,13 @@ export interface OrderSummaryData {
   storeAdjustments?: StoreAdjustment[];
 }
 
+// Avance del cliente en el ciclo de compras del Cofre D'una (contador de Adonis cuando el contrato lo exponga; hoy lo puede inyectar el
+// padre, real o simulado). Solo alimenta la barra de progreso: NUNCA genera un descuento; el descuento sale siempre de `activeRewards`.
+export interface PromoProgressData {
+  completedPurchases: number;
+  requiredPurchases?: number; // por defecto 3
+}
+
 // Comprime la imagen del comprobante (canvas): ancho máx. 1024 px y JPEG calidad 0.6, para no superar el límite del backend (Error 413).
 // Si algo falla o el resultado no es más liviano, se conserva el archivo original.
 async function compressPaymentImage(file: File, maxWidth = 1024, quality = 0.6): Promise<File> {
@@ -202,6 +209,17 @@ function classifyPurchaseFailure(response: ApiResponse<any> | null | undefined, 
   };
 }
 
+const PROMO_CYCLE_PURCHASES = 3;
+
+// Texto del botón del último tramo: "¡Aplicar 25% de descuento en Delivery!" con una recompensa de flete; "¡Canjear Cupón!" en otro caso
+function promoCtaLabel(reward: LoyaltyReward | null): string {
+  if (!reward || reward.applyTo !== 'DELIVERY') return '¡Canjear Cupón!';
+  const value = reward.amountType === 'PERCENT'
+    ? `${Number.isInteger(reward.amount) ? reward.amount : reward.amount.toFixed(2)}%`
+    : `$${reward.amount.toFixed(2)}`;
+  return `¡Aplicar ${value} de descuento en Delivery!`;
+}
+
 interface CheckoutModalProps {
   isOpen: boolean;
   onClose: () => void;
@@ -211,6 +229,7 @@ interface CheckoutModalProps {
   onBackToCart: () => void;
   onViewTracking?: () => void;
   onViewReceipt?: () => void;
+  promoProgress?: PromoProgressData;
 }
 
 export default function CheckoutModal({
@@ -222,6 +241,7 @@ export default function CheckoutModal({
   onBackToCart,
   onViewTracking = () => console.log("Rastrear"),
   onViewReceipt = () => alert("Mostrando recibo digital..."),
+  promoProgress,
 }: CheckoutModalProps) {
 
   const [pasoVista, setPasoVista] = useState<'formulario' | 'instrucciones' | 'exito'>('formulario');
@@ -273,6 +293,9 @@ export default function CheckoutModal({
   const [selectedRewardId, setSelectedRewardId] = useState<number | null>(null);
   const rewardsPhoneRef = useRef<string>('');
   const rewardsReqRef = useRef<number>(0);
+  // Botón "¡Canjear Cupón!" con el ciclo completo pero sin recompensa aún en `activeRewards`: reconsulta en curso y resultado para el cliente
+  const [canjeandoPromo, setCanjeandoPromo] = useState<boolean>(false);
+  const [avisoCanje, setAvisoCanje] = useState<string | null>(null);
   // Descuentos (< 0) y cargos (> 0) del comercio: `store.additionalItemsPercent`/`additionalItemsAmount` de payment/info. Se siembran con lo que
   // la tienda ya consultó y la consulta fresca al abrir (y la de un `code: 21`) los reemplaza: esa respuesta es la fuente de verdad.
   const [storeAdjustments, setStoreAdjustments] = useState<StoreAdjustment[]>(() => orderSummary.storeAdjustments ?? []);
@@ -284,6 +307,7 @@ export default function CheckoutModal({
     rewardsPhoneRef.current = '';
     setRewards([]);
     setSelectedRewardId(null);
+    setAvisoCanje(null);
   };
   // Consulta las recompensas activas. Devuelve la lista, o null si el backend no respondió con claridad (red/timeout) o llegó una
   // consulta más nueva: en ese caso NO se toca lo que el cliente ya tenía (no se concluye que perdió su recompensa).
@@ -480,6 +504,30 @@ export default function CheckoutModal({
   const totalAntesDescuento = subtotalConDescuentoTienda + adjResult.chargesTotal + costoEnvio + propina;
   const totalFinalUSD = totalAntesDescuento - rewardDiscountUSD;
 
+  // Barra de progreso del Cofre (Fase 2). Solo afirma lo que confirma el backend: una recompensa activa = ciclo completo; el avance
+  // intermedio llega por `promoProgress`. Sin ninguno de los dos no se inventa un avance (los tramos quedan pendientes).
+  const promoRequired = Math.min(5, Math.max(1, Math.round(Number(promoProgress?.requiredPurchases) || PROMO_CYCLE_PURCHASES)));
+  const promoReward = rewards.find((r) => r.applyTo === 'DELIVERY' && rewardDiscount(r, rewardBases) > 0)
+    ?? rewards.find((r) => rewardDiscount(r, rewardBases) > 0)
+    ?? rewards[0]
+    ?? null;
+  const promoRewardDiscount = promoReward ? rewardDiscount(promoReward, rewardBases) : 0;
+  const promoKnown = !!promoReward || promoProgress != null;
+  const promoCompleted = promoReward
+    ? promoRequired
+    : Math.min(promoRequired, Math.max(0, Math.floor(Number(promoProgress?.completedPurchases) || 0)));
+  const promoUnlocked = promoKnown && promoCompleted >= promoRequired;
+  const promoApplied = !!promoReward && appliedReward?.id === promoReward.id;
+  const promoFaltan = promoRequired - promoCompleted;
+  const telefonoConsultable = telefono.replace(/\D/g, '').replace(/^0+/, '').length >= 7;
+  const promoHint = promoReward && promoRewardDiscount <= 0
+    ? (promoReward.applyTo === 'DELIVERY' ? 'Tu recompensa aplica al envío: elige delivery en el carrito para usarla.' : 'Tu recompensa no aplica a este pedido.')
+    : promoKnown
+      ? `Te ${promoFaltan === 1 ? 'falta 1 compra' : `faltan ${promoFaltan} compras`} para abrir tu Cofre: descuento en tu delivery o cupón sorpresa.`
+      : telefonoConsultable
+        ? `Cada ${promoRequired} compras abres un Cofre D'una: descuento en tu delivery o cupón sorpresa.`
+        : 'Escribe tu WhatsApp para consultar tu progreso.';
+
   const cobraEnBs = selectedMethod?.field5 === 'REF';
   const tasaRef = liveRateBcv ?? 0;
   const totalBolivares = totalFinalUSD * tasaRef;
@@ -586,6 +634,27 @@ export default function CheckoutModal({
   };
 
   const handleSelectReward = (id: number) => setSelectedRewardId((prev) => (prev === id ? null : id));
+
+  // Último tramo: con recompensa real se aplica tal cual (mismo flujo que el Cofre de abajo). Con el ciclo completo pero sin recompensa
+  // en `activeRewards` se reconsulta el backend; si aún no hay una, se avisa y NO se aplica ningún descuento local (auditoría C6).
+  const handleRedeemPromo = async () => {
+    if (promoReward) {
+      setSelectedRewardId(promoReward.id);
+      return;
+    }
+    if (!telefonoConsultable) {
+      setAvisoCanje('Escribe tu WhatsApp para buscar tu cupón.');
+      return;
+    }
+    setCanjeandoPromo(true);
+    setAvisoCanje(null);
+    const vigentes = await fetchRewards(buildFullPhone());
+    setCanjeandoPromo(false);
+    const usable = vigentes?.find((r) => rewardDiscount(r, rewardBases) > 0);
+    if (usable) setSelectedRewardId(usable.id);
+    else if (vigentes === null) setAvisoCanje('No pudimos consultar tu cupón en este momento. Inténtalo de nuevo.');
+    else if (vigentes.length === 0) setAvisoCanje('Tu cupón todavía se está activando: estará disponible en tu próxima compra.');
+  };
 
   const handleProceedToInstructions = () => {
     // El envío nacional no tiene soporte en el contrato de Adonis: no se deja avanzar (defensa en profundidad; el carrito ya no lo ofrece)
@@ -920,6 +989,96 @@ export default function CheckoutModal({
             <button type="button" onClick={onClose} className="w-6 h-6 rounded-full bg-white/20 flex items-center justify-center text-white hover:bg-white/30">
               <X className="h-3.5 w-3.5" />
             </button>
+          </div>
+        )}
+
+        {/* Progreso de Promoción (Cofre D'una): tramos del ciclo de compras; el último habilita el canje de la recompensa real */}
+        {pasoVista === 'formulario' && (
+          <div data-testid="promo-progress" className="shrink-0 px-5 pt-2.5">
+            <div className="rounded-2xl border border-orange-200/60 bg-orange-50/60 px-3 py-2 space-y-1.5">
+              <div className="flex items-center justify-between gap-2">
+                <span className="text-[10px] font-black text-slate-800 flex items-center gap-1.5 min-w-0">
+                  <Gift className="h-3.5 w-3.5 text-[#fe6712] shrink-0" />
+                  <span className="truncate">Promo Delivery · Cofre D&apos;una</span>
+                </span>
+                <span className={`shrink-0 text-[8px] font-black px-1.5 py-0.5 rounded-md ${promoUnlocked ? 'bg-[#fe6712] text-white' : 'bg-orange-100 text-[#fe6712]'}`}>
+                  {promoUnlocked ? '¡Cofre desbloqueado!' : promoKnown ? `${promoCompleted}/${promoRequired} compras` : `Meta: ${promoRequired} compras`}
+                </span>
+              </div>
+
+              <div
+                role="progressbar"
+                aria-label="Compras del ciclo de recompensa"
+                aria-valuemin={0}
+                aria-valuemax={promoRequired}
+                aria-valuenow={promoKnown ? promoCompleted : undefined}
+                className="flex items-center px-1.5 pb-3"
+              >
+                {Array.from({ length: promoRequired }, (_, i) => {
+                  const step = i + 1;
+                  const done = promoKnown && step <= promoCompleted;
+                  const isGoal = step === promoRequired;
+                  return (
+                    <React.Fragment key={step}>
+                      {i > 0 && (
+                        <span
+                          aria-hidden="true"
+                          className={`mx-1 flex-1 rounded-full transition-all duration-500 ${done ? 'h-1 bg-[#fe6712]' : 'h-0 border-t-2 border-dashed border-slate-300'}`}
+                        />
+                      )}
+                      <span className="relative shrink-0">
+                        <span
+                          className={`flex h-6 w-6 items-center justify-center rounded-full text-[9px] font-black transition ${
+                            done ? 'bg-[#fe6712] text-white shadow-sm shadow-[#fe6712]/30' : 'border-2 border-dashed border-slate-300 bg-white text-slate-400'
+                          } ${isGoal && promoUnlocked ? 'ring-2 ring-[#fe6712]/25' : ''}`}
+                        >
+                          {isGoal ? <Gift className="h-3.5 w-3.5" /> : done ? <Check className="h-3 w-3 stroke-[3]" /> : step}
+                        </span>
+                        <span className={`absolute left-1/2 top-full mt-0.5 -translate-x-1/2 whitespace-nowrap text-[7.5px] font-black ${done ? 'text-[#fe6712]' : 'text-slate-400'}`}>
+                          {isGoal ? `Meta ${promoRequired}/${promoRequired}` : `${step}/${promoRequired}`}
+                        </span>
+                      </span>
+                    </React.Fragment>
+                  );
+                })}
+              </div>
+
+              {promoApplied ? (
+                <div className="flex items-center justify-between gap-2 rounded-xl border border-emerald-300 bg-emerald-50 px-2.5 py-1">
+                  <span className="flex items-center gap-1 text-[10px] font-black text-emerald-700 min-w-0">
+                    <CheckCircle2 className="h-3.5 w-3.5 shrink-0" />
+                    <span className="truncate">¡Recompensa aplicada! -${rewardDiscountUSD.toFixed(2)}</span>
+                  </span>
+                  <button
+                    type="button"
+                    onClick={() => setSelectedRewardId(null)}
+                    className="shrink-0 text-[8.5px] font-bold text-slate-500 underline hover:text-slate-800 transition cursor-pointer"
+                  >
+                    Guardar para después
+                  </button>
+                </div>
+              ) : promoUnlocked && (!promoReward || promoRewardDiscount > 0) ? (
+                <button
+                  type="button"
+                  data-testid="promo-redeem"
+                  onClick={handleRedeemPromo}
+                  disabled={canjeandoPromo}
+                  className="w-full flex items-center justify-center gap-1.5 rounded-xl bg-gradient-to-r from-[#fe6712] to-[#ff8a3d] hover:from-[#e0580d] hover:to-[#fe6712] disabled:opacity-60 py-1.5 text-[11px] font-black text-white shadow-md shadow-[#fe6712]/30 ring-2 ring-[#fe6712]/20 transition cursor-pointer"
+                >
+                  {canjeandoPromo ? <Loader2 className="h-3.5 w-3.5 animate-spin" /> : <Gift className="h-3.5 w-3.5" />}
+                  <span>{canjeandoPromo ? 'Buscando tu cupón…' : promoCtaLabel(promoReward)}</span>
+                  {promoReward && !canjeandoPromo && (
+                    <span className="rounded-md bg-white/25 px-1 py-0.5 text-[9px]">-${promoRewardDiscount.toFixed(2)}</span>
+                  )}
+                </button>
+              ) : (
+                <p className="text-[9px] font-bold text-slate-500 leading-snug">{promoHint}</p>
+              )}
+
+              {avisoCanje && (
+                <p role="status" className="text-[9px] font-bold text-amber-700 leading-snug">{avisoCanje}</p>
+              )}
+            </div>
           </div>
         )}
 
