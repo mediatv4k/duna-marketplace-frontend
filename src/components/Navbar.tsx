@@ -45,6 +45,32 @@ export default function Navbar({
               </button>
             );
           })}
+          
+          {/* Enlace D'una Delivery */}
+          <a
+            href={process.env.NEXT_PUBLIC_DELIVERY_LANDING_URL || "http://localhost:3001"}
+            target="_blank"
+            rel="noopener noreferrer"
+            className="flex items-center gap-1.5 px-4 py-1.5 rounded-full text-xs font-black transition whitespace-nowrap cursor-pointer border border-[#fe6712] text-[#fe6712] bg-[#fff5ed] hover:bg-orange-100 shrink-0 ml-2"
+          >
+            <svg
+              xmlns="http://www.w3.org/2000/svg"
+              width="14"
+              height="14"
+              viewBox="0 0 24 24"
+              fill="none"
+              stroke="currentColor"
+              strokeWidth="2.5"
+              strokeLinecap="round"
+              strokeLinejoin="round"
+            >
+              <rect x="1" y="3" width="15" height="13"></rect>
+              <polygon points="16 8 20 8 23 11 23 16 16 16 16 8"></polygon>
+              <circle cx="5.5" cy="18.5" r="2.5"></circle>
+              <circle cx="18.5" cy="18.5" r="2.5"></circle>
+            </svg>
+            D'una Delivery
+          </a>
         </div>
 
         {/* Tasa BCV real (viene de /api/bcv); sin tasa muestra "no disponible" */}
