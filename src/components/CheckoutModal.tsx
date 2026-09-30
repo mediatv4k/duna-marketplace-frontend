@@ -5,7 +5,7 @@ import { useBeacon, BEACON_CLASS } from '@/lib/beacon';
 import {
   ArrowRight, ArrowLeft, X, HeartHandshake, Check, Copy, Upload,
   CheckCircle2, Info, Clock, FileText, Loader2, MessageCircle,
-  CreditCard, Bike, Car, Truck, Gift, Tag
+  CreditCard, Bike, Car, Truck, Gift, Tag, Sparkles
 } from 'lucide-react';
 
 // Ícono del vehículo asignado por el motor logístico (antes emoji de `logisticsEngine.icono`): moto → Bike,
@@ -513,6 +513,21 @@ export default function CheckoutModal({
   const promoApplied = !!promoReward && appliedReward?.id === promoReward.id;
   const promoFaltan = promoRequired - promoCompleted;
   const telefonoConsultable = telefono.replace(/\D/g, '').replace(/^0+/, '').length >= 7;
+  const promoPct = promoKnown ? Math.round((promoCompleted / promoRequired) * 100) : 0;
+  // Copy de expectativa (recompensa misteriosa): el beneficio concreto solo se revela al destaparlo, y siempre es el real del backend
+  const promoSubtitle = avisoCanje
+    ? avisoCanje
+    : promoApplied && promoReward
+      ? `¡Destapaste ${describeReward(promoReward)}!`
+      : promoReward && promoRewardDiscount <= 0
+        ? 'Tu recompensa no aplica a este pedido'
+        : promoUnlocked
+          ? '¡Tu cofre está listo!'
+          : promoKnown && promoFaltan === 1
+            ? '¡Estás a 1 compra de destapar tu sorpresa!'
+            : promoKnown && promoCompleted > 0
+              ? `¡Vas bien! Faltan ${promoFaltan} compras para tu sorpresa`
+              : `Desbloquea un beneficio exclusivo en tu ${promoRequired}ª compra`;
 
   const cobraEnBs = selectedMethod?.field5 === 'REF';
   const tasaRef = liveRateBcv ?? 0;
@@ -629,7 +644,7 @@ export default function CheckoutModal({
       return;
     }
     if (!telefonoConsultable) {
-      setAvisoCanje('Falta tu WhatsApp');
+      setAvisoCanje('Revisa tu WhatsApp para abrir tu cofre');
       return;
     }
     setCanjeandoPromo(true);
@@ -638,8 +653,8 @@ export default function CheckoutModal({
     setCanjeandoPromo(false);
     const usable = vigentes?.find((r) => rewardDiscount(r, rewardBases) > 0);
     if (usable) setSelectedRewardId(usable.id);
-    else if (vigentes === null) setAvisoCanje('Sin conexión · reintentar');
-    else if (vigentes.length === 0) setAvisoCanje('Cupón en activación');
+    else if (vigentes === null) setAvisoCanje('Sin conexión: inténtalo de nuevo');
+    else if (vigentes.length === 0) setAvisoCanje('Tu cofre aún se está preparando');
   };
 
   const handleProceedToInstructions = () => {
@@ -1197,77 +1212,65 @@ export default function CheckoutModal({
           </div>
         )}
 
-        {/* Promo delivery (Cofre D'una): línea fina de tramos, sin contenedor; el último tramo habilita "Activar cupón" con la recompensa real */}
+        {/* Cofre Sorpresa D'una (solo delivery): barra lineal continua sin contenedor; al completar la meta, "¡Destapar Recompensa!" aplica la recompensa real */}
         {pasoVista === 'instrucciones' && selectedMethod && mostrarPromo && (
-          <div data-testid="promo-progress" className="shrink-0 px-5 pt-2 flex items-center gap-2">
-            <span className="shrink-0 flex items-center gap-1 text-[9px] font-black text-slate-500">
-              <Gift className="h-3 w-3 text-emerald-500" />
-              Promo delivery
-              {promoKnown && <span className="text-emerald-600">{promoCompleted}/{promoRequired}</span>}
-            </span>
-            <div
-              role="progressbar"
-              aria-label="Compras del ciclo de la promo de delivery"
-              aria-valuemin={0}
-              aria-valuemax={promoRequired}
-              aria-valuenow={promoKnown ? promoCompleted : undefined}
-              className="flex-1 min-w-0 flex items-center"
-            >
-              {Array.from({ length: promoRequired }, (_, i) => {
-                const step = i + 1;
-                const done = promoKnown && step <= promoCompleted;
-                const isGoal = step === promoRequired;
-                return (
-                  <React.Fragment key={step}>
-                    {i > 0 && (
-                      <span aria-hidden="true" className={`h-0.5 flex-1 rounded-full transition-colors duration-500 ${done ? 'bg-emerald-500' : 'bg-slate-200'}`} />
-                    )}
-                    <span
-                      title={isGoal ? `Meta ${promoRequired}/${promoRequired}` : `${step}/${promoRequired}`}
-                      className={`flex h-4 w-4 shrink-0 items-center justify-center rounded-full transition-colors duration-500 ${
-                        done ? 'bg-emerald-500 text-white' : 'border border-slate-300 bg-white text-slate-300'
-                      }`}
-                    >
-                      {isGoal ? <Gift className="h-2.5 w-2.5" /> : done ? <Check className="h-2.5 w-2.5 stroke-[4]" /> : null}
-                    </span>
-                  </React.Fragment>
-                );
-              })}
-            </div>
-            {promoApplied ? (
-              <button
-                type="button"
-                aria-pressed="true"
-                title="Quitar cupón"
-                onClick={() => setSelectedRewardId(null)}
-                disabled={submitting}
-                className="shrink-0 flex items-center gap-1 text-[9.5px] font-black text-emerald-600 hover:text-emerald-700 disabled:opacity-50 transition cursor-pointer"
-              >
-                <CheckCircle2 className="h-3 w-3" /> Cupón activo -${rewardDiscountUSD.toFixed(2)}
-              </button>
-            ) : promoUnlocked && (!promoReward || promoRewardDiscount > 0) ? (
-              canjeandoPromo ? (
-                <span className="shrink-0 flex items-center gap-1 text-[9.5px] font-bold text-slate-400">
-                  <Loader2 className="h-3 w-3 animate-spin" /> Buscando…
-                </span>
-              ) : (
+          <div data-testid="promo-progress" className="shrink-0 px-5 pt-2 space-y-1">
+            <div className="flex items-center justify-between gap-2">
+              <div className="min-w-0 leading-tight">
+                <p className="flex items-center gap-1 text-[10px] font-black text-slate-800">
+                  <Gift className="h-3 w-3 shrink-0 text-emerald-500" />
+                  Cofre Sorpresa D&apos;una
+                </p>
+                <p
+                  title={promoSubtitle}
+                  role={avisoCanje ? 'status' : undefined}
+                  className={`truncate text-[9px] font-bold ${avisoCanje ? 'text-amber-700' : promoApplied ? 'text-emerald-600' : 'text-slate-400'}`}
+                >
+                  {promoSubtitle}
+                </p>
+              </div>
+              {promoApplied ? (
+                <button
+                  type="button"
+                  aria-pressed="true"
+                  aria-label="Quitar recompensa"
+                  title="Guardar para después"
+                  onClick={() => setSelectedRewardId(null)}
+                  disabled={submitting}
+                  className="shrink-0 flex items-center gap-1 rounded-full bg-emerald-50 px-2 py-0.5 text-[9.5px] font-black text-emerald-700 hover:bg-emerald-100 disabled:opacity-50 transition cursor-pointer"
+                >
+                  <CheckCircle2 className="h-3 w-3" /> -${rewardDiscountUSD.toFixed(2)}
+                  <X className="h-2.5 w-2.5 opacity-60" />
+                </button>
+              ) : promoUnlocked && (!promoReward || promoRewardDiscount > 0) ? (
                 <button
                   type="button"
                   data-testid="promo-redeem"
                   onClick={handleRedeemPromo}
-                  disabled={submitting}
-                  className={`shrink-0 max-w-[9rem] truncate rounded-full px-2.5 py-0.5 text-[9.5px] font-black transition cursor-pointer disabled:opacity-50 ${
-                    avisoCanje ? 'text-amber-700 underline' : 'bg-emerald-500 hover:bg-emerald-600 text-white shadow-sm'
-                  }`}
+                  disabled={submitting || canjeandoPromo}
+                  className="shrink-0 flex items-center gap-1 rounded-full bg-emerald-500 hover:bg-emerald-600 disabled:opacity-60 px-2.5 py-1 text-[9.5px] font-black text-white shadow-sm shadow-emerald-500/30 transition cursor-pointer"
                 >
-                  {avisoCanje || 'Activar cupón'}
+                  {canjeandoPromo ? <Loader2 className="h-3 w-3 animate-spin" /> : <Sparkles className="h-3 w-3" />}
+                  {canjeandoPromo ? 'Abriendo…' : '¡Destapar Recompensa!'}
                 </button>
-              )
-            ) : (
-              <span className="shrink-0 text-[9px] font-bold text-slate-400">
-                {promoReward ? 'No aplica' : promoKnown ? (promoFaltan === 1 ? 'Falta 1 compra' : `Faltan ${promoFaltan} compras`) : `Cada ${promoRequired} compras`}
-              </span>
-            )}
+              ) : promoKnown && !promoReward ? (
+                <span className="shrink-0 text-[9px] font-black text-emerald-600">{promoCompleted}/{promoRequired}</span>
+              ) : null}
+            </div>
+            <div
+              role="progressbar"
+              aria-label="Progreso hacia tu Cofre Sorpresa"
+              aria-valuemin={0}
+              aria-valuemax={promoRequired}
+              aria-valuenow={promoKnown ? promoCompleted : undefined}
+              aria-valuetext={promoSubtitle}
+              className="h-1.5 w-full overflow-hidden rounded-full bg-slate-100"
+            >
+              <div
+                className="h-full rounded-full bg-gradient-to-r from-emerald-400 to-emerald-500 transition-[width] duration-700 ease-out"
+                style={{ width: `${promoPct}%` }}
+              />
+            </div>
           </div>
         )}
 
