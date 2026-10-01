@@ -101,6 +101,29 @@ function safeDecodeUrl(value: string): string {
   }
 }
 
+// Acceso directo a la landing de D'una Delivery en la cabecera del Home. La URL sale de NEXT_PUBLIC_DELIVERY_LANDING_URL (referencia
+// literal: Next la incrusta al compilar). SIN valor de respaldo: si la variable no está definida el enlace no se dibuja (un respaldo a
+// `localhost` dejaría un enlace roto en producción). El nombre accesible es siempre "D'una Delivery"; el texto visible lo pone quien lo
+// monta, según el espacio de cada cabecera.
+const DELIVERY_LANDING_URL = (process.env.NEXT_PUBLIC_DELIVERY_LANDING_URL || '').trim();
+
+function DeliveryLandingLink({ children }: { children: React.ReactNode }) {
+  if (!DELIVERY_LANDING_URL) return null;
+  return (
+    <a
+      href={DELIVERY_LANDING_URL}
+      target="_blank"
+      rel="noopener noreferrer"
+      aria-label="D'una Delivery"
+      title="D'una Delivery"
+      className="flex h-9 shrink-0 items-center justify-center gap-1.5 rounded-full border border-[#fe6712] bg-[#fff5ed] px-2.5 text-[11px] font-black text-[#fe6712] whitespace-nowrap transition hover:bg-orange-100 active:scale-95 cursor-pointer md:text-xs"
+    >
+      <Truck className="h-4 w-4 shrink-0" aria-hidden="true" />
+      {children}
+    </a>
+  );
+}
+
 // Rutas por tienda (`/store/[storeCode]` y `/store/[storeCode]/product/[productId]`): el servidor valida el código, resuelve la tienda
 // (`initialStore`, de `GET /store/find`) y arma los metadatos Open Graph; este componente solo abre esa tienda (y, si viene, esa ficha de
 // producto) al montar. Sin props es el Home de siempre.
@@ -683,8 +706,14 @@ export default function MultitiendaHub({ initialStoreCode, initialStore, initial
       <div className="sticky top-0 z-40 bg-white/95 backdrop-blur-md border-b border-slate-100 shadow-sm">
         {/* Cabecera Móvil (< md) */}
         <div className="md:hidden flex flex-col w-full pb-2">
-          {/* Fila 1: Logo Centrado Institucional (cuenta del cliente a la derecha) */}
+          {/* Fila 1: Logo Centrado Institucional (D'una Delivery a la izquierda, cuenta del cliente a la derecha) */}
           <div className="relative w-full flex justify-center py-2">
+            {/* Espejo del botón de la cuenta: sin espacio para el texto solo se ve el icono (el logo va centrado en la misma fila) */}
+            <div className="absolute left-3 top-1/2 -translate-y-1/2">
+              <DeliveryLandingLink>
+                <span className="hidden min-[360px]:inline pr-1">Delivery</span>
+              </DeliveryLandingLink>
+            </div>
             <div className="absolute right-3 top-1/2 -translate-y-1/2">
               <AccountMenu
                 loginLabelClassName="hidden min-[380px]:inline"
@@ -769,7 +798,7 @@ export default function MultitiendaHub({ initialStoreCode, initialStore, initial
             </div>
           </div>
 
-          {/* COL DERECHA — Utilidades: ubicación + BCV + selector moneda */}
+          {/* COL DERECHA — Utilidades: ubicación + BCV + selector moneda + D'una Delivery + cuenta */}
           <div className="flex items-center gap-2 shrink-0 text-xs">
             <div className="hidden lg:flex items-center gap-1.5 font-bold text-slate-600" suppressHydrationWarning>
               <MapPin className="w-3.5 h-3.5 text-[#fe6712] shrink-0" />
@@ -786,6 +815,10 @@ export default function MultitiendaHub({ initialStoreCode, initialStore, initial
               <button type="button" onClick={() => setCurrencyMode('USD')} className={`px-2.5 py-1 rounded-full cursor-pointer whitespace-nowrap transition ${currencyMode === 'USD' ? 'bg-[#fe6712] text-white shadow-sm' : 'text-slate-600 hover:text-slate-900'}`}>USD</button>
               <button type="button" onClick={() => setCurrencyMode('VES')} className={`px-2.5 py-1 rounded-full cursor-pointer whitespace-nowrap transition ${currencyMode === 'VES' ? 'bg-[#fe6712] text-white shadow-sm' : 'text-slate-600 hover:text-slate-900'}`}>Bs</button>
             </div>
+            {/* Mismo criterio que el botón de la cuenta, para no recortar el buscador: solo icono en md, "Delivery" desde lg y el nombre completo desde xl */}
+            <DeliveryLandingLink>
+              <span className="hidden lg:inline pr-1"><span className="hidden xl:inline">D'una </span>Delivery</span>
+            </DeliveryLandingLink>
             <AccountMenu
               onOpenOrders={() => (savedOrderId ? setIsTrackingOpen(true) : setIsNoOrdersOpen(true))}
               onOpenAddresses={() => setIsAddressesOpen(true)}

@@ -42,7 +42,7 @@ export interface ComboRoomData {
 // Sugerencias para la cocina: lista de textos cortos, sin saltos de línea, tope 80 caracteres c/u y 12 en total
 function cleanNotes(raw: unknown): string[] {
   const list = Array.isArray(raw) ? raw : typeof raw === "string" ? [raw] : [];
-  return list.map((n) => String(n).replace(/s+/g, " ").trim().slice(0, 80)).filter(Boolean).slice(0, 12);
+  return list.map((n) => String(n).replace(/\s+/g, " ").trim().slice(0, 80)).filter(Boolean).slice(0, 12);
 }
 
 // Unidades de un participante: máx. `count`; alias 30 car.; 20 exclusiones de 60 car.; 20 adicionales; nota 70 car.
