@@ -25,6 +25,13 @@ import ShareButton from './ShareButton';
 import VariantThumb from './VariantThumb';
 import KitchenNote, { cleanKitchenNote, formatSin } from './KitchenNote';
 import { getOptimizedImageUrl } from '@/lib/imageOptimizer';
+import SizeAdvisor from './SizeAdvisor';
+import LookComplements from './LookComplements';
+import ProductShareRow from './ProductShareRow';
+import { findSizeGroupIndex, readSizeOptions, parseLetterSize, suggestLetterSize, loadFitProfile, type LetterSize } from '@/lib/sizeAdvisor';
+import { isProductSoldOut } from '@/lib/productStock';
+import { buildProductShareUrl } from '@/lib/shareUtils';
+import type { LookComplementPayload } from '@/lib/lookComplements';
 
 export interface ComboSlot {
   id: number;
@@ -50,6 +57,9 @@ export interface VariantSelectionPayload {
   notes?: string; // sugerencia para la cocina del producto simple (las de combo/ranura viajan dentro de breakdown)
   // Solo local (Recibo del seguimiento): quién pidió cada adicional con costo. NO viaja a Adonis (CheckoutModal mapea campos explícitos).
   extrasByPerson?: { name: string; participant: string; price: number }[];
+  // "Completa tu look" (tiendas de moda): productos reales del mismo comercio activados junto a este. La tienda los agrega
+  // al carrito como líneas PROPIAS (ver src/lib/lookComplements.ts); no entran en el precio ni en las variantes de este ítem.
+  complements?: LookComplementPayload[];
 }
 
 // Etiquetas de precio extra para una cápsula. Solo presentación: no participa en ningún cálculo.
@@ -193,6 +203,14 @@ interface MasterProductModalProps {
    * cálculo, estado ni handler de este componente cambia con el modo, solo el envoltorio visual.
    */
   displayMode?: 'modal' | 'page';
+  /**
+   * Nicho real de la tienda (`StoreNiche` de nicheConfig, p. ej. 'FASHION'). Solo con 'FASHION' se activa el modo boutique
+   * (probador de talla, "Completa tu look" y compartir por WhatsApp); sin la prop o con cualquier otro nicho el modal es
+   * exactamente el de siempre.
+   */
+  storeNiche?: string;
+  /** Aún están llegando páginas de `storeCatalog` (listado paginado): "Completa tu look" espera al catálogo completo. */
+  catalogLoading?: boolean;
 }
 
 export default function MasterProductModal({
@@ -206,9 +224,13 @@ export default function MasterProductModal({
   storeCatalog = [],
   store,
   resumeRoomId = null,
-  displayMode = 'modal'
+  displayMode = 'modal',
+  storeNiche,
+  catalogLoading = false
 }: MasterProductModalProps) {
   const isPageMode = displayMode === 'page';
+  // Modo boutique: funciones migradas del script de Bereshit Boutique, solo para tiendas de moda
+  const boutiqueMode = storeNiche === 'FASHION';
   // Cantidad válida: entero entre 1 y 99
   const startQty = Math.min(Math.max(Math.floor(Number(initialQty)) || 1, 1), 99);
   const [step, setStep] = useState<number>(1);
@@ -220,6 +242,9 @@ export default function MasterProductModal({
   const [upsellSelections, setUpsellSelections] = useState<Record<string, any>>({});
   // Sugerencia para la cocina del producto simple individual (la de cada unidad de un combo vive en `slot.notes`)
   const [productNote, setProductNote] = useState('');
+  // Modo boutique: talla sugerida por el probador y complementos de "Completa tu look" activados (id de producto → ítem listo)
+  const [fitIdeal, setFitIdeal] = useState<LetterSize | null>(null);
+  const [lookPicks, setLookPicks] = useState<Record<string, LookComplementPayload>>({});
 
   // ── Pedido Colaborativo ("Armar Combo con Amigos en Vivo") ─────────────────
   const [comboRoomId, setComboRoomId] = useState<string | null>(null);
@@ -424,6 +449,12 @@ export default function MasterProductModal({
       setActiveSlotIndex(0);
       setUpsellSelections({});
       setProductNote('');
+      setLookPicks({});
+      if (boutiqueMode) {
+        // Si el cliente ya usó el probador (en otra prenda u otra visita), su talla sugerida sirve de entrada para los complementos
+        const fit = loadFitProfile();
+        setFitIdeal(fit ? suggestLetterSize(fit.heightCm, fit.weightKg) : null);
+      }
 
       const initialVars: Record<string, any> = {};
       if (availableGroups.length > 0) {
@@ -735,6 +766,21 @@ export default function MasterProductModal({
     return ((unitPrice + totalVariantsPrice) * qty) + totalUpsells;
   }, [isSlotMode, unitPrice, qty, totalSlotVariantsPrice, totalVariantsPrice, totalUpsells]);
 
+  // ── Modo boutique (solo nicho FASHION) ─────────────────────────────────────────────────────────────────────────────
+  // Grupo de tallas REAL del producto y lo que el cliente tiene marcado en él (el grupo puede ser de selección única o
+  // de contadores). Hooks ANTES del `return null` de más abajo. Fuera del modo boutique todo queda vacío / en cero.
+  const sizeGroupIdx = useMemo(() => (boutiqueMode ? findSizeGroupIndex(availableGroups) : -1), [boutiqueMode, availableGroups]);
+  const sizeOptions = useMemo(() => (sizeGroupIdx >= 0 ? readSizeOptions(availableGroups[sizeGroupIdx]) : []), [sizeGroupIdx, availableGroups]);
+  const selectedSizes: any[] = useMemo(() => {
+    const selection = sizeGroupIdx >= 0 ? selectedVariants[sizeGroupIdx] : null;
+    return Array.isArray(selection) ? selection.filter((i: any) => (i.count || 0) > 0) : [];
+  }, [sizeGroupIdx, selectedVariants]);
+  // "Completa tu look" solo aplica a la compra individual normal: nunca a combos, personalización por unidad ni salas.
+  // Cada complemento es una línea aparte del carrito, así que suma UNA vez al total (no se multiplica por la cantidad).
+  const lookActive = boutiqueMode && !isCombo && !isSlotMode && viewMode === 'options';
+  const lookList = lookActive ? Object.values(lookPicks) : [];
+  const lookTotal = lookList.reduce((sum, c) => sum + Number(c.totalPrice || 0), 0);
+
   // Valida que cada grupo con 'min' (ej. SABORES-6 → min:6) o requerido tenga esa cantidad de unidades seleccionadas
   const isMinimumsMet = useMemo(() => {
     if (isSlotMode) return true;
@@ -1036,7 +1082,9 @@ export default function MasterProductModal({
       slots: isSlotMode ? slots : undefined,
       variants: isSlotMode ? undefined : variantsPayload,
       pricing: isSlotMode ? undefined : { unitBasePrice, addonsTotal, unitFinalPrice },
-      notes: simpleNote || slotComments || undefined
+      notes: simpleNote || slotComments || undefined,
+      // "Completa tu look": líneas aparte del carrito (su monto NO está dentro de `totalPrice` de este ítem)
+      complements: lookList.length > 0 ? lookList : undefined
     });
     // Marcar sala colaborativa como completada y limpiar barra flotante
     if (comboRoomId && typeof window !== 'undefined') {
@@ -1224,9 +1272,10 @@ export default function MasterProductModal({
 
   // En la sala colaborativa el total real es la suma de lo reclamado por cada participante (incluye adicionales de los
   // invitados), que es exactamente lo que `handleAddToCart` envía al carrito; fuera de la sala, el total de siempre.
+  // Modo boutique: al total del producto se le suman los complementos activados de "Completa tu look" (0 en el resto de casos).
   const footerTotalUSD = viewMode === 'comboRoom' && comboRoomData
     ? comboRoomData.participants.reduce((sum: number, p: any) => sum + Number(p.subtotalUsd || 0), 0)
-    : totalCalculated;
+    : totalCalculated + lookTotal;
 
   // ── Faro guiado reactivo (Visual Beacon Flow) ─────────────────────────────────────────────────────────────────────
   // Resalta con un pulso breve (máx. 2.5 s, se apaga solo) el siguiente paso natural del flujo colaborativo y hace
@@ -1344,6 +1393,21 @@ export default function MasterProductModal({
 
   if (!isOpen || !product) return null;
 
+  // ── Modo boutique: datos de presentación (no son hooks; `product` ya existe aquí) ───────────────────────────────────
+  // "Elegir talla" del probador marca esa talla y desmarca las demás: el mismo handler de la cápsula de selección única.
+  const pickSuggestedSize = (code: string) => {
+    const option = availableGroups[sizeGroupIdx]?.options?.find((o: any) => String(o.code ?? o.id ?? '') === code);
+    if (option) handleGlobalSingleSelect(sizeGroupIdx, option.code);
+  };
+  // Talla del cliente para preseleccionar la de un complemento: la que marcó en esta prenda o, si no, la del probador
+  const preferredSize: LetterSize | null =
+    (selectedSizes.length === 1 ? parseLetterSize(selectedSizes[0].name || selectedSizes[0].title) : null) ?? fitIdeal;
+  // Mensaje de WhatsApp: talla(s) marcadas y precio unitario de la configuración actual; sin talla marcada aún, el precio
+  // de referencia del producto (el mismo que muestra su tarjeta en el catálogo).
+  const shareSizeLabel = selectedSizes.map((i: any) => String(i.name || i.title || '').trim()).filter(Boolean).join(', ');
+  const shareConfiguredUnit = isSlotMode ? 0 : unitPrice + totalVariantsPrice;
+  const sharePriceUsd = shareConfiguredUnit > 0 ? shareConfiguredUnit : Number(product.metadata?.price?.infoPrice) || Number(product.price) || 0;
+  const shareUrl = store?.code ? buildProductShareUrl(typeof window !== 'undefined' ? window.location.origin : '', store.code, product.id) : '';
 
   const renderVariantsAndSlots = () => (
     <>
@@ -1576,6 +1640,18 @@ export default function MasterProductModal({
         </div>
       )}
 
+      {/* Modo Espejo (tiendas de moda): sugiere la talla por estatura y peso y valida su stock en ESTA prenda. Va pegado al
+          selector de tallas (misma condición) y solo si el producto trae tallas por letra (no con tallas numéricas). */}
+      {boutiqueMode && !isCombo && viewMode === 'options' && qty === 1 && sizeOptions.some((o) => o.size !== null) && (
+        <SizeAdvisor
+          options={sizeOptions}
+          selectedCodes={selectedSizes.map((i: any) => String(i.code ?? i.id ?? ''))}
+          productSoldOut={isProductSoldOut(product)}
+          onPick={pickSuggestedSize}
+          onIdealChange={setFitIdeal}
+        />
+      )}
+
       {(!isCombo && viewMode === 'options' && qty === 1) && availableGroups.map((group: any, gIdx: number) => (
         <div key={gIdx} className="pb-3 border-b border-gray-100 space-y-2">
           <div>
@@ -1644,6 +1720,37 @@ export default function MasterProductModal({
           </div>
         </div>
       ))}
+
+      {/* "Completa tu look" (tiendas de moda): productos reales del mismo comercio; cada uno activado suma al total de
+          abajo y entra al carrito como línea propia. Sin nada que sugerir, el componente no dibuja nada. */}
+      {lookActive && (
+        <LookComplements
+          current={product}
+          catalog={storeCatalog}
+          catalogLoading={catalogLoading}
+          bcvRate={bcvRate}
+          preferredSize={preferredSize}
+          picks={lookPicks}
+          onChange={(id, payload) => setLookPicks((prev) => {
+            const next = { ...prev };
+            if (payload) next[id] = payload;
+            else delete next[id];
+            return next;
+          })}
+        />
+      )}
+
+      {/* Enlace directo + WhatsApp (tiendas de moda): mensaje con el nombre, la talla marcada y el precio en $ y Bs. */}
+      {boutiqueMode && viewMode === 'options' && shareUrl && (
+        <ProductShareRow
+          productName={product.name}
+          storeName={store?.name}
+          sizeLabel={shareSizeLabel}
+          priceUsd={sharePriceUsd}
+          bcvRate={bcvRate}
+          url={shareUrl}
+        />
+      )}
 
       {/* SELECTOR DE COMBOS POR RANURAS / MODO RANURAS */}
       {viewMode === 'slots' ? (

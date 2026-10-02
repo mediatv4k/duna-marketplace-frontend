@@ -15,15 +15,59 @@ export function shareStoreWhatsApp(store: { name: string; code: string; address?
   window.open(url, '_blank');
 }
 
-export function shareProductWhatsApp(product: { name: string; price: number; code: string }, selectedVariant?: string, bcvRate?: number | null) {
-  const productUrl = `${window.location.origin}${window.location.pathname}?item=${product.code}`;
-  // Solo se muestra Bs. si se pasa una tasa real
-  const priceBsText = bcvRate ? ` (~ Bs. ${(product.price * bcvRate).toFixed(2)})` : '';
-  const variantText = selectedVariant ? ` (Opción: ${selectedVariant})` : '';
+// ── Compartir un producto por WhatsApp (enlace directo + talla + precio en $ y Bs.) ─────────────────────────────────────
+// Migrado del script de Bereshit Boutique. Tres funciones puras (sin `window`): la ficha arma con ellas el enlace del botón.
 
-  const text = `✨ *¡Mira este producto en D'una Marketplace!*\n\n🛍️ *${product.name}*${variantText}\n💰 *Precio:* $${product.price.toFixed(2)}${priceBsText}\n\n🔗 *Cómpralo directo aquí:*\n${productUrl}\n\n👉 _¡Delivery inmediato en Cabimas!_`;
-  const url = `https://api.whatsapp.com/send?text=${encodeURIComponent(text)}`;
-  window.open(url, '_blank');
+/**
+ * Enlace directo a la ficha del producto: la ruta real `/store/{code}/product/{id}` (existe desde 2026-09-26 y trae etiquetas
+ * Open Graph, así que WhatsApp muestra la vista previa con foto). Mismo formato que arma el botón "Compartir" del modal.
+ * El script original usaba `?item={code}` sobre la página actual: ese parámetro no lo lee ninguna pantalla de esta app.
+ */
+export function buildProductShareUrl(origin: string, storeCode: string, productId: string | number): string {
+  return `${String(origin || '').replace(/\/+$/, '')}/store/${storeCode}/product/${productId}`;
+}
+
+export interface ProductShareData {
+  productName: string;
+  storeName?: string | null;
+  /** Talla elegida, tal como llega del backend ("Talla M"); sin talla elegida el mensaje no la menciona */
+  sizeLabel?: string | null;
+  /** Precio unitario en USD de la configuración actual; sin precio válido el mensaje no lo menciona */
+  priceUsd?: number | null;
+  /** Tasa oficial del comercio (`referenceRateValue`). Sin tasa real NO se escribe ningún monto en Bs. (AGENTS.md §2.2) */
+  bcvRate?: number | null;
+  url: string;
+}
+
+/** Texto del mensaje (formato de WhatsApp: *negrita*). Los emojis son del mensaje saliente, no de la interfaz. */
+export function buildProductWhatsAppText(data: ProductShareData): string {
+  const store = String(data.storeName || '').trim();
+  const size = String(data.sizeLabel || '').replace(/\b(?:tallas?|sizes?)\b\s*:?/gi, ' ').replace(/\s+/g, ' ').trim();
+  const price = Number(data.priceUsd);
+  const rate = Number(data.bcvRate);
+  const lines: string[] = [
+    `✨ *¡Mira esto en ${store ? `${store} (D'una Marketplace)` : "D'una Marketplace"}!*`,
+    '',
+    `🛍️ *${String(data.productName || '').trim()}*`,
+  ];
+  if (size) lines.push(`📏 Talla: ${size}`);
+  if (Number.isFinite(price) && price > 0) {
+    const bs = Number.isFinite(rate) && rate > 0
+      ? ` (Bs. ${(price * rate).toLocaleString('es-VE', { minimumFractionDigits: 2, maximumFractionDigits: 2 })})`
+      : '';
+    lines.push(`💰 Precio: $${price.toFixed(2)}${bs}`);
+  }
+  lines.push('', '🔗 Cómpralo directo aquí:', data.url);
+  return lines.join('\n');
+}
+
+export function whatsAppSendUrl(text: string): string {
+  return `https://api.whatsapp.com/send?text=${encodeURIComponent(text)}`;
+}
+
+/** Abre WhatsApp con el mensaje del producto. (La ficha usa un enlace `<a>` con `whatsAppSendUrl`; esto queda para usos imperativos.) */
+export function shareProductWhatsApp(data: ProductShareData) {
+  window.open(whatsAppSendUrl(buildProductWhatsAppText(data)), '_blank', 'noopener,noreferrer');
 }
 
 export function copyToClipboard(text: string): Promise<boolean> {

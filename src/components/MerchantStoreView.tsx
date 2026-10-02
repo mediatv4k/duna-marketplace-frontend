@@ -18,6 +18,8 @@ import { getNicheIcon, getBadgeColorClasses } from '@/lib/nicheIcons';
 import MerchantTemplateEngine, { templateNicheFromStoreNiche } from './MerchantTemplateEngine';
 import { toWhatsAppNumber } from '@/lib/orderTracking';
 import { readCart, writeCart } from '@/lib/cartStorage';
+import { isProductSoldOut, compareBySoldOut } from '@/lib/productStock';
+import { mergeLookComplementIntoCart } from '@/lib/lookComplements';
 import { getOptimizedImageUrl } from '@/lib/imageOptimizer';
 import SalesRecoveryAssistant from './SalesRecoveryAssistant';
 
@@ -513,6 +515,11 @@ export default function MerchantStoreView({
       };
       updated = [...cartItems, newItem];
     }
+    // "Completa tu look" (tiendas de moda): cada complemento activado en el modal entra como una línea PROPIA del carrito,
+    // con el id, el código, las variantes y el precio reales de ese producto (el backend lo valida como cualquier otro ítem).
+    if (Array.isArray(configuredItem.complements)) {
+      for (const complement of configuredItem.complements) updated = mergeLookComplementIntoCart(updated, complement);
+    }
     updateCartStorage(updated);
     setIsMasterModalOpen(false);
     // El carrito ya no se abre solo al agregar: el cliente sigue comprando (se abre desde la barra "Productos en bolsa").
@@ -552,12 +559,9 @@ export default function MerchantStoreView({
       p.name.toLowerCase().includes(searchQuery.toLowerCase()) ||
       (p.category && p.category.toLowerCase().includes(searchQuery.toLowerCase()));
     return matchesCategory && matchesSubcategory && matchesSearch;
-  }).sort((a, b) => {
-    const aAgotado = a.status === 'INACTIVE' || a.outOfStock;
-    const bAgotado = b.status === 'INACTIVE' || b.outOfStock;
-    if (aAgotado === bAgotado) return 0;
-    return aAgotado ? 1 : -1;
-  });
+  })
+    // Stock Guard: agotados al final; dentro de cada grupo se respeta el orden del backend (ver src/lib/productStock.ts)
+    .sort(compareBySoldOut);
 
   const totalItems = cartItems.reduce((acc, item) => acc + (item.qty || item.quantity || 1), 0);
   const subtotalUSD = cartItems.reduce((acc, item) => acc + (item.totalPrice || (item.price * (item.qty || item.quantity || 1))), 0);
@@ -734,7 +738,7 @@ export default function MerchantStoreView({
             
             <div className={`grid grid-cols-2 sm:grid-cols-2 md:grid-cols-3 ${sidebarLayout ? 'lg:grid-cols-3' : 'lg:grid-cols-4'} gap-3 md:gap-4`}>
               {filteredProducts.map((product) => {
-                const agotado = product.status === 'INACTIVE' || product.outOfStock;
+                const agotado = isProductSoldOut(product);
                 // Insignia solo si el backend trae el dato (hoy los productos no incluyen marca oficial / genérico)
                 const badge = product.isOfficialBrand
                   ? { label: 'MARCA OFICIAL', className: 'bg-blue-100 text-blue-700' }
@@ -1019,6 +1023,8 @@ export default function MerchantStoreView({
             store={{ name: merchant.name, code: merchant.code, id: merchant.id }}
             resumeRoomId={modalResumeRoomId}
             displayMode={productDisplayMode}
+            storeNiche={storeNiche}
+            catalogLoading={isLoadingMore}
           />
         )}
 
@@ -1122,6 +1128,7 @@ export default function MerchantStoreView({
         hero={heroNode}
         bcvRate={bcvRate}
         products={products}
+        productsLoading={isLoadingMore}
         filters={productCategories.filter((c) => c !== 'ALL')}
         activeFilter={selectedCategory}
         onFilterChange={setSelectedCategory}

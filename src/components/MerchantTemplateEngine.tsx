@@ -92,6 +92,7 @@ export interface MerchantTemplateEngineProps {
 
   // Filtros del catálogo (controlados por el padre). Si no se pasa `filters`, se derivan de las categorías reales de `products`
   products?: any[];
+  productsLoading?: boolean; // aún llegan páginas del listado (se reenvía al modal de producto: ver `catalogLoading`)
   filters?: string[];
   activeFilter?: string;
   onFilterChange?: (filter: string) => void;
@@ -155,6 +156,7 @@ export default function MerchantTemplateEngine({
   bcvRate,
   walletBalanceUSD,
   products,
+  productsLoading = false,
   filters,
   activeFilter = 'ALL',
   onFilterChange,
@@ -416,6 +418,8 @@ export default function MerchantTemplateEngine({
           store={storeCode ? { name: merchantName || '', code: storeCode, id: storeId } : null}
           resumeRoomId={resumeRoomId}
           displayMode={productDisplayMode}
+          storeNiche={storeNiche}
+          catalogLoading={productsLoading}
         />
       )}
     </div>
