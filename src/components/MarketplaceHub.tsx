@@ -22,6 +22,8 @@ import { getBCVRate } from '@/lib/bcvRate';
 import { purgeCartIfOtherStore, clearCart, readCart, writeCart } from '@/lib/cartStorage';
 import { buildPurchaseRecord, recordPurchase } from '@/lib/purchaseHistory';
 import { lineQty, mergeLinesIntoCart } from '@/lib/reorder';
+import { loadGoogleMaps } from '@/lib/googleMaps';
+import { CABIMAS_DEFAULT_LOCATION, isExplicitGps } from '@/lib/geoLocation';
 
 import {
   Clock, ChevronLeft, ChevronRight, Sparkles, MapPin, X, Navigation,
@@ -29,18 +31,18 @@ import {
   Pizza, UtensilsCrossed, Coffee, Cake, IceCream, Sandwich, Pill, Wine, Beef, Store, Flame
 } from 'lucide-react';
 
-// Coordenadas de referencia de Cabimas (centro geométrico de la ciudad).
-// Usadas únicamente como fallback de distancia cuando el usuario aún no ha compartido su GPS.
-// El cálculo real de delivery usa siempre las coordenadas exactas del dispositivo.
-const CABIMAS_CENTER = { lat: 10.3950, lng: -71.4450 };
+// Zona base (Cabimas, Zulia) y criterio de GPS explícito (MAX_GPS_ACCURACY_METERS): src/lib/geoLocation.ts, compartido con la vista de
+// tienda (botón "Mi Ubicación"). La zona base viaja a la tienda y al checkout mientras el cliente no elija otra ubicación.
+// Solo las coordenadas de la zona base: fallback de distancia y centro del mapa de direcciones.
+const CABIMAS_CENTER = { lat: CABIMAS_DEFAULT_LOCATION.lat, lng: CABIMAS_DEFAULT_LOCATION.lng };
 
 function parseSafeLocation(loc: any) {
-  if (!loc) return { lat: 10.3950, lng: -71.4450 };
+  if (!loc) return { ...CABIMAS_CENTER };
   if (typeof loc === 'object') return loc;
   try {
     return JSON.parse(loc);
   } catch {
-    return { lat: 10.3950, lng: -71.4450 };
+    return { ...CABIMAS_CENTER };
   }
 }
 
@@ -248,7 +250,8 @@ export default function MultitiendaHub({ initialStoreCode, initialStore, initial
     return () => { vigente = false; };
   }, [isCheckoutOpen, promoPhone]);
 
-  const [userLocation, setUserLocation] = useState<{ lat: number; lng: number; label: string } | null>(null);
+  // Arranca en Cabimas (zona base). Solo un GPS explícito y preciso la reemplaza: ver handleTriggerGpsCalculation.
+  const [userLocation, setUserLocation] = useState<{ lat: number; lng: number; label: string } | null>(() => ({ ...CABIMAS_DEFAULT_LOCATION }));
   const [isLocating, setIsLocating] = useState<boolean>(false);
   // isFallbackModalOpen eliminado (2026-09-23): el modal de microsectores (Casco Central / Ambrosio) fue reemplazado
   // por GPS directo del dispositivo. La plataforma opera a nivel de ciudad; el selector de CIUDAD (futura expansión
@@ -532,30 +535,80 @@ export default function MultitiendaHub({ initialStoreCode, initialStore, initial
     }
   };
 
-  const handleTriggerGpsCalculation = (e: React.MouseEvent) => {
-    e.stopPropagation();
+  // Intenta mejorar la ubicación del Home con el GPS del dispositivo: botón "Cercanos", botón "Flete" de las tarjetas y, si el navegador ya
+  // tiene el permiso concedido, una vez al abrir el Home. Solo se acepta un GPS preciso (MAX_GPS_ACCURACY_METERS); en cualquier otro caso
+  // (denegado, sin soporte, tiempo agotado o posición aproximada por red/IP) se conserva la ubicación vigente, que por defecto es Cabimas.
+  const handleTriggerGpsCalculation = (e?: React.MouseEvent) => {
+    if (e) e.stopPropagation();
     setIsLocating(true);
+
+    const keepCurrentLocation = () => {
+      setUserLocation((prev) => prev ?? { ...CABIMAS_DEFAULT_LOCATION });
+      setIsLocating(false);
+    };
+
+    // Nombre de la ciudad de una posición YA validada como GPS preciso (geocodificación inversa de Google)
+    const resolveLocationName = async (lat: number, lng: number, fallbackLabel: string) => {
+      try {
+        const google = await loadGoogleMaps();
+        const geocoder = new google.maps.Geocoder();
+        geocoder.geocode({ location: { lat, lng } }, (results: any[], status: string) => {
+          if (status === 'OK' && results && results.length > 0) {
+            let city = '';
+            let state = '';
+            for (const component of results[0].address_components) {
+              if (component.types.includes('locality')) city = component.long_name;
+              if (component.types.includes('administrative_area_level_1')) state = component.long_name;
+            }
+            if (!city) {
+              city = results[0].address_components.find((c: any) => c.types.includes('administrative_area_level_2'))?.long_name || '';
+            }
+            const label = city && state ? `${city}, ${state}` : (city || state || fallbackLabel);
+            setUserLocation({ lat, lng, label });
+          } else {
+            setUserLocation({ lat, lng, label: fallbackLabel });
+          }
+          setIsLocating(false);
+        });
+      } catch (err) {
+        console.error('Error cargando geocoder:', err);
+        setUserLocation({ lat, lng, label: fallbackLabel });
+        setIsLocating(false);
+      }
+    };
+
     if (typeof window !== 'undefined' && navigator.geolocation) {
       navigator.geolocation.getCurrentPosition(
         (pos) => {
-          // Coordenadas exactas del dispositivo — fuente de verdad para cálculo de flete
-          setUserLocation({ lat: pos.coords.latitude, lng: pos.coords.longitude, label: 'Cabimas, Zulia' });
-          setIsLocating(false);
+          if (isExplicitGps(pos.coords)) {
+            resolveLocationName(pos.coords.latitude, pos.coords.longitude, 'Ubicación actual');
+          } else {
+            // Posición aproximada (red, IP o antena): puede caer en otra ciudad. Se ignora; el Home sigue en Cabimas.
+            keepCurrentLocation();
+          }
         },
         () => {
-          // GPS denegado o no disponible: fallback silencioso al centro geométrico de Cabimas.
-          // No se abre ningún modal de microsectores; la plataforma opera a nivel ciudad.
-          setUserLocation({ lat: CABIMAS_CENTER.lat, lng: CABIMAS_CENTER.lng, label: 'Cabimas, Zulia' });
-          setIsLocating(false);
+          // GPS denegado o no disponible: silencioso, el Home sigue en Cabimas. No se abre ningún modal de microsectores.
+          keepCurrentLocation();
         },
         { timeout: 8000, enableHighAccuracy: true }
       );
     } else {
-      // Geolocalización no soportada → fallback ciudad
-      setUserLocation({ lat: CABIMAS_CENTER.lat, lng: CABIMAS_CENTER.lng, label: 'Cabimas, Zulia' });
-      setIsLocating(false);
+      // Geolocalización no soportada: el Home sigue en Cabimas
+      keepCurrentLocation();
     }
   };
+
+  // Con el permiso de ubicación ya concedido se intenta una vez al abrir el Home; si no llega un GPS preciso, el Home se queda en Cabimas.
+  useEffect(() => {
+    if (typeof window !== 'undefined' && navigator.permissions) {
+      navigator.permissions.query({ name: 'geolocation' }).then((result) => {
+        if (result.state === 'granted') {
+          handleTriggerGpsCalculation();
+        }
+      }).catch(() => { /* sin API de permisos: el Home se queda en Cabimas */ });
+    }
+  }, []);
 
   if (activeMerchantId && activeMerchantInfo) {
     return (

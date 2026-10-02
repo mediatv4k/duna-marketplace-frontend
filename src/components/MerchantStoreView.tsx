@@ -22,6 +22,9 @@ import { readCart, writeCart } from '@/lib/cartStorage';
 import { isProductSoldOut, compareBySoldOut } from '@/lib/productStock';
 import { mergeLookComplementIntoCart } from '@/lib/lookComplements';
 import { getOptimizedImageUrl } from '@/lib/imageOptimizer';
+import { CABIMAS_DEFAULT_LOCATION, isExplicitGps } from '@/lib/geoLocation';
+import { composeDeliveryAddress, isValidDeliveryReference } from '@/lib/deliveryAddress';
+import DeliveryReferenceModal from './DeliveryReferenceModal';
 import SalesRecoveryAssistant from './SalesRecoveryAssistant';
 
 // Regla del contrato: el backend no presta servicio de delivery a más de 12 km
@@ -167,6 +170,10 @@ export default function MerchantStoreView({
   const [isPickerOpen, setIsPickerOpen] = useState(false);
   const [locationError, setLocationError] = useState<string | null>(null);
   const [quote, setQuote] = useState<DeliveryQuote>({ status: 'idle' });
+  // Dirección o punto de referencia que escribe el cliente (obligatorio antes del pago mientras la ubicación no sea un punto elegido en el
+  // mapa) y el pedido que espera esa referencia para abrir el checkout. Hooks antes de cualquier `return`.
+  const [deliveryReference, setDeliveryReference] = useState('');
+  const [pendingCheckout, setPendingCheckout] = useState<Record<string, any> | null>(null);
 
   const handleRequestLocation = () => {
     if (typeof navigator === 'undefined' || !navigator.geolocation) {
@@ -175,10 +182,45 @@ export default function MerchantStoreView({
     }
     setIsLocating(true);
     setLocationError(null);
+    
+    const resolveAndSet = async (lat: number, lng: number) => {
+      try {
+        const { loadGoogleMaps } = await import('@/lib/googleMaps');
+        const google = await loadGoogleMaps();
+        const geocoder = new google.maps.Geocoder();
+        geocoder.geocode({ location: { lat, lng } }, (results: any[], status: string) => {
+          if (status === 'OK' && results && results.length > 0) {
+            let city = ''; let state = '';
+            for (const component of results[0].address_components) {
+              if (component.types.includes('locality')) city = component.long_name;
+              if (component.types.includes('administrative_area_level_1')) state = component.long_name;
+            }
+            if (!city) city = results[0].address_components.find((c: any) => c.types.includes('administrative_area_level_2'))?.long_name || '';
+            const label = city && state ? `${city}, ${state}` : (city || state || 'GPS Actual');
+            setCustomerLocation({ lat, lng, label });
+          } else {
+            setCustomerLocation({ lat, lng, label: 'GPS Actual' });
+          }
+          setIsLocating(false);
+        });
+      } catch (e) {
+        setCustomerLocation({ lat, lng, label: 'GPS Actual' });
+        setIsLocating(false);
+      }
+    };
+
+    // Solo un GPS preciso (MAX_GPS_ACCURACY_METERS) cuenta. Una posición aproximada por red/IP puede caer en otra ciudad (p. ej. Maracaibo)
+    // y bloquearía el flete y el delivery por distancia: se ignora y se conserva la ubicación vigente (Cabimas por defecto).
+    const keepCurrentLocation = () => {
+      setCustomerLocation((prev) => prev ?? { ...CABIMAS_DEFAULT_LOCATION });
+      setLocationError(`Ubicación imprecisa, seguimos con ${customerLocation?.label || CABIMAS_DEFAULT_LOCATION.label}`);
+      setIsLocating(false);
+    };
+
     navigator.geolocation.getCurrentPosition(
       (pos) => {
-        setCustomerLocation({ lat: pos.coords.latitude, lng: pos.coords.longitude, label: 'GPS Actual' });
-        setIsLocating(false);
+        if (isExplicitGps(pos.coords)) resolveAndSet(pos.coords.latitude, pos.coords.longitude);
+        else keepCurrentLocation();
       },
       () => {
         setIsLocating(false);
@@ -1070,17 +1112,25 @@ export default function MerchantStoreView({
               const isDelivery = summary.metodoEntrega === 'delivery';
               // Delivery: ubicación y distancia reales cotizadas. Pickup/nacional: no hay ruta de reparto (distancia 0).
               const point = isDelivery ? customerLocation : (customerLocation || merchant?.coords);
-              onOpenCheckout({
+              // Un punto elegido en el mapa ya es una dirección concreta. La zona base o un GPS que solo trae la ciudad exigen que el cliente
+              // escriba su dirección o un punto de referencia antes del pago (el checkout no tiene ese campo): sin ella no se despacha a ciegas.
+              const needsReference = isDelivery && !!customerLocation && !customerLocation.manual;
+              const payload = {
                 ...summary,
                 // Descuentos/cargos del comercio ya consultados: siembran el checkout (que los vuelve a consultar al abrir)
                 storeAdjustments,
                 ...(isDelivery && customerLocation
-                  ? { direccion: `${customerLocation.label}: ${customerLocation.lat.toFixed(5)}, ${customerLocation.lng.toFixed(5)}` }
+                  ? { direccion: composeDeliveryAddress(customerLocation, needsReference ? deliveryReference : '') }
                   : {}),
                 location: point ? { lat: Number(point.lat), lng: Number(point.lng) } : null,
                 distanceKm: isDelivery ? (quote.distanceKm ?? 0) : 0,
                 durationMin: isDelivery ? (quote.durationMin ?? 0) : 0,
-              });
+              };
+              if (needsReference && !isValidDeliveryReference(deliveryReference)) {
+                setPendingCheckout(payload);
+                return;
+              }
+              onOpenCheckout(payload);
             }}
             isNationalShippingEnabled={Boolean(merchant?.isNationalShippingEnabled)}
           />
@@ -1096,6 +1146,20 @@ export default function MerchantStoreView({
             setLocationError(null);
             setCustomerLocation({ lat: picked.lat, lng: picked.lng, label: picked.address, manual: true });
             setIsPickerOpen(false);
+          }}
+        />
+
+        {/* Dirección o punto de referencia obligatorio antes del pago (ver "PROCEDER AL PAGO" en el carrito) */}
+        <DeliveryReferenceModal
+          isOpen={pendingCheckout !== null}
+          initialValue={deliveryReference}
+          locationLabel={customerLocation?.label}
+          onCancel={() => { setPendingCheckout(null); setIsCartOpen(true); }}
+          onConfirm={(reference) => {
+            const pending = pendingCheckout;
+            setDeliveryReference(reference);
+            setPendingCheckout(null);
+            if (pending && customerLocation) onOpenCheckout({ ...pending, direccion: composeDeliveryAddress(customerLocation, reference) });
           }}
         />
 
