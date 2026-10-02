@@ -34,6 +34,23 @@ export function distanceFromCabimasKm(lat: number, lng: number): number {
   return haversineKm(CABIMAS_DEFAULT_LOCATION.lat, CABIMAS_DEFAULT_LOCATION.lng, lat, lng);
 }
 
+/** ¿Está el punto dentro de la zona de Cabimas (`CABIMAS_ZONE_RADIUS_KM`)? */
+export function isInsideCabimasZone(lat: number, lng: number): boolean {
+  return Number.isFinite(lat) && Number.isFinite(lng) && distanceFromCabimasKm(lat, lng) <= CABIMAS_ZONE_RADIUS_KM;
+}
+
+/**
+ * Ubicación con la que se sigue cuando una lectura del navegador se descarta o no llega: la vigente si sirve para repartir (un punto que
+ * el cliente eligió en el mapa, o cualquier punto dentro de la zona de Cabimas) y, si no, la zona base. Así una posición lejana que
+ * hubiera quedado adoptada (otra ciudad, por la IP del proveedor) no deja el delivery bloqueado por distancia.
+ */
+export function usableLocationOrBase<T extends { lat: number; lng: number; manual?: boolean }>(
+  current: T | null | undefined
+): T | { lat: number; lng: number; label: string } {
+  if (current && (current.manual === true || isInsideCabimasZone(Number(current.lat), Number(current.lng)))) return current;
+  return { ...CABIMAS_DEFAULT_LOCATION };
+}
+
 /**
  * ¿Se acepta esta lectura del navegador como la posición real del cliente? Coordenadas y precisión deben ser válidas, y además:
  *  · un GPS real (`HIGH_PRECISION_GPS_METERS` o menos) se acepta en cualquier lugar;

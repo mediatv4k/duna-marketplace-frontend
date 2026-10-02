@@ -148,6 +148,34 @@ export function detectStoreNiche(store: {
 }
 
 // ─────────────────────────────────────────────────────────────
+// 2b. Personalización por unidad de la ficha de producto
+// ─────────────────────────────────────────────────────────────
+
+/**
+ * Categorías reales de TIENDA (`categoriesName` de GET /store/find) en las que la ficha ofrece personalizar unidad por unidad
+ * ("Personalizar tu pedido" / "Personalizar combo" / "Personalizar unidades" y, detrás de ese botón, "Compartir entre panas").
+ * Decisión del negocio (2026-10-02): solo comida rápida, pizzerías y comida árabe. Son los nombres tal como existen en el backend
+ * (allí no hay "Comida Rápida", "Pizza" ni "Comida Árabe"); el producto no trae categoría del marketplace, solo la sección del menú
+ * del comercio, así que la regla se evalúa con las categorías de la tienda.
+ */
+export const UNIT_CUSTOMIZATION_STORE_CATEGORIES: readonly string[] = ['Fast Food', 'Pizzerías', 'Árabe'];
+
+/** Nombre de categoría comparable: sin acentos, sin mayúsculas y sin espacios sobrantes (el backend envía "Árabe " con espacio final). */
+const comparableCategoryName = (value: string): string => value.normalize('NFD').replace(/[\u0300-\u036f]/g, '').trim().toLowerCase();
+
+/**
+ * ¿La tienda pertenece a alguna de las categorías con personalización por unidad? Coincidencia exacta de nombre, categoría por
+ * categoría (`categoriesName` viene separado por comas, p. ej. "Desayunos,Fast Food,Árabe "); un parecido parcial no cuenta.
+ */
+export function storeAllowsUnitCustomization(store: { categoriesName?: string | null } | null | undefined): boolean {
+  const allowed = UNIT_CUSTOMIZATION_STORE_CATEGORIES.map(comparableCategoryName);
+  return String(store?.categoriesName || '')
+    .split(',')
+    .map(comparableCategoryName)
+    .some((name) => name !== '' && allowed.includes(name));
+}
+
+// ─────────────────────────────────────────────────────────────
 // 3. Configuración visual/UX por nicho (hero, filtros, badges)
 // ─────────────────────────────────────────────────────────────
 

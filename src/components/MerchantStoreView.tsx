@@ -14,7 +14,7 @@ import VoiceSearchButton from './VoiceSearchButton';
 import PromotionsCarousel from './PromotionsCarousel';
 import { getProduct, getStorePromotions, getDeliveryRate, getStorePaymentInfo } from '@/services/marketplaceService';
 import { getDistanceAndTime } from '@/lib/logisticsEngine';
-import { detectStoreNiche, getModalEngine, getNicheConfig } from '@/lib/nicheConfig';
+import { detectStoreNiche, getModalEngine, getNicheConfig, storeAllowsUnitCustomization } from '@/lib/nicheConfig';
 import { getNicheIcon, getBadgeColorClasses } from '@/lib/nicheIcons';
 import MerchantTemplateEngine, { templateNicheFromStoreNiche } from './MerchantTemplateEngine';
 import { toWhatsAppNumber } from '@/lib/orderTracking';
@@ -22,7 +22,7 @@ import { readCart, writeCart } from '@/lib/cartStorage';
 import { isProductSoldOut, compareBySoldOut } from '@/lib/productStock';
 import { mergeLookComplementIntoCart } from '@/lib/lookComplements';
 import { getOptimizedImageUrl } from '@/lib/imageOptimizer';
-import { CABIMAS_DEFAULT_LOCATION, isExplicitGps } from '@/lib/geoLocation';
+import { isExplicitGps, usableLocationOrBase } from '@/lib/geoLocation';
 import { composeDeliveryAddress, isValidDeliveryReference } from '@/lib/deliveryAddress';
 import DeliveryReferenceModal from './DeliveryReferenceModal';
 import SalesRecoveryAssistant from './SalesRecoveryAssistant';
@@ -177,6 +177,7 @@ export default function MerchantStoreView({
 
   const handleRequestLocation = () => {
     if (typeof navigator === 'undefined' || !navigator.geolocation) {
+      setCustomerLocation((prev) => usableLocationOrBase(prev));
       setLocationError('Tu navegador no permite obtener la ubicación.');
       return;
     }
@@ -209,20 +210,22 @@ export default function MerchantStoreView({
       }
     };
 
-    // Solo un GPS preciso (MAX_GPS_ACCURACY_METERS) cuenta. Una posición aproximada por red/IP puede caer en otra ciudad (p. ej. Maracaibo)
-    // y bloquearía el flete y el delivery por distancia: se ignora y se conserva la ubicación vigente (Cabimas por defecto).
-    const keepCurrentLocation = () => {
-      setCustomerLocation((prev) => prev ?? { ...CABIMAS_DEFAULT_LOCATION });
-      setLocationError(`Ubicación imprecisa, seguimos con ${customerLocation?.label || CABIMAS_DEFAULT_LOCATION.label}`);
-      setIsLocating(false);
-    };
-
+    // Mismo criterio que el Home (`isExplicitGps`, src/lib/geoLocation.ts): la lectura solo se adopta si es creíble (hasta 2000 m de error
+    // dentro de 25 km de Cabimas, o un GPS de 100 m en cualquier lugar). Una lectura por la IP del proveedor cae en otra ciudad (Maracaibo,
+    // a más de 30 km): adoptarla dejaría al cliente fuera del límite de 12 km y bloquearía el pago. Se descarta EN SILENCIO, sin aviso, y el
+    // carrito sigue con una ubicación que sirve: la vigente si está en zona o fue elegida en el mapa; si no, la zona base (Cabimas).
     navigator.geolocation.getCurrentPosition(
       (pos) => {
-        if (isExplicitGps(pos.coords)) resolveAndSet(pos.coords.latitude, pos.coords.longitude);
-        else keepCurrentLocation();
+        if (isExplicitGps(pos.coords)) {
+          resolveAndSet(pos.coords.latitude, pos.coords.longitude);
+          return;
+        }
+        setCustomerLocation((prev) => usableLocationOrBase(prev));
+        setIsLocating(false);
       },
       () => {
+        // Permiso denegado o fallo de la llamada: misma ubicación de respaldo, con el aviso de siempre (no bloquea el pago)
+        setCustomerLocation((prev) => usableLocationOrBase(prev));
         setIsLocating(false);
         setLocationError('No pudimos obtener tu ubicación. Activa el GPS y los permisos.');
       },
@@ -280,6 +283,8 @@ export default function MerchantStoreView({
 
   // Nicho real de la tienda (antes hardcodeado a "FOOD_SWEET" para todas las tiendas)
   const storeNiche = detectStoreNiche(merchant);
+  // Personalización por unidad de la ficha ("Personalizar tu pedido"): solo en tiendas de comida rápida, pizzerías o comida árabe
+  const unitCustomizationAllowed = storeAllowsUnitCustomization(merchant);
   const modalEngine = getModalEngine(storeNiche);
   const nicheConfig = getNicheConfig(storeNiche);
 
@@ -1082,6 +1087,7 @@ export default function MerchantStoreView({
             displayMode={productDisplayMode}
             storeNiche={storeNiche}
             catalogLoading={isLoadingMore}
+            allowUnitCustomization={unitCustomizationAllowed}
           />
         )}
 
@@ -1223,6 +1229,7 @@ export default function MerchantStoreView({
         onAddToCart={handleAddToCartFromModal}
         productInitialQty={modalInitialQty}
         productDisplayMode={productDisplayMode}
+        productAllowUnitCustomization={unitCustomizationAllowed}
       >
         {contentNode}
         {overlaysNode}

@@ -118,6 +118,8 @@ export interface MerchantTemplateEngineProps {
   productInitialQty?: number; // cantidad inicial del modal de producto (asistente)
   /** Ver `MasterProductModal.displayMode`: 'page' para comercios con vista de página dedicada (p. ej. `farma-duna`). */
   productDisplayMode?: 'modal' | 'page';
+  /** Ver `MasterProductModal.allowUnitCustomization`: la tienda admite personalizar unidad por unidad (comida rápida, pizzerías, árabe). */
+  productAllowUnitCustomization?: boolean;
 }
 
 
@@ -175,6 +177,7 @@ export default function MerchantTemplateEngine({
   onAddToCart = () => {},
   productInitialQty = 1,
   productDisplayMode = 'modal',
+  productAllowUnitCustomization = false,
 }: MerchantTemplateEngineProps) {
   const [isCartOpen, setIsCartOpen] = useState(false);
 
@@ -420,6 +423,7 @@ export default function MerchantTemplateEngine({
           displayMode={productDisplayMode}
           storeNiche={storeNiche}
           catalogLoading={productsLoading}
+          allowUnitCustomization={productAllowUnitCustomization}
         />
       )}
     </div>

@@ -216,6 +216,12 @@ interface MasterProductModalProps {
   storeNiche?: string;
   /** Aún están llegando páginas de `storeCatalog` (listado paginado): "Completa tu look" espera al catálogo completo. */
   catalogLoading?: boolean;
+  /**
+   * Personalización por unidad ("Personalizar tu pedido" / "Personalizar combo" / "Personalizar unidades" y, detrás de ese botón,
+   * "Compartir entre panas"). Solo la activan las tiendas de comida rápida, pizzerías o comida árabe (`storeAllowsUnitCustomization`
+   * de nicheConfig, sobre las categorías reales de la tienda). Sin la prop, o en `false`, esos botones no se dibujan.
+   */
+  allowUnitCustomization?: boolean;
 }
 
 export default function MasterProductModal({
@@ -231,7 +237,8 @@ export default function MasterProductModal({
   resumeRoomId = null,
   displayMode = 'modal',
   storeNiche,
-  catalogLoading = false
+  catalogLoading = false,
+  allowUnitCustomization = false
 }: MasterProductModalProps) {
   const isPageMode = displayMode === 'page';
   // Modo boutique: funciones migradas del script de Bereshit Boutique, solo para tiendas de moda
@@ -1470,8 +1477,9 @@ export default function MasterProductModal({
   const renderVariantsAndSlots = () => (
     <>
       {/* Banner de personalización por unidad: arriba (debajo de la cantidad), visible sin scroll.
-          Solo si el producto trae un grupo "SIN" (hasSinVariant); en el resto ni se ofrece la opción. */}
-      {hasSinVariant && qty > 1 && !isCombo && !isSlotMode && (
+          Solo en tiendas de comida rápida, pizzerías o comida árabe (allowUnitCustomization) y si el producto trae un grupo "SIN"
+          (hasSinVariant); en el resto ni se ofrece la opción. */}
+      {allowUnitCustomization && hasSinVariant && qty > 1 && !isCombo && !isSlotMode && (
         <div className="py-2 border-b border-gray-100 flex justify-between items-center gap-3">
           <div>
             <span className="text-xs font-black text-slate-900 block">¿Personalizar cada unidad por separado?</span>
@@ -1489,7 +1497,9 @@ export default function MasterProductModal({
       )}
 
       {/* Variantes Globales: selección única (SINGLE, ej. Tamaño) o contadores (MULTIPLE, ej. Sabores) */}
-            {viewMode === 'options' && (isCombo || qty > 1) && (
+      {/* "Personalizar tu pedido" / "Personalizar combo" (y, detrás, "Compartir entre panas"): solo en tiendas de comida rápida,
+          pizzerías o comida árabe (allowUnitCustomization). En el resto del marketplace el botón no existe en el DOM. */}
+            {allowUnitCustomization && viewMode === 'options' && (isCombo || qty > 1) && (
           <div className="pb-3 border-b border-gray-100 flex justify-center mt-3">
             <button
               onClick={() => { setIsSlotCustomizationActive(true); setSlotReturnView('options'); setViewMode('customize'); }}
