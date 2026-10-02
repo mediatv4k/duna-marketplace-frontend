@@ -155,6 +155,8 @@ export interface LookComplementPayload {
   breakdown: string[];
   variants: any[];
   pricing: { unitBasePrice: number; addonsTotal: number; unitFinalPrice: number };
+  /** Nota del cliente para esta línea (solo la llevan las líneas por talla, ver sizeLines.ts; los complementos no tienen) */
+  notes?: string;
 }
 
 export interface ComplementOption {
@@ -320,13 +322,17 @@ export function buildLookPayload(complement: LookComplement, optionCode?: string
   };
 }
 
-/** Línea del carrito para un complemento: mismos campos que arma `MerchantStoreView.handleAddToCartFromModal`. */
+/**
+ * Agrega al carrito una línea extra (un complemento de "Completa tu look" o una talla adicional del mismo producto, ver
+ * sizeLines.ts): mismos campos y misma identidad (`código::variantes[::nota]`) que arma
+ * `MerchantStoreView.handleAddToCartFromModal`, así una línea igual ya existente solo suma cantidad.
+ */
 export function mergeLookComplementIntoCart(cart: any[], c: LookComplementPayload): any[] {
   const realId = Number(c?.productId);
   const productCode = c?.productCode;
   // Mismas tres defensas que el producto principal: id, código y precio reales, o no entra al pedido
   if (!Number.isFinite(realId) || realId <= 0 || !String(productCode ?? '').trim() || !(Number(c?.totalPrice) > 0)) return cart;
-  const cartItemId = `${productCode}::${JSON.stringify(c.variants || [])}`;
+  const cartItemId = `${productCode}::${JSON.stringify(c.variants || [])}${c.notes ? `::${c.notes}` : ''}`;
   const addQty = c.qty || c.quantity || 1;
   const index = cart.findIndex((item) => item.cartItemId === cartItemId);
   if (index > -1) {
@@ -349,7 +355,7 @@ export function mergeLookComplementIntoCart(cart: any[], c: LookComplementPayloa
       breakdown: c.breakdown || [],
       variants: c.variants || [],
       pricing: c.pricing || null,
-      notes: undefined,
+      notes: c.notes || undefined,
       extrasByPerson: undefined,
       image: c.image || '',
       category: c.category || 'General',

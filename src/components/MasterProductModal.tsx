@@ -32,6 +32,7 @@ import { findSizeGroupIndex, readSizeOptions, parseLetterSize, suggestLetterSize
 import { isProductSoldOut } from '@/lib/productStock';
 import { buildProductShareUrl } from '@/lib/shareUtils';
 import type { LookComplementPayload } from '@/lib/lookComplements';
+import { buildSizeLines, sizeSelectionTotals } from '@/lib/sizeLines';
 
 export interface ComboSlot {
   id: number;
@@ -60,6 +61,9 @@ export interface VariantSelectionPayload {
   // "Completa tu look" (tiendas de moda): productos reales del mismo comercio activados junto a este. La tienda los agrega
   // al carrito como líneas PROPIAS (ver src/lib/lookComplements.ts); no entran en el precio ni en las variantes de este ítem.
   complements?: LookComplementPayload[];
+  // Tallas con contador (tiendas de moda): si el cliente marcó varias tallas, este ítem es la PRIMERA y las demás viajan
+  // aquí, una línea por talla con sus unidades como cantidad (ver src/lib/sizeLines.ts). Su monto tampoco está en `totalPrice`.
+  sizeLines?: LookComplementPayload[];
 }
 
 // Etiquetas de precio extra para una cápsula. Solo presentación: no participa en ningún cálculo.
@@ -697,6 +701,26 @@ export default function MasterProductModal({
     });
   };
 
+  // ── Modo boutique (solo nicho FASHION) ─────────────────────────────────────────────────────────────────────────────
+  // Grupo de tallas REAL del producto y lo que el cliente tiene marcado en él (el grupo puede ser de selección única o
+  // de contadores). Hooks ANTES del `return null` de más abajo. Fuera del modo boutique todo queda vacío / en cero.
+  const sizeGroupIdx = useMemo(() => (boutiqueMode ? findSizeGroupIndex(availableGroups) : -1), [boutiqueMode, availableGroups]);
+  const sizeOptions = useMemo(() => (sizeGroupIdx >= 0 ? readSizeOptions(availableGroups[sizeGroupIdx]) : []), [sizeGroupIdx, availableGroups]);
+  const selectedSizes: any[] = useMemo(() => {
+    const selection = sizeGroupIdx >= 0 ? selectedVariants[sizeGroupIdx] : null;
+    return Array.isArray(selection) ? selection.filter((i: any) => (i.count || 0) > 0) : [];
+  }, [sizeGroupIdx, selectedVariants]);
+  // Tallas con contador: el grupo de tallas es de precio BASE y se dibuja con contadores (- 0 +), así que el cliente elige
+  // CUÁNTAS unidades de cada talla. Cada unidad cuenta en el total y cada talla sale como una línea propia del carrito
+  // (ver src/lib/sizeLines.ts). En este modo no existe la "Cantidad" general: las unidades son la suma de los contadores.
+  const sizeUnitsMode = boutiqueMode && !isCombo && sizeGroupIdx >= 0
+    && availableGroups[sizeGroupIdx]?.pricingRole === 'BASE'
+    && availableGroups[sizeGroupIdx]?.selectType === 'MULTIPLE';
+  const sizeUnits = sizeUnitsMode ? selectedSizes.reduce((n: number, i: any) => n + (i.count || 0), 0) : 0;
+  useEffect(() => {
+    if (sizeUnitsMode && qty !== 1) setQty(1);
+  }, [sizeUnitsMode, qty]);
+
   // Cálculo de Precios reactivo con soporte para conteos
   const { unitPrice, totalVariantsPrice, totalSlotVariantsPrice, totalUpsells } = useMemo(() => {
     // Precio BASE (metadata.price.basePrice) es transaccional y se suma de entrada.
@@ -715,9 +739,15 @@ export default function MasterProductModal({
     let upsellsExtra = 0;
 
     if (!isSlotMode) {
+      // Tallas con contador (tiendas de moda): se acumulan aparte para que cada unidad cuente (2 de la M = 2 × su precio)
+      let sizeTotals = { units: 0, amount: 0 };
       Object.keys(selectedVariants).forEach(key => {
         const selection = selectedVariants[key];
         if (!selection) return;
+        if (sizeUnitsMode && Number(key) === sizeGroupIdx) {
+          sizeTotals = sizeSelectionTotals(selection);
+          return;
+        }
         const isBaseGroup = availableGroups[Number(key)]?.pricingRole === 'BASE';
         if (Array.isArray(selection)) {
           selection.forEach(item => {
@@ -729,6 +759,11 @@ export default function MasterProductModal({
           standardVariantsExtra += isBaseGroup ? (selection.price - base) : selection.price;
         }
       });
+      // El total queda en Σ(precio de la talla × sus unidades) + adicionales por unidad × unidades. Con una sola unidad
+      // el resultado es el de siempre (precio de la talla − base).
+      if (sizeTotals.units > 0) {
+        standardVariantsExtra = (sizeTotals.amount - base) + standardVariantsExtra * sizeTotals.units;
+      }
     } else {
       const targetSlots = slots; targetSlots.forEach((slot: any) => {
         Object.entries(slot.selectedVariants).forEach(([groupIdx, selection]: [string, any]) => {
@@ -757,7 +792,7 @@ export default function MasterProductModal({
       totalSlotVariantsPrice: slotVariantsExtra,
       totalUpsells: upsellsExtra
     };
-  }, [product, selectedVariants, slots, isSlotMode, upsellSelections, availableGroups, showComboPanel, comboRoomData]);
+  }, [product, selectedVariants, slots, isSlotMode, upsellSelections, availableGroups, showComboPanel, comboRoomData, sizeUnitsMode, sizeGroupIdx]);
 
   const totalCalculated = useMemo(() => {
     if (isSlotMode) {
@@ -766,16 +801,7 @@ export default function MasterProductModal({
     return ((unitPrice + totalVariantsPrice) * qty) + totalUpsells;
   }, [isSlotMode, unitPrice, qty, totalSlotVariantsPrice, totalVariantsPrice, totalUpsells]);
 
-  // ── Modo boutique (solo nicho FASHION) ─────────────────────────────────────────────────────────────────────────────
-  // Grupo de tallas REAL del producto y lo que el cliente tiene marcado en él (el grupo puede ser de selección única o
-  // de contadores). Hooks ANTES del `return null` de más abajo. Fuera del modo boutique todo queda vacío / en cero.
-  const sizeGroupIdx = useMemo(() => (boutiqueMode ? findSizeGroupIndex(availableGroups) : -1), [boutiqueMode, availableGroups]);
-  const sizeOptions = useMemo(() => (sizeGroupIdx >= 0 ? readSizeOptions(availableGroups[sizeGroupIdx]) : []), [sizeGroupIdx, availableGroups]);
-  const selectedSizes: any[] = useMemo(() => {
-    const selection = sizeGroupIdx >= 0 ? selectedVariants[sizeGroupIdx] : null;
-    return Array.isArray(selection) ? selection.filter((i: any) => (i.count || 0) > 0) : [];
-  }, [sizeGroupIdx, selectedVariants]);
-  // "Completa tu look" solo aplica a la compra individual normal: nunca a combos, personalización por unidad ni salas.
+  // "Completa tu look" (modo boutique) solo aplica a la compra individual normal: nunca a combos, personalización por unidad ni salas.
   // Cada complemento es una línea aparte del carrito, así que suma UNA vez al total (no se multiplica por la cantidad).
   const lookActive = boutiqueMode && !isCombo && !isSlotMode && viewMode === 'options';
   const lookList = lookActive ? Object.values(lookPicks) : [];
@@ -1033,6 +1059,7 @@ export default function MasterProductModal({
     let unitBasePrice = product.price || 0;
     let addonsTotal = 0;
     const variantsPayload: any[] = [];
+    let sizeVariantPos = -1; // posición del grupo de tallas dentro de `variantsPayload` (solo tallas con contador)
 
     if (!isSlotMode) {
       availableGroups.forEach((group: any, gIdx: number) => {
@@ -1043,6 +1070,7 @@ export default function MasterProductModal({
         if (group.pricingRole === 'BASE') {
           const chosen = chosenItems[0];
           unitBasePrice = chosen.price;
+          if (sizeUnitsMode && gIdx === sizeGroupIdx) sizeVariantPos = variantsPayload.length;
           variantsPayload.push({
             name: group.name || group.title,
             code: group.code,
@@ -1070,7 +1098,29 @@ export default function MasterProductModal({
 
     const unitFinalPrice = unitBasePrice + addonsTotal;
 
-    onAddToCart({
+    // Tallas con contador (tiendas de moda): una línea del carrito por talla marcada, con sus unidades como cantidad, para
+    // que cada ítem cumpla `totalPrice = unitFinalPrice × cantidad` (contrato §7.5; ver src/lib/sizeLines.ts). Del desglose
+    // genérico se quitan los renglones de talla ("2x Talla M"): cada línea lleva solo el suyo.
+    const sizeBreakdown = new Set(selectedSizes.map((i: any) => `${i.count}x ${i.name}`));
+    const sizeLines = sizeUnitsMode && !isSlotMode && sizeVariantPos >= 0
+      ? buildSizeLines({
+          product,
+          sizes: selectedSizes,
+          multiplier: qty,
+          variants: variantsPayload,
+          sizeVariantIndex: sizeVariantPos,
+          addonsTotal,
+          breakdownRest: breakdown.filter((line) => !sizeBreakdown.has(line)),
+          note: simpleNote || undefined,
+        })
+      : [];
+
+    onAddToCart(sizeLines.length > 0 ? {
+      // La primera talla viaja como ítem principal y las demás en `sizeLines` (líneas propias del carrito)
+      ...sizeLines[0],
+      sizeLines: sizeLines.length > 1 ? sizeLines.slice(1) : undefined,
+      complements: lookList.length > 0 ? lookList : undefined
+    } : {
       productCode: product.code,
       productName: product.name,
       totalPrice: totalCalculated,
@@ -1405,7 +1455,14 @@ export default function MasterProductModal({
   // Mensaje de WhatsApp: talla(s) marcadas y precio unitario de la configuración actual; sin talla marcada aún, el precio
   // de referencia del producto (el mismo que muestra su tarjeta en el catálogo).
   const shareSizeLabel = selectedSizes.map((i: any) => String(i.name || i.title || '').trim()).filter(Boolean).join(', ');
-  const shareConfiguredUnit = isSlotMode ? 0 : unitPrice + totalVariantsPrice;
+  // Con tallas por contador el total del pie es de TODAS las unidades: el mensaje lleva el precio de UNA (la talla marcada
+  // más barata, más los adicionales por unidad si los hubiera), no el total.
+  const shareSizeTotals = sizeUnitsMode ? sizeSelectionTotals(selectedVariants[sizeGroupIdx]) : { units: 0, amount: 0 };
+  const shareConfiguredUnit = isSlotMode
+    ? 0
+    : shareSizeTotals.units > 0
+      ? Math.min(...selectedSizes.map((i: any) => Number(i.price) || 0)) + (unitPrice + totalVariantsPrice - shareSizeTotals.amount) / shareSizeTotals.units
+      : unitPrice + totalVariantsPrice;
   const sharePriceUsd = shareConfiguredUnit > 0 ? shareConfiguredUnit : Number(product.metadata?.price?.infoPrice) || Number(product.price) || 0;
   const shareUrl = store?.code ? buildProductShareUrl(typeof window !== 'undefined' ? window.location.origin : '', store.code, product.id) : '';
 
@@ -2102,6 +2159,17 @@ export default function MasterProductModal({
                         </span>
                       </div>
 
+                      {sizeUnitsMode ? (
+                        /* Tallas con contador (tiendas de moda): las unidades se eligen en cada talla; aquí solo se resume el total.
+                           Un contador general además del de cada talla multiplicaba dos veces y, al subirlo, escondía las tallas. */
+                        <div data-testid="size-units" className="flex items-center justify-between gap-3 pt-1.5 border-t border-slate-100">
+                          <span className="text-xs font-bold text-slate-700">Unidades:</span>
+                          <span className="text-right">
+                            <span className="block font-black text-sm text-slate-900">{sizeUnits}</span>
+                            <span className="block text-[10px] font-semibold text-slate-500">Elige la cantidad en cada talla</span>
+                          </span>
+                        </div>
+                      ) : (
                       <div className="flex items-center justify-between pt-1.5 border-t border-slate-100">
                         <span className="text-xs font-bold text-slate-700">Cantidad:</span>
                         <div className="flex items-center gap-3 bg-slate-50 px-2.5 py-1 rounded-xl border border-slate-200 shadow-2xs">
@@ -2114,6 +2182,7 @@ export default function MasterProductModal({
                           </button>
                         </div>
                       </div>
+                      )}
                     </div>
 
                     {/* Tarjeta de Atributos del Producto / Sello de calidad */}

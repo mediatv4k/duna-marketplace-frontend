@@ -515,6 +515,11 @@ export default function MerchantStoreView({
       };
       updated = [...cartItems, newItem];
     }
+    // Tallas con contador (tiendas de moda): si el cliente marcó varias tallas, el ítem de arriba es la primera y las demás
+    // llegan en `sizeLines`: una línea PROPIA por talla, con sus unidades como cantidad (ver src/lib/sizeLines.ts).
+    if (Array.isArray(configuredItem.sizeLines)) {
+      for (const sizeLine of configuredItem.sizeLines) updated = mergeLookComplementIntoCart(updated, sizeLine);
+    }
     // "Completa tu look" (tiendas de moda): cada complemento activado en el modal entra como una línea PROPIA del carrito,
     // con el id, el código, las variantes y el precio reales de ese producto (el backend lo valida como cualquier otro ítem).
     if (Array.isArray(configuredItem.complements)) {
