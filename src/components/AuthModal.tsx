@@ -2,7 +2,7 @@
 
 import React, { useCallback, useEffect, useId, useRef, useState } from 'react';
 import { createPortal } from 'react-dom';
-import { AlertCircle, ArrowLeft, CheckCircle2, Eye, EyeOff, Loader2, X } from 'lucide-react';
+import { AlertCircle, ArrowLeft, CheckCircle2, Eye, EyeOff, Info, Loader2, X } from 'lucide-react';
 import GoogleSignInButton from '@/components/GoogleSignInButton';
 import { toAuthError } from '@/services/authService';
 import {
@@ -38,6 +38,8 @@ interface AuthModalProps {
   onClose: () => void;
   onSuccess?: () => void;
   actions: AuthModalActions;
+  /** Motivo por el que se pide identificarse (p. ej. guardar un favorito): se muestra destacado sobre el formulario. */
+  notice?: string;
 }
 
 type FieldName = 'name' | 'email' | 'phone' | 'password';
@@ -66,7 +68,7 @@ function Field({ id, label, error, children }: { id: string; label: string; erro
   );
 }
 
-export default function AuthModal({ initialMode = 'login', onClose, onSuccess, actions }: AuthModalProps) {
+export default function AuthModal({ initialMode = 'login', onClose, onSuccess, actions, notice }: AuthModalProps) {
   const uid = useId();
   const dialogRef = useRef<HTMLDivElement>(null);
   const submittingRef = useRef(false);
@@ -262,6 +264,7 @@ export default function AuthModal({ initialMode = 'login', onClose, onSuccess, a
         role="dialog"
         aria-modal="true"
         aria-labelledby={id('title')}
+        aria-describedby={notice && view === 'auth' ? id('notice') : undefined}
         tabIndex={-1}
         onKeyDown={handleKeyDown}
         className="relative my-auto w-full max-w-[400px] rounded-[28px] border border-slate-100 bg-white p-5 shadow-2xl outline-none sm:p-6"
@@ -288,6 +291,12 @@ export default function AuthModal({ initialMode = 'login', onClose, onSuccess, a
 
         {view === 'auth' && (
         <>
+        {notice && (
+          <p id={id('notice')} data-testid="auth-notice" className="mb-4 flex items-start gap-2 rounded-xl border border-orange-200 bg-[#fff5ed] px-3 py-2.5 text-xs font-bold leading-snug text-[#9a3412]">
+            <Info className="mt-0.5 h-4 w-4 shrink-0 text-[#fe6712]" aria-hidden="true" />
+            <span>{notice}</span>
+          </p>
+        )}
         <GoogleSignInButton onCredential={handleGoogleCredential} onPopup={handleGooglePopup} disabled={submitting} />
 
         <div className="my-4 flex items-center gap-3" aria-hidden="true">

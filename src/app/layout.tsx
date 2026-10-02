@@ -2,6 +2,8 @@ import type { Metadata } from "next";
 import "./globals.css";
 import dynamic from "next/dynamic";
 import { AuthProvider } from "@/context/AuthContext";
+import { ToastProvider } from "@/context/ToastContext";
+import { WishlistProvider } from "@/context/WishlistContext";
 
 const PedidoAmigosFloating = dynamic(
   () => import("@/components/PedidoAmigosFloating").then(mod => mod.PedidoAmigosFloating),
@@ -27,8 +29,13 @@ export default function RootLayout({
       <body>
         {/* Cuenta del cliente (opcional: comprar no exige sesión). Ver src/context/AuthContext.tsx */}
         <AuthProvider>
-          {children}
-          <PedidoAmigosFloating />
+          {/* Avisos breves y favoritos de la cuenta (el corazón exige sesión). Ver src/context/WishlistContext.tsx */}
+          <ToastProvider>
+            <WishlistProvider>
+              {children}
+              <PedidoAmigosFloating />
+            </WishlistProvider>
+          </ToastProvider>
         </AuthProvider>
       </body>
     </html>

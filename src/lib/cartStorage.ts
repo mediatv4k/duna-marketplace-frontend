@@ -25,6 +25,13 @@ function readStored(): StoredCart | null {
   return null; // formato viejo (arreglo suelto sin tienda) o inválido
 }
 
+// Carrito guardado, sea de la tienda que sea (solo lectura; null si no hay uno válido). Para AVISAR antes de una acción que lo
+// reemplazaría ("Volver a pedir" en otra tienda); para usar sus ítems siempre se pasa por `readCart(storeId)`.
+export function peekCart(): { storeId: string; count: number } | null {
+  const stored = readStored();
+  return stored && stored.items.length > 0 ? { storeId: stored.storeId, count: stored.items.length } : null;
+}
+
 // Ítems del carrito guardado, SOLO si pertenece exactamente a `storeId`; en cualquier otro caso, vacío.
 export function readCart(storeId: string | number | null | undefined): any[] {
   const id = normId(storeId);

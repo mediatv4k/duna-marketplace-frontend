@@ -176,6 +176,18 @@ export async function getProduct(productId: number | string, options: RequestIni
   return await apiFetch<any>(`/product/${productId}/web`, options, timeoutMs);
 }
 
+// Detalle de un producto con el resultado ya clasificado, para quien necesita distinguir "ya no existe" de "no pude consultar"
+// ("Volver a pedir" y el panel de favoritos): 'ok' = existe (`raw` = `data`); 'gone' = el backend dice que no existe (HTTP 404
+// `E_ROW_NOT_FOUND`, verificado en DEV); 'error' = red caída, tiempo agotado o respuesta inesperada (no se da por perdido).
+export type ProductLookupResult = { kind: 'ok'; raw: any } | { kind: 'gone' } | { kind: 'error' };
+
+export async function lookupProduct(productId: number | string, timeoutMs: number = REQUEST_TIMEOUT_MS): Promise<ProductLookupResult> {
+  const res = await getProduct(productId, {}, timeoutMs);
+  if (res && res.code === 1 && res.data && typeof res.data === 'object') return { kind: 'ok', raw: res.data };
+  if (/E_ROW_NOT_FOUND/i.test(typeof res?.message === 'string' ? res.message : '')) return { kind: 'gone' };
+  return { kind: 'error' };
+}
+
 // GET /store/{id}/schedule/open?apikey= — horario semanal del comercio. El contrato pide "apikey" en query y en header
 // (los headers no distinguen mayúsculas: apiKey/apikey). Verificado en DEV: data[] = { id, day (monday…sunday),
 // name, open_time "HH:mm", close_time "HH:mm", food_store_id, status "ACTIVE" }.
@@ -247,9 +259,10 @@ export async function getDeliveryRate(params: {
 }
 
 // GET /delivery/request/{orderId}/public?apiKey= — tracking público del pedido (envelope { code, data, message }).
-// El contrato exige apiKey como query param. Verificado en DEV con la orden #1620.
-export async function getOrderPublic(orderId: number | string): Promise<ApiResponse<any>> {
-  return await apiFetch<any>(`/delivery/request/${encodeURIComponent(String(orderId))}/public?apiKey=${encodeURIComponent(API_KEY)}`);
+// El contrato exige apiKey como query param. Verificado en DEV con la orden #1620. `timeoutMs` es opcional (sin él, sin límite, como
+// lo usan el seguimiento y el FAB): "Mis Últimas Compras" consulta varios pedidos a la vez y no debe quedarse esperando uno colgado.
+export async function getOrderPublic(orderId: number | string, timeoutMs?: number): Promise<ApiResponse<any>> {
+  return await apiFetch<any>(`/delivery/request/${encodeURIComponent(String(orderId))}/public?apiKey=${encodeURIComponent(API_KEY)}`, {}, timeoutMs);
 }
 
 // GET /promotion?store={code} — el backend filtra por el CÓDIGO/slug de la tienda (ej. "papa-helado"),

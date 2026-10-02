@@ -7,17 +7,25 @@ import OrderTrackingModal from '@/components/OrderTrackingModal';
 import PromotionsCarousel from '@/components/PromotionsCarousel';
 import StoreScheduleModal from '@/components/StoreScheduleModal';
 import AccountMenu from '@/components/AccountMenu';
+import CurrencyRateMenu, { type CurrencyMode } from '@/components/CurrencyRateMenu';
+import ServicesShortcut from '@/components/ServicesShortcut';
 import { NoOrdersModal, SavedAddressesModal } from '@/components/AccountModals';
+import FavoritesModal from '@/components/FavoritesModal';
+import PurchaseHistoryModal from '@/components/PurchaseHistoryModal';
+import { useAuth } from '@/context/AuthContext';
+import { useToast } from '@/context/ToastContext';
 
 import { getProductsByStore, getStorePromotions, getOrderPublic, getProductCategories, findStores, getStorePaymentInfo, getCustomerPromoProgress, REQUEST_TIMEOUT_MS, type CustomerPromoProgress } from '@/services/marketplaceService';
 import { parseStoreAdjustments, storeDiscountBadge, type StoreAdjustment } from '@/lib/storeAdjustments';
 import { isFinalStatus } from '@/lib/orderTracking';
 import { getBCVRate } from '@/lib/bcvRate';
-import { purgeCartIfOtherStore, clearCart } from '@/lib/cartStorage';
+import { purgeCartIfOtherStore, clearCart, readCart, writeCart } from '@/lib/cartStorage';
+import { buildPurchaseRecord, recordPurchase } from '@/lib/purchaseHistory';
+import { lineQty, mergeLinesIntoCart } from '@/lib/reorder';
 
 import {
   Clock, ChevronLeft, ChevronRight, Sparkles, MapPin, X, Navigation,
-  Loader2, Home, Compass, ShoppingBag, Coins, Truck, Bike, ClipboardList, Search, Tag, Star,
+  Loader2, Home, Compass, ShoppingBag, Bike, ClipboardList, Search, Tag, Star,
   Pizza, UtensilsCrossed, Coffee, Cake, IceCream, Sandwich, Pill, Wine, Beef, Store, Flame
 } from 'lucide-react';
 
@@ -101,28 +109,11 @@ function safeDecodeUrl(value: string): string {
   }
 }
 
-// Acceso directo a la landing de D'una Delivery en la cabecera del Home. La URL sale de NEXT_PUBLIC_DELIVERY_LANDING_URL (referencia
-// literal: Next la incrusta al compilar). SIN valor de respaldo: si la variable no está definida el enlace no se dibuja (un respaldo a
-// `localhost` dejaría un enlace roto en producción). El nombre accesible es siempre "D'una Delivery"; el texto visible lo pone quien lo
-// monta, según el espacio de cada cabecera.
+// Landing de D'una Delivery. La URL sale de NEXT_PUBLIC_DELIVERY_LANDING_URL (referencia literal: Next la incrusta al compilar). SIN
+// valor de respaldo: si la variable no está definida el acceso no se dibuja (un respaldo a `localhost` dejaría un enlace roto en
+// producción). Desde el 2026-10-02 ya no hay botón en la cabecera: el acceso es "Servicios D'una", anclado en la barra de categorías
+// (`ServicesShortcut`).
 const DELIVERY_LANDING_URL = (process.env.NEXT_PUBLIC_DELIVERY_LANDING_URL || '').trim();
-
-function DeliveryLandingLink({ children }: { children: React.ReactNode }) {
-  if (!DELIVERY_LANDING_URL) return null;
-  return (
-    <a
-      href={DELIVERY_LANDING_URL}
-      target="_blank"
-      rel="noopener noreferrer"
-      aria-label="D'una Delivery"
-      title="D'una Delivery"
-      className="flex h-9 shrink-0 items-center justify-center gap-1.5 rounded-full border border-[#fe6712] bg-[#fff5ed] px-2.5 text-[11px] font-black text-[#fe6712] whitespace-nowrap transition hover:bg-orange-100 active:scale-95 cursor-pointer md:text-xs"
-    >
-      <Truck className="h-4 w-4 shrink-0" aria-hidden="true" />
-      {children}
-    </a>
-  );
-}
 
 // Rutas por tienda (`/store/[storeCode]` y `/store/[storeCode]/product/[productId]`): el servidor valida el código, resuelve la tienda
 // (`initialStore`, de `GET /store/find`) y arma los metadatos Open Graph; este componente solo abre esa tienda (y, si viene, esa ficha de
@@ -133,7 +124,15 @@ interface MultitiendaHubProps {
   initialProductId?: string;
 }
 
+// Opciones de apertura de una tienda. `reorderLines`: "Volver a pedir" (líneas ya verificadas contra el catálogo de hoy, ver src/lib/reorder.ts)
+interface StoreOpenOptions {
+  reorderLines?: any[];
+}
+
 export default function MultitiendaHub({ initialStoreCode, initialStore, initialProductId }: MultitiendaHubProps = {}) {
+  // Cuenta del cliente (opcional): con sesión, cada pedido confirmado se anota en "Mis Últimas Compras" de esa cuenta
+  const { user: authUser } = useAuth();
+  const showToast = useToast();
   // Esta instancia fue abierta por una ruta `/store/...` (el URL YA es el de la tienda). Se apaga al salir de la tienda.
   const routeMountedRef = useRef<boolean>(Boolean(initialStoreCode));
   const storeOpenedOnceRef = useRef<boolean>(false);
@@ -160,7 +159,9 @@ export default function MultitiendaHub({ initialStoreCode, initialStore, initial
   const openingStoreRef = useRef<string | null>(null);
   // Con `initialStore` (ruta por tienda) el aviso "Abriendo…" cubre desde el primer render: sin él se vería un instante el Home
   const [openingStoreName, setOpeningStoreName] = useState<string | null>(() => (initialStore ? String(initialStore.name || 'la tienda') : null));
-  const [storeLoadError, setStoreLoadError] = useState<{ store: any; message: string } | null>(null);
+  const [storeLoadError, setStoreLoadError] = useState<{ store: any; message: string; options?: StoreOpenOptions } | null>(null);
+  // "Volver a pedir": id de la tienda que debe abrir con el carrito a la vista (solo esa apertura; ver `handleStoreClick`)
+  const [cartOpenOnMountFor, setCartOpenOnMountFor] = useState<string | null>(null);
   // Una `key` por pedido para CheckoutModal: cada checkout nuevo se monta limpio (auditoría C2)
   const [checkoutKey, setCheckoutKey] = useState(0);
   const storeHistoryRef = useRef(false); // hay una entrada de historial propia ('merchant-store') mientras se ve una tienda
@@ -220,13 +221,15 @@ export default function MultitiendaHub({ initialStoreCode, initialStore, initial
 
   const [selectedCategory, setSelectedCategory] = useState<string>('ALL');
   const [searchQuery, setSearchQuery] = useState('');
-  const [currencyMode, setCurrencyMode] = useState<'DUAL' | 'USD' | 'VES'>('DUAL');
+  const [currencyMode, setCurrencyMode] = useState<CurrencyMode>('DUAL');
   
   const [isCheckoutOpen, setIsCheckoutOpen] = useState(false);
   const [isTrackingOpen, setIsTrackingOpen] = useState(false);
-  // Menú de la cuenta (cabecera): "Mis Pedidos" sin pedido guardado y "Direcciones Guardadas"
+  // Menú de la cuenta (cabecera): "Mis Pedidos" sin pedido guardado, "Direcciones Guardadas", "Mis Últimas Compras" y "Mis Favoritos"
   const [isNoOrdersOpen, setIsNoOrdersOpen] = useState(false);
   const [isAddressesOpen, setIsAddressesOpen] = useState(false);
+  const [isPurchasesOpen, setIsPurchasesOpen] = useState(false);
+  const [isFavoritesOpen, setIsFavoritesOpen] = useState(false);
   const [activeOrderId, setActiveOrderId] = useState<string>('');
   const [hasCompletedOrder, setHasCompletedOrder] = useState<boolean>(false);
   const [forceCartOpenCount, setForceCartOpenCount] = useState<number>(0);
@@ -395,20 +398,24 @@ export default function MultitiendaHub({ initialStoreCode, initialStore, initial
 
   // CONTROLADOR DE APERTURA DE TIENDA. Sin catálogo real la tienda NO se abre (jamás productos ficticios: auditoría C3) y el error ofrece
   // reintento. Solo al abrirla con éxito se purga cualquier carrito que no sea de esa tienda (C1) y se arranca con un checkout limpio (C2).
-  const handleStoreClick = async (store: any) => {
+  // `options.reorderLines` ("Volver a pedir"): líneas de un pedido anterior YA verificadas contra el catálogo de hoy; se suman al carrito
+  // de la tienda justo cuando esta va a abrirse (si no abre, el carrito del cliente queda intacto) y la tienda abre con el carrito a la vista.
+  // Devuelve true si la tienda abrió.
+  const handleStoreClick = async (store: any, options?: StoreOpenOptions): Promise<boolean> => {
     const storeIdStr = String(store.id);
-    if (openingStoreRef.current) return; // ya se está abriendo una tienda (doble clic / promoción + tarjeta)
+    if (openingStoreRef.current) return false; // ya se está abriendo una tienda (doble clic / promoción + tarjeta)
     openingStoreRef.current = storeIdStr;
     storeOpenSuccessRef.current = false;
     setOpeningStoreName(store.name || 'la tienda');
     setStoreLoadError(null);
     const loadErrorMessage = `No pudimos cargar el catálogo de ${store.name || 'la tienda'}. Revisa tu conexión e inténtalo de nuevo.`;
+    const reorderLines = options?.reorderLines && options.reorderLines.length > 0 ? options.reorderLines : null;
     try {
       // Timeout de 15 s dentro del servicio (antes: Promise.race de 3 s que caía a productos de prueba)
       const res = await getProductsByStore(store.id);
       if (!(res.code === 1 && res.data)) {
-        setStoreLoadError({ store, message: loadErrorMessage });
-        return;
+        setStoreLoadError({ store, message: loadErrorMessage, options });
+        return false;
       }
 
       let flatProducts: any[] = [];
@@ -424,6 +431,8 @@ export default function MultitiendaHub({ initialStoreCode, initialStore, initial
       if (typeof window !== 'undefined') {
         purgeCartIfOtherStore(storeIdStr);
         localStorage.setItem('current_cart_store_id', storeIdStr);
+        // "Volver a pedir": las líneas se suman al carrito de ESTA tienda antes de montarla (la vista lee el carrito guardado al montar)
+        if (reorderLines) writeCart(storeIdStr, mergeLinesIntoCart(readCart(storeIdStr), reorderLines));
       }
 
       const mappedInfo = {
@@ -451,12 +460,18 @@ export default function MultitiendaHub({ initialStoreCode, initialStore, initial
       setHasCompletedOrder(false);
       setIsCheckoutOpen(false);
       setCheckoutKey((k) => k + 1);
+      // Solo la apertura de "Volver a pedir" muestra el carrito al montar; cualquier otra apertura lo apaga
+      setCartOpenOnMountFor(reorderLines ? storeIdStr : null);
       setActiveMerchantInfo(mappedInfo);
       setActiveMerchantProducts(flatProducts);
       setActiveMerchantId(storeIdStr);
       activeStoreRef.current = storeIdStr;
       lastStoreRef.current = store;
       storeOpenSuccessRef.current = true;
+      if (reorderLines) {
+        const units = reorderLines.reduce((n: number, l: any) => n + lineQty(l), 0);
+        showToast(units === 1 ? 'Agregamos 1 producto de tu compra anterior a tu carrito.' : `Agregamos ${units} productos de tu compra anterior a tu carrito.`, { durationMs: 3600 });
+      }
 
       // El backend pagina de a 30 productos (data.meta.last_page / data.hasMore): sin las demás páginas el catálogo y las categorías
       // quedaban incompletos (p. ej. Proseco Bodegón: 30 de 255 productos, solo "LICORES"). Se traen el resto en segundo plano.
@@ -483,9 +498,11 @@ export default function MultitiendaHub({ initialStoreCode, initialStore, initial
       } else {
         setIsLoadingMoreProducts(false);
       }
+      return true;
     } catch (e) {
       console.error('Error al cargar productos', e);
-      setStoreLoadError({ store, message: loadErrorMessage });
+      setStoreLoadError({ store, message: loadErrorMessage, options });
+      return false;
     } finally {
       openingStoreRef.current = null;
       setOpeningStoreName(null);
@@ -571,6 +588,8 @@ export default function MultitiendaHub({ initialStoreCode, initialStore, initial
             setIsCheckoutOpen(true);
           }}
           forceOpenCartTrigger={forceCartOpenCount}
+          // "Volver a pedir": la tienda abre con el carrito (ya con el pedido anterior) a la vista
+          openCartOnMount={cartOpenOnMountFor === activeMerchantId}
           userLocation={userLocation}
         />
 
@@ -586,6 +605,10 @@ export default function MultitiendaHub({ initialStoreCode, initialStore, initial
             if (typeof window !== 'undefined') {
               localStorage.setItem('last_active_order', JSON.stringify(orderData));
               localStorage.setItem('last_active_order_id', String(orderData.id));
+              // Con sesión iniciada el pedido (ya confirmado por el backend, con su id real) queda en "Mis Últimas Compras" de la cuenta
+              if (authUser) {
+                recordPurchase(authUser.uid, buildPurchaseRecord(orderData, { id: activeMerchantInfo.id, code: activeMerchantInfo.code, name: activeMerchantInfo.name }));
+              }
             }
             setSavedOrderId(String(orderData.id));
             setHasCompletedOrder(true);
@@ -699,26 +722,25 @@ export default function MultitiendaHub({ initialStoreCode, initialStore, initial
   return (
     <div suppressHydrationWarning className="min-h-screen flex flex-col bg-slate-50 text-slate-900 font-sans pb-16 md:pb-0">
       
-      {/* ── Navbar Principal — Glass Blanca ───────────────────────────────────────────────────────
-           Desktop (md:): 3 columnas en una sola fila (Logo, Buscador+Cercanos, Utilidades).
-           Móvil (< md): Fila 1 (Logo Centrado Institucional) / Fila 2 (Buscador + Selector Divisa).
-           Paleta corporativa #FE6712. Logo naranja sobre blanco. */}
+      {/* ── Navbar Principal — Glass Blanca, versión minimalista (2026-10-02) ──────────────────────
+           Desktop (md:): 3 columnas en una sola fila (Logo, Buscador+Cercanos, Utilidades discretas).
+           Móvil (< md): Fila 1 (moneda/tasa · logo centrado · cuenta) / Fila 2 (buscador a todo el ancho).
+           En la barra ya NO hay botón de D'una Delivery (pasó a "Servicios D'una", en la barra de categorías) ni botón naranja de
+           inicio de sesión (la cuenta es un ícono que despliega su menú); moneda y tasa BCV van agrupadas en un solo control gris. */}
       <div className="sticky top-0 z-40 bg-white/95 backdrop-blur-md border-b border-slate-100 shadow-sm">
         {/* Cabecera Móvil (< md) */}
         <div className="md:hidden flex flex-col w-full pb-2">
-          {/* Fila 1: Logo Centrado Institucional (D'una Delivery a la izquierda, cuenta del cliente a la derecha) */}
+          {/* Fila 1: logo centrado; a la izquierda moneda y tasa (un control discreto) y a la derecha el ícono de la cuenta */}
           <div className="relative w-full flex justify-center py-2">
-            {/* Espejo del botón de la cuenta: sin espacio para el texto solo se ve el icono (el logo va centrado en la misma fila) */}
             <div className="absolute left-3 top-1/2 -translate-y-1/2">
-              <DeliveryLandingLink>
-                <span className="hidden min-[360px]:inline pr-1">Delivery</span>
-              </DeliveryLandingLink>
+              <CurrencyRateMenu mode={currencyMode} onChange={setCurrencyMode} bcvRate={bcvRate} align="left" />
             </div>
             <div className="absolute right-3 top-1/2 -translate-y-1/2">
               <AccountMenu
-                loginLabelClassName="hidden min-[380px]:inline"
                 onOpenOrders={() => (savedOrderId ? setIsTrackingOpen(true) : setIsNoOrdersOpen(true))}
                 onOpenAddresses={() => setIsAddressesOpen(true)}
+                onOpenPurchases={() => setIsPurchasesOpen(true)}
+                onOpenFavorites={() => setIsFavoritesOpen(true)}
               />
             </div>
             <div
@@ -733,7 +755,7 @@ export default function MultitiendaHub({ initialStoreCode, initialStore, initial
             </div>
           </div>
 
-          {/* Fila 2: Buscador Integrado con Selector de Moneda */}
+          {/* Fila 2: buscador a todo el ancho (el selector de moneda subió, compacto, a la fila del logo) */}
           <div className="flex items-center gap-2 px-4 py-1.5 w-full">
             <div className="flex-1 flex items-center bg-slate-50 border border-slate-200/90 rounded-full px-3.5 py-1.5 shadow-inner focus-within:border-[#FE6712] focus-within:bg-white transition-all gap-2 min-w-0">
               <svg width={14} height={14} className="w-3.5 h-3.5 text-slate-400 shrink-0" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}>
@@ -746,12 +768,6 @@ export default function MultitiendaHub({ initialStoreCode, initialStore, initial
                 placeholder="Busca comercios o productos..."
                 className="flex-1 bg-transparent text-xs font-semibold text-slate-800 focus:outline-none placeholder-slate-400 min-w-0"
               />
-            </div>
-
-            <div className="flex items-center bg-slate-100 p-0.5 rounded-full border border-slate-200 text-[10px] font-bold shrink-0">
-              <button type="button" onClick={() => setCurrencyMode('DUAL')} className={`px-2.5 py-1 rounded-full cursor-pointer whitespace-nowrap transition ${currencyMode === 'DUAL' ? 'bg-[#fe6712] text-white shadow-sm' : 'text-slate-600 hover:text-slate-900'}`}>$/Bs</button>
-              <button type="button" onClick={() => setCurrencyMode('USD')} className={`px-2.5 py-1 rounded-full cursor-pointer whitespace-nowrap transition ${currencyMode === 'USD' ? 'bg-[#fe6712] text-white shadow-sm' : 'text-slate-600 hover:text-slate-900'}`}>USD</button>
-              <button type="button" onClick={() => setCurrencyMode('VES')} className={`px-2.5 py-1 rounded-full cursor-pointer whitespace-nowrap transition ${currencyMode === 'VES' ? 'bg-[#fe6712] text-white shadow-sm' : 'text-slate-600 hover:text-slate-900'}`}>Bs</button>
             </div>
           </div>
         </div>
@@ -798,30 +814,21 @@ export default function MultitiendaHub({ initialStoreCode, initialStore, initial
             </div>
           </div>
 
-          {/* COL DERECHA — Utilidades: ubicación + BCV + selector moneda + D'una Delivery + cuenta */}
-          <div className="flex items-center gap-2 shrink-0 text-xs">
+          {/* COL DERECHA — Utilidades discretas: ubicación + moneda y tasa BCV (un solo control gris) + ícono de la cuenta */}
+          <div className="flex items-center gap-2.5 shrink-0 text-xs">
             <div className="hidden lg:flex items-center gap-1.5 font-bold text-slate-600" suppressHydrationWarning>
               <MapPin className="w-3.5 h-3.5 text-[#fe6712] shrink-0" />
               <span className="truncate max-w-[130px]">
                 <strong className="text-slate-900">{userLocation ? userLocation.label : 'Cabimas, Zulia'}</strong>
               </span>
             </div>
-            <div className="hidden xl:flex items-center gap-1.5 bg-slate-50 px-2.5 py-1 rounded-full border border-slate-200 text-slate-500 text-[11px]">
-              <Coins className="w-3 h-3 text-amber-500" />
-              <span>BCV: <strong className="text-slate-800">{bcvRate ? `Bs. ${bcvRate.toFixed(2)}` : '---'}</strong></span>
-            </div>
-            <div className="flex items-center bg-slate-100 p-0.5 rounded-full border border-slate-200 text-[10px] font-bold">
-              <button type="button" onClick={() => setCurrencyMode('DUAL')} className={`px-2.5 py-1 rounded-full cursor-pointer whitespace-nowrap transition ${currencyMode === 'DUAL' ? 'bg-[#fe6712] text-white shadow-sm' : 'text-slate-600 hover:text-slate-900'}`}>$/Bs</button>
-              <button type="button" onClick={() => setCurrencyMode('USD')} className={`px-2.5 py-1 rounded-full cursor-pointer whitespace-nowrap transition ${currencyMode === 'USD' ? 'bg-[#fe6712] text-white shadow-sm' : 'text-slate-600 hover:text-slate-900'}`}>USD</button>
-              <button type="button" onClick={() => setCurrencyMode('VES')} className={`px-2.5 py-1 rounded-full cursor-pointer whitespace-nowrap transition ${currencyMode === 'VES' ? 'bg-[#fe6712] text-white shadow-sm' : 'text-slate-600 hover:text-slate-900'}`}>Bs</button>
-            </div>
-            {/* Mismo criterio que el botón de la cuenta, para no recortar el buscador: solo icono en md, "Delivery" desde lg y el nombre completo desde xl */}
-            <DeliveryLandingLink>
-              <span className="hidden lg:inline pr-1"><span className="hidden xl:inline">D'una </span>Delivery</span>
-            </DeliveryLandingLink>
+            {/* La tasa se lee dentro del propio botón desde lg; en md solo la moneda (la tasa está en el desplegable) */}
+            <CurrencyRateMenu mode={currencyMode} onChange={setCurrencyMode} bcvRate={bcvRate} rateClassName="hidden lg:flex" />
             <AccountMenu
               onOpenOrders={() => (savedOrderId ? setIsTrackingOpen(true) : setIsNoOrdersOpen(true))}
               onOpenAddresses={() => setIsAddressesOpen(true)}
+              onOpenPurchases={() => setIsPurchasesOpen(true)}
+              onOpenFavorites={() => setIsFavoritesOpen(true)}
             />
           </div>
 
@@ -846,7 +853,18 @@ export default function MultitiendaHub({ initialStoreCode, initialStore, initial
             </div>
           </div>
           
-          <div ref={categoryRailRef} className="flex items-center gap-2.5 overflow-x-auto no-scrollbar scroll-smooth py-1">
+          {/* Barra de categorías. "Servicios D'una" va ANCLADO a la izquierda, fuera del carril que se desplaza (no es una categoría: lleva
+              a la landing de delivery); solo se dibuja si la landing está configurada. Las categorías siguen en su carril de siempre. */}
+          <div className="flex items-stretch gap-2.5">
+            {DELIVERY_LANDING_URL && (
+              <>
+                <div className="flex shrink-0 py-1">
+                  <ServicesShortcut href={DELIVERY_LANDING_URL} />
+                </div>
+                <span className="my-3 w-px shrink-0 bg-slate-200" aria-hidden="true" />
+              </>
+            )}
+          <div ref={categoryRailRef} className="flex min-w-0 flex-1 items-center gap-2.5 overflow-x-auto no-scrollbar scroll-smooth py-1">
             <button
               type="button"
               onClick={() => setSelectedCategory('ALL')}
@@ -907,6 +925,7 @@ export default function MultitiendaHub({ initialStoreCode, initialStore, initial
                 </button>
               );
             })}
+          </div>
           </div>
         </section>
 
@@ -1095,7 +1114,7 @@ export default function MultitiendaHub({ initialStoreCode, initialStore, initial
             <div className="flex gap-2">
               <button
                 type="button"
-                onClick={() => { const s = storeLoadError.store; setStoreLoadError(null); handleStoreClick(s); }}
+                onClick={() => { const { store: s, options: o } = storeLoadError; setStoreLoadError(null); handleStoreClick(s, o); }}
                 className="flex-1 bg-[#fe6712] hover:bg-[#e0580d] text-white text-xs font-black py-2.5 rounded-full shadow-md cursor-pointer active:scale-95 transition"
               >
                 Reintentar
@@ -1139,6 +1158,20 @@ export default function MultitiendaHub({ initialStoreCode, initialStore, initial
 
       <NoOrdersModal isOpen={isNoOrdersOpen} onClose={() => setIsNoOrdersOpen(false)} />
       <SavedAddressesModal isOpen={isAddressesOpen} onClose={() => setIsAddressesOpen(false)} initialCenter={userLocation ? { lat: userLocation.lat, lng: userLocation.lng } : CABIMAS_CENTER} />
+      <FavoritesModal isOpen={isFavoritesOpen} onClose={() => setIsFavoritesOpen(false)} />
+      <PurchaseHistoryModal
+        isOpen={isPurchasesOpen}
+        onClose={() => setIsPurchasesOpen(false)}
+        stores={realStores}
+        storesLoading={loadingHome}
+        isStoreOpenNow={(s) => storeOpenRank(s) === 0}
+        onReorder={(record, lines) => {
+          const store = realStores.find((s: any) => String(s.id) === record.storeId);
+          if (!store || lines.length === 0) return;
+          setIsPurchasesOpen(false);
+          void handleStoreClick(store, { reorderLines: lines });
+        }}
+      />
     </div>
   );
 }

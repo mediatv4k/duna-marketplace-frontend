@@ -46,14 +46,15 @@ function usePanelChrome(onClose: () => void) {
 
 // `hidden`: el panel sigue montado (conserva su estado y el bloqueo de scroll) pero no se ve, p. ej. mientras el mapa está encima. El panel va en
 // un portal al final de <body> y el mapa no: con el mismo z-index el panel taparía al mapa, por eso se oculta.
-function PanelShell({ title, icon, onClose, hidden, children }: { title: string; icon: React.ReactNode; onClose: () => void; hidden?: boolean; children: React.ReactNode }) {
+// `wide`: paneles con listas (favoritos, últimas compras) que necesitan un poco más de ancho. Exportado para esos paneles.
+export function PanelShell({ title, icon, onClose, hidden, wide, children }: { title: string; icon: React.ReactNode; onClose: () => void; hidden?: boolean; wide?: boolean; children: React.ReactNode }) {
   const { ref, onKeyDown } = usePanelChrome(onClose);
   return createPortal(
     <div
       className={`fixed inset-0 z-[150] ${hidden ? 'hidden' : 'flex'} items-center justify-center overflow-y-auto bg-black/70 p-3 backdrop-blur-sm animate-in fade-in duration-150`}
       onMouseDown={(e) => { if (e.target === e.currentTarget) onClose(); }}
     >
-      <div ref={ref} role="dialog" aria-modal="true" aria-label={title} tabIndex={-1} onKeyDown={onKeyDown} className="relative my-auto w-full max-w-[400px] rounded-[28px] border border-slate-100 bg-white p-5 shadow-2xl outline-none sm:p-6">
+      <div ref={ref} role="dialog" aria-modal="true" aria-label={title} tabIndex={-1} onKeyDown={onKeyDown} className={`relative my-auto w-full ${wide ? 'max-w-[460px]' : 'max-w-[400px]'} rounded-[28px] border border-slate-100 bg-white p-5 shadow-2xl outline-none sm:p-6`}>
         <button type="button" onClick={onClose} aria-label="Cerrar" className="absolute right-3.5 top-3.5 flex h-8 w-8 items-center justify-center rounded-full text-slate-400 transition hover:bg-slate-100 hover:text-slate-700 cursor-pointer">
           <X className="h-4 w-4" />
         </button>

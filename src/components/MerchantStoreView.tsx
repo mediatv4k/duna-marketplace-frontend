@@ -6,6 +6,7 @@ import { parseDescriptionTags } from '@/lib/productTags';
 import { parseStoreAdjustments, computeStoreAdjustments, storeDiscountBadge, storeDiscountNotice, type StoreAdjustment } from '@/lib/storeAdjustments';
 import ProductTagBadges from './ProductTagBadges';
 import ShareButton from './ShareButton';
+import FavoriteButton from './FavoriteButton';
 import CartModal from './CartModal';
 import LocationPickerModal from './LocationPickerModal';
 import MasterProductModal from './MasterProductModal';
@@ -45,6 +46,7 @@ interface MerchantStoreViewProps {
   userLocation?: CustomerLocation | null;
   isLoadingMore?: boolean; // siguen llegando páginas de productos del backend
   initialProductId?: string; // ruta `/store/{code}/product/{id}`: se abre esta ficha al montar (id o hash, como acepta `GET /product/{id}/web`)
+  openCartOnMount?: boolean; // "Volver a pedir": la tienda abre con el carrito a la vista (el pedido anterior ya está en él)
 }
 
 export default function MerchantStoreView({
@@ -56,12 +58,14 @@ export default function MerchantStoreView({
   userLocation,
   isLoadingMore = false,
   initialProductId,
+  openCartOnMount = false,
 }: MerchantStoreViewProps) {
   // El carrito guardado solo se carga si pertenece EXACTAMENTE a esta tienda (`cart_data` = { storeId, items }): un carrito de otro
   // comercio, o en el formato viejo sin tienda, se ignora (auditoría C1: antes ítems de una tienda aparecían en otra).
   const [cartItems, setCartItems] = useState<any[]>(() => readCart(merchant?.id));
 
-  const [isCartOpen, setIsCartOpen] = useState(false);
+  // Solo el valor del montaje cuenta (esta vista se monta de nuevo en cada apertura de tienda): por defecto, cerrado como siempre
+  const [isCartOpen, setIsCartOpen] = useState<boolean>(() => Boolean(openCartOnMount));
   // Rescate de sesión del anfitrión: `?resumeRoom=&resumeProduct=` (lo arma la barra flotante) reabre el Monitor en Vivo
   const [modalResumeRoomId, setModalResumeRoomId] = useState<string | null>(null);
   // Lightbox de la grilla de productos: clic en la foto (no en el resto de la tarjeta) la amplía; no toca el carrito ni abre el modal del producto
@@ -774,6 +778,12 @@ export default function MerchantStoreView({
                           alt={product.name}
                           loading="lazy"
                           className="h-full w-full object-contain transition-transform duration-300 group-hover:scale-105"
+                        />
+                        {/* Favoritos: exige sesión (sin ella abre el acceso y guarda el favorito al entrar). El toque no abre la ficha del producto */}
+                        <FavoriteButton
+                          product={product}
+                          store={merchant}
+                          className="absolute top-2 right-2 z-20 flex h-8 w-8 items-center justify-center rounded-full border border-slate-200 bg-white/90 shadow-sm backdrop-blur-sm transition hover:bg-white active:scale-90 cursor-pointer"
                         />
                         {/* Lightbox: solo la lupa lo abre (stopPropagation); tocar el resto de la foto abre la ficha del producto como el resto de la tarjeta */}
                         <button

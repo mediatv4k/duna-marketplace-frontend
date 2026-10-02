@@ -22,6 +22,7 @@ import {
 import { parseDescriptionTags } from '@/lib/productTags';
 import ProductTagBadges from './ProductTagBadges';
 import ShareButton from './ShareButton';
+import FavoriteButton from './FavoriteButton';
 import VariantThumb from './VariantThumb';
 import KitchenNote, { cleanKitchenNote, formatSin } from './KitchenNote';
 import { getOptimizedImageUrl } from '@/lib/imageOptimizer';
@@ -2090,11 +2091,20 @@ export default function MasterProductModal({
     </>
   );
 
+  // Scroll táctil (móvil): la ficha tiene UN solo contenedor con scroll. Modo modal = la zona de contenido (el pie queda fijo
+  // debajo); modo página = la página entera. Antes había dos contenedores `overflow-y-auto` anidados del mismo tamaño (y en modo
+  // página uno interior que no desplazaba nada), con el alto colgado de una cadena de `h-full`: en teléfonos reales el gesto
+  // podía quedarse en el contenedor equivocado. `modal-scroll` (globals.css) = overflow-y auto + inercia táctil + sin
+  // encadenar el gesto a la página de atrás.
+  const scrollAreaClass = isPageMode ? 'flex-1' : 'flex-1 min-h-0 modal-scroll';
+  // Ficha simple (sin variantes). En modo página conserva su alto natural (no se estira), igual que antes.
+  const simpleAreaClass = isPageMode ? 'flex flex-col' : 'flex flex-col flex-1 min-h-0 modal-scroll';
+
   return (
     <div
       className={
         isPageMode
-          ? 'fixed inset-0 z-[100] bg-white overflow-y-auto' // "página" propia: opaca, a todo el viewport, con su propio scroll nativo (sin backdrop ni tarjeta flotante)
+          ? 'fixed inset-0 z-[100] bg-white modal-scroll' // "página" propia: opaca, a todo el viewport, con su propio scroll nativo (sin backdrop ni tarjeta flotante)
           : 'fixed inset-0 z-[100] flex items-stretch md:items-center justify-center p-0 md:p-4 transition-all duration-300'
       }
     >
@@ -2104,12 +2114,18 @@ export default function MasterProductModal({
         className={
           isPageMode
             ? `bg-white w-full ${hasVariants ? 'md:max-w-3xl' : 'md:max-w-2xl'} mx-auto min-h-full flex flex-col relative` // sin recorte de alto ni sombra de tarjeta: crece con el contenido, la página es quien scrollea
-            : `bg-white w-full ${hasVariants ? 'md:max-w-3xl' : 'md:max-w-2xl'} rounded-none md:rounded-3xl h-full md:h-auto max-h-full md:max-h-[92vh] flex flex-col overflow-hidden shadow-2xl relative z-10 animate-in slide-in-from-bottom md:slide-in-from-bottom-0 md:zoom-in-95 duration-200`
+            : `bg-white w-full ${hasVariants ? 'md:max-w-3xl' : 'md:max-w-2xl'} rounded-none md:rounded-3xl h-full md:h-auto max-h-full modal-sheet-mobile md:max-h-[92vh] flex flex-col overflow-hidden shadow-2xl relative z-10 animate-in slide-in-from-bottom md:slide-in-from-bottom-0 md:zoom-in-95 duration-200`
         }
       >
 
         {/* Controles flotantes */}
         <div className="absolute top-3 right-3 flex items-center gap-2 z-40">
+          {/* Favoritos: mismo corazón de la tarjeta del catálogo (exige sesión; sin ella abre el acceso y guarda el favorito al entrar) */}
+          <FavoriteButton
+            product={product}
+            store={store}
+            className="w-8 h-8 rounded-full bg-white/90 backdrop-blur border border-slate-200 hover:bg-slate-100 flex items-center justify-center transition cursor-pointer shadow-sm active:scale-90"
+          />
           {store?.code && (
             <ShareButton
               title={product.name}
@@ -2124,11 +2140,13 @@ export default function MasterProductModal({
           </button>
         </div>
 
-        <div className={isPageMode ? 'flex-1 flex flex-col' : 'flex-1 flex flex-col overflow-y-auto md:overflow-hidden min-h-0'}>
+        {/* Envoltorio SIN scroll propio (antes `overflow-y-auto` en móvil: un segundo contenedor con scroll, del mismo tamaño
+            que el de dentro). El scroll lo lleva la zona de contenido de cada vista (`scrollAreaClass`). */}
+        <div className={isPageMode ? 'flex-1 flex flex-col' : 'flex-1 flex flex-col overflow-hidden min-h-0'}>
           {step === 1 && (
             hasVariants ? (
               /* LAYOUT SIMÉTRICO 50/50 BILATERAL PARA PRODUCTOS CON VARIANTES */
-              <div className="flex-1 overflow-y-auto min-h-0">
+              <div className={scrollAreaClass}>
                 <div className={`grid grid-cols-1 ${viewMode === 'slots' ? '' : 'md:grid-cols-2'} gap-4 md:gap-6 p-4 md:p-6 items-start`}>
                   {/* Columna Izquierda (Mitad 50% - Anclada / Sin Scroll) */}
                   <div className={`w-full flex flex-col justify-between overflow-hidden bg-slate-50/70 rounded-2xl p-4 border border-slate-200/80 gap-3 md:sticky md:top-6 ${viewMode === 'slots' ? 'hidden md:hidden' : ''}`}>
@@ -2236,8 +2254,9 @@ export default function MasterProductModal({
                 </div>
               </div>
             ) : (
-              /* LAYOUT ESTÁNDAR PARA PRODUCTOS SIMPLES / MEDICAMENTOS */
-              <div className="flex flex-col h-full overflow-y-auto">
+              /* LAYOUT ESTÁNDAR PARA PRODUCTOS SIMPLES / MEDICAMENTOS (Farma D'una, bodegones…). Sin `h-full`: el alto sale del
+                 reparto flex (`flex-1 min-h-0`), no de un porcentaje que depende de que toda la cadena de padres tenga alto definido. */
+              <div className={simpleAreaClass}>
                 {/* Cabecera Fija */}
                 <div className="shrink-0 p-3 sm:p-4 grid grid-cols-1 sm:grid-cols-2 gap-3 items-start bg-white z-20 shadow-sm border-b border-slate-100">
                   {/* Columna Izquierda: Imagen, Precio y Cantidad */}
@@ -2487,7 +2506,7 @@ export default function MasterProductModal({
           )}
 
           {step === 2 && currentUpsells.length > 0 && (
-            <div className="p-5 sm:p-6 space-y-6 bg-slate-50 min-h-full">
+            <div className={`p-5 sm:p-6 space-y-6 bg-slate-50 ${scrollAreaClass}`}>
               <div className="text-center space-y-2 pt-4">
                 <div className="w-16 h-16 mx-auto bg-emerald-100 text-emerald-500 rounded-full flex items-center justify-center shadow-inner mb-4">
                   <Check className="w-8 h-8 stroke-[3]" />

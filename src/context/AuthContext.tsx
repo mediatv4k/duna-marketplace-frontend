@@ -32,6 +32,8 @@ export interface OpenAuthOptions {
   mode?: AuthMode;
   /** Se ejecuta cuando el cliente termina de iniciar sesión o registrarse desde el modal. */
   onSuccess?: () => void;
+  /** Por qué se le pide identificarse (p. ej. al tocar un corazón sin sesión): se muestra destacado dentro del modal. */
+  message?: string;
 }
 
 interface AuthContextValue {
@@ -78,6 +80,7 @@ interface ModalState {
   open: boolean;
   mode: AuthMode;
   onSuccess?: () => void;
+  message?: string;
 }
 
 export function AuthProvider({ children }: { children: React.ReactNode }) {
@@ -112,7 +115,7 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
   const closeAuthModal = useCallback(() => setModal((m) => ({ ...m, open: false })), []);
   const openAuthModal = useCallback((options?: OpenAuthOptions) => {
     if (!isAuthAvailable) return;
-    setModal({ open: true, mode: options?.mode ?? 'login', onSuccess: options?.onSuccess });
+    setModal({ open: true, mode: options?.mode ?? 'login', onSuccess: options?.onSuccess, message: options?.message });
   }, []);
 
   // Las acciones lanzan `AuthError` (mensaje en español) para que el modal lo muestre junto al formulario
@@ -159,6 +162,7 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
       {modal.open && (
         <AuthModal
           initialMode={modal.mode}
+          notice={modal.message}
           onClose={closeAuthModal}
           onSuccess={modal.onSuccess}
           actions={{ loginWithEmail, registerWithEmail, loginWithGoogle, loginWithGooglePopup, sendPasswordReset }}

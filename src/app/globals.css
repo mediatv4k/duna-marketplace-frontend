@@ -52,6 +52,26 @@
   scrollbar-width: none; /* Firefox */
 }
 
+/* Zona con scroll vertical de un modal, pensada para pantallas táctiles:
+   - desplazamiento con inercia en iOS antiguos (-webkit-overflow-scrolling);
+   - al llegar al tope o al fondo el gesto NO pasa a la página de atrás (overscroll-behavior), que en un teléfono se
+     siente como si el modal se hubiera quedado trabado mientras se mueve el catálogo de fondo. */
+.modal-scroll {
+  overflow-y: auto;
+  -webkit-overflow-scrolling: touch;
+  overscroll-behavior-y: contain;
+}
+
+/* Hoja de producto a pantalla completa en móvil (< md): nunca más alta que el área REALMENTE visible. `100dvh`
+   descuenta las barras del navegador que aparecen y desaparecen; donde no existe esa unidad queda el 100 % de siempre.
+   Solo en móvil: desde md el modal es una tarjeta centrada con su propio tope (md:max-h-[92vh]). */
+@media (max-width: 767.98px) {
+  .modal-sheet-mobile {
+    max-height: 100%;
+    max-height: 100dvh;
+  }
+}
+
 /* Configuraciones base del sistema */
 @layer base {
   body {
