@@ -31,8 +31,8 @@ import {
   Pizza, UtensilsCrossed, Coffee, Cake, IceCream, Sandwich, Pill, Wine, Beef, Store, Flame
 } from 'lucide-react';
 
-// Zona base (Cabimas, Zulia) y criterio de GPS explícito (MAX_GPS_ACCURACY_METERS): src/lib/geoLocation.ts, compartido con la vista de
-// tienda (botón "Mi Ubicación"). La zona base viaja a la tienda y al checkout mientras el cliente no elija otra ubicación.
+// Zona base (Cabimas, Zulia) y criterio para aceptar una lectura del navegador (`isExplicitGps`): src/lib/geoLocation.ts, compartido con
+// la vista de tienda (botón "Mi Ubicación"). La zona base viaja a la tienda y al checkout mientras el cliente no elija otra ubicación.
 // Solo las coordenadas de la zona base: fallback de distancia y centro del mapa de direcciones.
 const CABIMAS_CENTER = { lat: CABIMAS_DEFAULT_LOCATION.lat, lng: CABIMAS_DEFAULT_LOCATION.lng };
 
@@ -535,9 +535,10 @@ export default function MultitiendaHub({ initialStoreCode, initialStore, initial
     }
   };
 
-  // Intenta mejorar la ubicación del Home con el GPS del dispositivo: botón "Cercanos", botón "Flete" de las tarjetas y, si el navegador ya
-  // tiene el permiso concedido, una vez al abrir el Home. Solo se acepta un GPS preciso (MAX_GPS_ACCURACY_METERS); en cualquier otro caso
-  // (denegado, sin soporte, tiempo agotado o posición aproximada por red/IP) se conserva la ubicación vigente, que por defecto es Cabimas.
+  // Intenta mejorar la ubicación del Home con la posición del dispositivo: botón "Cercanos", botón "Flete" de las tarjetas y, si el
+  // navegador ya tiene el permiso concedido, una vez al abrir el Home. Se acepta lo que pase `isExplicitGps` (cualquier lectura dentro de
+  // la zona de Cabimas, o un GPS real fuera de ella); en cualquier otro caso (denegado, sin soporte, tiempo agotado o una lectura que cae
+  // en otra ciudad por la red/IP) se conserva la ubicación vigente, que por defecto es Cabimas.
   const handleTriggerGpsCalculation = (e?: React.MouseEvent) => {
     if (e) e.stopPropagation();
     setIsLocating(true);
@@ -547,7 +548,7 @@ export default function MultitiendaHub({ initialStoreCode, initialStore, initial
       setIsLocating(false);
     };
 
-    // Nombre de la ciudad de una posición YA validada como GPS preciso (geocodificación inversa de Google)
+    // Nombre de la ciudad de una posición YA aceptada por `isExplicitGps` (geocodificación inversa de Google)
     const resolveLocationName = async (lat: number, lng: number, fallbackLabel: string) => {
       try {
         const google = await loadGoogleMaps();
@@ -583,7 +584,7 @@ export default function MultitiendaHub({ initialStoreCode, initialStore, initial
           if (isExplicitGps(pos.coords)) {
             resolveLocationName(pos.coords.latitude, pos.coords.longitude, 'Ubicación actual');
           } else {
-            // Posición aproximada (red, IP o antena): puede caer en otra ciudad. Se ignora; el Home sigue en Cabimas.
+            // Lectura que cae fuera de la zona de Cabimas (otra ciudad, por la red o la IP): se ignora; el Home sigue donde estaba.
             keepCurrentLocation();
           }
         },

@@ -4,19 +4,13 @@
 /** Zona base: Cabimas, Zulia. Con ella arranca el Home y a ella se vuelve cuando el navegador no entrega una lectura aceptable. */
 export const CABIMAS_DEFAULT_LOCATION: { lat: number; lng: number; label: string } = { lat: 10.3933, lng: -71.4442, label: 'Cabimas, Zulia' };
 
-/**
- * Tolerancia de precisión (metros) de una lectura normal del navegador dentro de la zona de Cabimas. Las PCs no tienen GPS satelital y
- * reportan por Wi-Fi o red entre 300 y 1.500 m: eso es una lectura válida. Más error que esto es una posición por IP/antena y no se
- * puede tomar como el punto del cliente.
- */
-export const MAX_GPS_ACCURACY_METERS = 2000;
-
 /** Error (metros) de un GPS real (satélite): se respeta en cualquier lugar, incluso lejos de Cabimas. */
 export const HIGH_PRECISION_GPS_METERS = 100;
 
 /**
- * Radio (km) de la zona de Cabimas alrededor de la zona base. Más allá, la lectura es de otra ciudad: Maracaibo, la que suele dar la red
- * del proveedor de internet, queda a unos 32 km del centro de Cabimas.
+ * Radio (km) de la zona de Cabimas alrededor de la zona base. Dentro de él se acepta cualquier lectura del navegador, tenga la precisión
+ * que tenga (una PC se ubica por Wi-Fi o por red y puede reportar márgenes de miles de metros). Más allá, la lectura es de otra ciudad:
+ * Maracaibo, la que suele dar la IP del proveedor de internet, queda a más de 30 km.
  */
 export const CABIMAS_ZONE_RADIUS_KM = 25;
 
@@ -52,19 +46,19 @@ export function usableLocationOrBase<T extends { lat: number; lng: number; manua
 }
 
 /**
- * ¿Se acepta esta lectura del navegador como la posición real del cliente? Coordenadas y precisión deben ser válidas, y además:
- *  · un GPS real (`HIGH_PRECISION_GPS_METERS` o menos) se acepta en cualquier lugar;
- *  · dentro de la zona de Cabimas (`CABIMAS_ZONE_RADIUS_KM`) se acepta toda lectura normal, de `MAX_GPS_ACCURACY_METERS` o menos
- *    (GPS de teléfono, Wi-Fi o red de una PC);
- *  · lo demás se descarta: una lectura imprecisa que cae lejos de Cabimas (otra ciudad por la red del proveedor) o una tan imprecisa
- *    que no sirve para centrar al cliente.
- * Si se descarta, quien llama conserva la ubicación vigente (Cabimas por defecto).
+ * ¿Se acepta esta lectura del navegador como la posición del cliente? Las coordenadas deben ser válidas, y además:
+ *  · dentro de la zona de Cabimas (`CABIMAS_ZONE_RADIUS_KM`) se acepta SIEMPRE, sin mirar la precisión que reporte el navegador
+ *    (decisión del negocio, 2026-10-02: no descartar a quien se ubica desde una PC, por imprecisa que sea su lectura);
+ *  · fuera de la zona solo se acepta un GPS real (`HIGH_PRECISION_GPS_METERS` o menos): alguien que de verdad está en otra ciudad;
+ *  · lo demás se descarta: una lectura imprecisa que cae lejos de Cabimas (otra ciudad, por la IP del proveedor de internet).
+ * Si se descarta, quien llama conserva una ubicación que sirva (`usableLocationOrBase`). El nombre de la función es histórico: ya no
+ * exige un GPS, solo una lectura creíble.
  */
 export function isExplicitGps(coords: { latitude: number; longitude: number; accuracy: number } | null | undefined): boolean {
   if (!coords) return false;
   const { latitude, longitude, accuracy } = coords;
   const validPosition = Number.isFinite(latitude) && latitude >= -90 && latitude <= 90 && Number.isFinite(longitude) && longitude >= -180 && longitude <= 180;
-  if (!validPosition || !Number.isFinite(accuracy) || accuracy < 0) return false;
-  if (accuracy <= HIGH_PRECISION_GPS_METERS) return true;
-  return accuracy <= MAX_GPS_ACCURACY_METERS && distanceFromCabimasKm(latitude, longitude) <= CABIMAS_ZONE_RADIUS_KM;
+  if (!validPosition) return false;
+  if (distanceFromCabimasKm(latitude, longitude) <= CABIMAS_ZONE_RADIUS_KM) return true;
+  return typeof accuracy === 'number' && Number.isFinite(accuracy) && accuracy >= 0 && accuracy <= HIGH_PRECISION_GPS_METERS;
 }
