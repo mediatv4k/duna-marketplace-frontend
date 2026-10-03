@@ -80,6 +80,7 @@ export default function DemoMostaza() {
           nicheEngine="FOOD_FAST"
           bcvRate={40}
           onAddToCart={handleAddToCart}
+          allowUnitCustomization
         />
       )}
     </div>

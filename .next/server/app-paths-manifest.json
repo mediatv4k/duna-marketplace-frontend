@@ -1,5 +1,14 @@
 {
+  "/_not-found/page": "app/_not-found/page.js",
+  "/api/bcv/route": "app/api/bcv/route.js",
+  "/api/combo/[id]/route": "app/api/combo/[id]/route.js",
+  "/combo/[id]/page": "app/combo/[id]/page.js",
+  "/order/[orderId]/timeline/page": "app/order/[orderId]/timeline/page.js",
   "/page": "app/page.js",
   "/store/[storeCode]/page": "app/store/[storeCode]/page.js",
-  "/api/bcv/route": "app/api/bcv/route.js"
+  "/store/[storeCode]/product/[productId]/page": "app/store/[storeCode]/product/[productId]/page.js",
+  "/tienda/demo-mostaza/page": "app/tienda/demo-mostaza/page.js",
+  "/test-helado/page": "app/test-helado/page.js",
+  "/test-logistica/page": "app/test-logistica/page.js",
+  "/api/assistant/route": "app/api/assistant/route.js"
 }

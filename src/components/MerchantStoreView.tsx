@@ -210,10 +210,11 @@ export default function MerchantStoreView({
       }
     };
 
-    // Mismo criterio que el Home (`isExplicitGps`, src/lib/geoLocation.ts): la lectura solo se adopta si es creíble (hasta 2000 m de error
-    // dentro de 25 km de Cabimas, o un GPS de 100 m en cualquier lugar). Una lectura por la IP del proveedor cae en otra ciudad (Maracaibo,
-    // a más de 30 km): adoptarla dejaría al cliente fuera del límite de 12 km y bloquearía el pago. Se descarta EN SILENCIO, sin aviso, y el
-    // carrito sigue con una ubicación que sirve: la vigente si está en zona o fue elegida en el mapa; si no, la zona base (Cabimas).
+    // Mismo criterio que el Home (`isExplicitGps`, src/lib/geoLocation.ts): dentro de la zona de Cabimas (25 km) la lectura se adopta
+    // siempre, tenga la precisión que tenga; fuera de ella solo vale un GPS real (100 m). Una lectura por la IP del proveedor cae en otra
+    // ciudad (Maracaibo, a más de 30 km): adoptarla dejaría al cliente fuera del límite de 12 km y bloquearía el pago. Se descarta sin
+    // aviso de error, el carrito sigue con una ubicación que sirve (la vigente si está en zona o fue elegida en el mapa; si no, la zona
+    // base) y se abre el mapa para que el cliente fije su punto: una PC sin GPS ni Wi-Fi no puede dar su posición real.
     navigator.geolocation.getCurrentPosition(
       (pos) => {
         if (isExplicitGps(pos.coords)) {
@@ -222,6 +223,7 @@ export default function MerchantStoreView({
         }
         setCustomerLocation((prev) => usableLocationOrBase(prev));
         setIsLocating(false);
+        setIsPickerOpen(true);
       },
       () => {
         // Permiso denegado o fallo de la llamada: misma ubicación de respaldo, con el aviso de siempre (no bloquea el pago)
